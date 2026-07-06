@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+.next/
+
+# Environment — never commit real secrets. Only .env.example (placeholders) is tracked.
+.env
+.env.*
+!.env.example
+*.local
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+build/
+*.zip
+
+# Local job store (SQLite)
+*.db
+*.sqlite
+*.sqlite3

@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Dianora — self-hosted script display font. Drop the font file(s) into
+   frontend/public/fonts/ and this activates automatically (falls back to
+   Montserrat until then). */
+@font-face {
+  font-family: "Dianora";
+  src: url("/fonts/Dianora.woff2") format("woff2"),
+       url("/fonts/Dianora.otf") format("opentype"),
+       url("/fonts/Dianora.ttf") format("truetype");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    background: #1c2529;
+    color: #d9e4de;
+    font-family: "Montserrat", system-ui, -apple-system, sans-serif;
+    letter-spacing: -0.011em;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, .font-display { font-family: "Montserrat", system-ui, sans-serif; }
+  .font-script { font-family: "Dianora", "Great Vibes", cursive; }
+  /* Keeps text legible when it overlaps the bright 3D orb */
+  .text-legible { text-shadow: 0 2px 22px rgba(10, 16, 18, 0.6), 0 1px 3px rgba(10, 16, 18, 0.55); }
+
+  ::selection { background: rgba(161, 209, 177, 0.4); color: #12191c; }
+
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: linear-gradient(#a1d1b1, #a9d4bb);
+    border-radius: 8px;
+    border: 2px solid #1c2529;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: linear-gradient(#cbe6d5, #c9e6d4); }
+}
+
+@layer components {
+  /* Gradient text */
+  .text-gradient {
+    background-image: linear-gradient(120deg, #d7efe1 0%, #a1d1b1 50%, #8ac6a0 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .text-gradient-animated {
+    background-image: linear-gradient(120deg, #dcf1e6, #a1d1b1, #8ac6a0, #c9e6d4, #dcf1e6);
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: gradientmove 6s ease infinite;
+  }
+
+  /* Glass surfaces */
+  .glass {
+    background: rgba(220, 238, 228, 0.05);
+    border: 1px solid rgba(220, 238, 228, 0.12);
+    backdrop-filter: blur(14px);
+  }
+  .glass-strong {
+    background: rgba(33, 43, 48, 0.68);
+    border: 1px solid rgba(220, 238, 228, 0.1);
+    backdrop-filter: blur(20px);
+  }
+
+  /* Primary CTA — sage green with dark slate text */
+  .btn-primary {
+    position: relative;
+    background-image: linear-gradient(120deg, #cbe6d5, #a1d1b1 55%, #8ac6a0);
+    background-size: 180% 100%;
+    color: #12191c;
+    transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s, background-position 0.5s;
+    box-shadow: 0 8px 28px -8px rgba(161, 209, 177, 0.5);
+  }
+  .btn-primary:hover:not(:disabled) {
+    transform: translateY(-2px);
+    background-position: 100% 0;
+    box-shadow: 0 14px 44px -10px rgba(161, 209, 177, 0.65);
+  }
+  .btn-primary:active:not(:disabled) { transform: translateY(0) scale(0.99); }
+
+  .btn-ghost {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.2s;
+  }
+  .btn-ghost:hover { background: rgba(255, 255, 255, 0.09); border-color: rgba(255, 255, 255, 0.2); }
+
+  /* Card with hover lift + sheen */
+  .card-hover { transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.3s, box-shadow 0.3s; }
+  .card-hover:hover {
+    transform: translateY(-4px);
+    border-color: rgba(161, 209, 177, 0.42);
+    box-shadow: 0 24px 60px -24px rgba(161, 209, 177, 0.4);
+  }
+
+  /* Gradient border wrapper */
+  .gradient-border {
+    position: relative;
+    background: linear-gradient(#202a2e, #202a2e) padding-box,
+      linear-gradient(120deg, rgba(161, 209, 177, 0.55), rgba(111, 177, 145, 0.4) 50%, rgba(169, 212, 187, 0.45)) border-box;
+    border: 1px solid transparent;
+  }
+}
+
+/* SSE stream cursor blink */
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
+}

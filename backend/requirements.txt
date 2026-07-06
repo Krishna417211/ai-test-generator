@@ -1,0 +1,14 @@
+# Core (pinned to versions with prebuilt wheels for Python 3.11–3.14).
+# The previous pins (pydantic 2.8.2 etc.) had no wheels for 3.13+ and failed to
+# build from source. Use `>=` lower bounds so it installs across modern Pythons.
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+httpx>=0.27,<1.0
+pydantic>=2.8,<3.0
+pydantic-settings>=2.4,<3.0
+python-multipart>=0.0.9
+python-dotenv>=1.0
+bcrypt>=4.0            # password hashing for email/password auth
+
+# Dev / test
+pytest>=8.0
