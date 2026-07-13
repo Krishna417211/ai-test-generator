@@ -7,7 +7,7 @@ interface Props {
 }
 
 const PRIORITY_COLORS = {
-  high: "text-red-400 bg-red-400/10 border-red-400/20",
+  high: "text-rose-400 bg-rose-400/10 border-rose-400/20",
   medium: "text-amber-400 bg-amber-400/10 border-amber-400/20",
   low: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
 };
@@ -19,7 +19,7 @@ export default function PreviewStep({ analysis, onContinue }: Props) {
       <div className="rounded-xl border border-white/10 bg-white/5 p-5">
         <div className="flex items-start justify-between mb-3">
           <div>
-            <span className="text-xs font-semibold text-violet-400 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-progress-400 uppercase tracking-wider">
               {analysis.framework}
             </span>
             <h3 className="text-base font-semibold text-white mt-1">Project Analysis</h3>
@@ -39,7 +39,7 @@ export default function PreviewStep({ analysis, onContinue }: Props) {
       {analysis.routes.length > 0 && (
         <div className="rounded-xl border border-white/10 bg-white/5 p-5">
           <div className="flex items-center gap-2 mb-3">
-            <Route size={14} className="text-violet-400" />
+            <Route size={14} className="text-progress-400" />
             <span className="text-sm font-semibold text-white">Detected Routes</span>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -59,7 +59,7 @@ export default function PreviewStep({ analysis, onContinue }: Props) {
       {analysis.key_pages.length > 0 && (
         <div className="rounded-xl border border-white/10 bg-white/5 p-5">
           <div className="flex items-center gap-2 mb-4">
-            <Layers size={14} className="text-violet-400" />
+            <Layers size={14} className="text-progress-400" />
             <span className="text-sm font-semibold text-white">Key Pages to Test</span>
           </div>
           <div className="space-y-3">
@@ -67,7 +67,7 @@ export default function PreviewStep({ analysis, onContinue }: Props) {
               <div key={i} className="flex gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-mono text-violet-300 truncate">{page.path}</span>
+                    <span className="text-xs font-mono text-progress-300 truncate">{page.path}</span>
                     <span
                       className={`shrink-0 px-1.5 py-0.5 rounded text-xs border ${
                         PRIORITY_COLORS[page.test_priority as keyof typeof PRIORITY_COLORS] ||
@@ -114,7 +114,7 @@ export default function PreviewStep({ analysis, onContinue }: Props) {
 
       <button
         onClick={onContinue}
-        className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold transition-all text-sm"
+        className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-progress-600 hover:bg-progress-500 text-white font-semibold transition-all text-sm"
       >
         Configure Test Generation
         <ChevronRight size={16} />

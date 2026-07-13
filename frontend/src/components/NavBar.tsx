@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { NavLink, Link, useNavigate } from "react-router-dom";
-import { TestTube2, Sparkles, Rocket, ShieldCheck, Activity, Github, LogOut, ChevronDown } from "lucide-react";
+import { TestTube2, Sparkles, Rocket, ShieldCheck, Activity, LogOut, ChevronDown } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 const LINKS = [
@@ -34,7 +34,7 @@ export default function NavBar() {
             <span className="relative w-8 h-8 rounded-xl bg-brand-gradient flex items-center justify-center shadow-glow">
               <TestTube2 size={16} className="text-ink-950" />
             </span>
-            <span className="font-display font-bold text-[15px] tracking-tight">Test<span className="text-gradient">ra</span></span>
+            <span className="font-display font-bold text-[15px] tracking-[-0.01em]">Test<span className="text-gradient">ra</span></span>
           </Link>
 
           {user && (
@@ -43,7 +43,7 @@ export default function NavBar() {
                 <NavLink key={to} to={to}
                   className={({ isActive }) =>
                     `relative flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-medium transition-all ${
-                      isActive ? "text-white bg-white/10 shadow-inner-hi" : "text-white/70 hover:text-white hover:bg-white/5"
+                      isActive ? "text-white bg-white/10 shadow-inner-hi" : "text-white/[72%] hover:text-white hover:bg-white/5"
                     }`}
                 >
                   <Icon size={14} /> {label}
@@ -53,17 +53,12 @@ export default function NavBar() {
           )}
 
           <div className="flex items-center gap-2">
-            <a href="https://github.com" target="_blank" rel="noopener noreferrer"
-              className="p-2 rounded-xl text-white/60 hover:text-white btn-ghost" aria-label="GitHub">
-              <Github size={16} />
-            </a>
-
             {user ? (
               <div className="relative" ref={ref}>
                 <button onClick={() => setMenu(!menu)}
                   className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl btn-ghost">
                   <span className="w-7 h-7 rounded-lg bg-brand-gradient flex items-center justify-center text-xs font-bold text-ink-950">{initial}</span>
-                  <span className="hidden sm:block text-[13px] text-white/80 max-w-[120px] truncate">{user.name || user.email}</span>
+                  <span className="hidden sm:block text-[13px] text-white/[72%] max-w-[120px] truncate">{user.name || user.email}</span>
                   <ChevronDown size={14} className="text-white/50" />
                 </button>
                 {menu && (
@@ -80,8 +75,22 @@ export default function NavBar() {
               </div>
             ) : (
               <>
-                <Link to="/login" className="hidden sm:inline-flex items-center px-3.5 py-2 rounded-xl text-[13px] font-medium text-white/80 hover:text-white btn-ghost">Log in</Link>
-                <Link to="/signup" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold btn-primary">Sign up</Link>
+                <NavLink to="/login"
+                  className={({ isActive }) =>
+                    `hidden sm:inline-flex items-center px-3.5 py-2 rounded-xl text-[13px] font-medium transition-all ${
+                      isActive ? "text-white bg-white/10" : "text-white/[72%] hover:text-white btn-ghost"
+                    }`}
+                >
+                  Log in
+                </NavLink>
+                <NavLink to="/signup"
+                  className={({ isActive }) =>
+                    `inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold transition-all ${
+                      isActive ? "text-white bg-white/10" : "btn-primary"
+                    }`}
+                >
+                  Sign up
+                </NavLink>
               </>
             )}
           </div>

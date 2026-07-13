@@ -71,6 +71,7 @@ def public_user(user: dict) -> dict:
         "github_login": user.get("github_login"),
         "avatar_url": user.get("avatar_url"),
         "has_github": bool(user.get("github_login")),
+        "has_google": bool(user.get("google_id")),
     }
 
 

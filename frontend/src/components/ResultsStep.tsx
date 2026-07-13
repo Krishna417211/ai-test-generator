@@ -26,9 +26,9 @@ function FileCard({ file }: { file: GeneratedFile }) {
   const tagColor = isTest
     ? "text-emerald-400 bg-emerald-400/10 border-emerald-400/20"
     : isCI
-    ? "text-blue-400 bg-blue-400/10 border-blue-400/20"
+    ? "text-iris-400 bg-iris-400/10 border-iris-400/20"
     : isPOM
-    ? "text-violet-400 bg-violet-400/10 border-violet-400/20"
+    ? "text-progress-400 bg-progress-400/10 border-progress-400/20"
     : "text-white/40 bg-white/5 border-white/10";
 
   const tag = isTest ? "Test Spec" : isCI ? "CI/CD" : isPOM ? "Page Object" : "Config";
@@ -102,8 +102,8 @@ export default function ResultsStep({ result, onReset }: Props) {
 
   const groups = [
     { label: "Test Specs", files: specs, color: "text-emerald-400" },
-    { label: "Page Objects", files: pages, color: "text-violet-400" },
-    { label: "Config & CI/CD", files: configs, color: "text-blue-400" },
+    { label: "Page Objects", files: pages, color: "text-progress-400" },
+    { label: "Config & CI/CD", files: configs, color: "text-iris-400" },
   ].filter(g => g.files.length > 0);
 
   return (
@@ -185,7 +185,7 @@ export default function ResultsStep({ result, onReset }: Props) {
         </button>
         <button
           onClick={handleDownload}
-          className="flex-1 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2"
+          className="flex-1 py-3 rounded-xl bg-progress-600 hover:bg-progress-500 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2"
         >
           <Download size={15} />
           Download ZIP

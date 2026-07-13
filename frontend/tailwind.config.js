@@ -45,6 +45,8 @@ export default {
         emerald: { 400: "#7fb39a", 500: "#5f9c80" },
         amber: { 400: "#e0b877", 500: "#c99a4f" },
         rose: { 400: "#d98a86", 500: "#c56b66" },
+        // Muted lavender — "in progress" state (replaces raw Tailwind violet)
+        progress: { 300: "#cdc7e0", 400: "#a99fc9", 500: "#8f82b8", 600: "#7568a0" },
       },
       boxShadow: {
         glow: "0 0 0 1px rgba(161,209,177,0.25), 0 8px 44px -10px rgba(161,209,177,0.4)",

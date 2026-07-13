@@ -44,6 +44,7 @@ from services.github_service import GitHubService, parse_github_url, RepoNotFoun
 from services.git_publisher import GitPublisher, GitPublishError
 from services.security_scanner import SecurityScanner, ScanError
 from services import github_oauth
+from services import google_oauth
 from services import auth as auth_svc
 from services.auth import require_user
 from services.llm_router import router as llm_router
@@ -290,8 +291,11 @@ _STATE_PREFIX = "oauthstate:"   # namespaces one-time states inside the session 
 
 @app.get("/api/auth/config")
 async def auth_config():
-    """Tells the frontend whether GitHub login is available."""
-    return {"github_oauth_enabled": settings.github_oauth_enabled}
+    """Tells the frontend which social logins are available."""
+    return {
+        "github_oauth_enabled": settings.github_oauth_enabled,
+        "google_oauth_enabled": settings.google_oauth_enabled,
+    }
 
 
 @app.post("/api/auth/signup", response_model=AuthResponse,
@@ -394,6 +398,73 @@ async def github_callback(code: str = "", state: str = "", error: str = ""):
 
     # Session carries the GitHub access token so Publish can push on their behalf.
     session_id = auth_svc.create_login_session(user_id, github_token=token)
+    return RedirectResponse(f"{frontend}/auth/callback?token={session_id}", status_code=307)
+
+
+@app.get("/api/auth/google/login")
+async def google_login():
+    """Start the OAuth flow — redirect the browser to Google's consent screen."""
+    if not settings.google_oauth_enabled:
+        raise HTTPException(503, "Google login is not configured on this server.")
+    state = secrets.token_urlsafe(24)
+    store.create_session(_STATE_PREFIX + state, {"kind": "oauth_state"}, _OAUTH_STATE_TTL)
+    url = google_oauth.authorize_url(
+        client_id=settings.google_client_id,
+        redirect_uri=settings.google_oauth_callback_url,
+        state=state,
+    )
+    return RedirectResponse(url, status_code=307)
+
+
+@app.get("/api/auth/google/callback")
+async def google_callback(code: str = "", state: str = "", error: str = ""):
+    """Google redirects here after the user approves (or denies)."""
+    frontend = settings.frontend_url.rstrip("/")
+
+    def _fail(reason: str):
+        return RedirectResponse(f"{frontend}/?login_error={reason}", status_code=307)
+
+    if error or not code:
+        return _fail(error or "access_denied")
+    # One-time state check (CSRF protection).
+    if not state or store.get_session(_STATE_PREFIX + state) is None:
+        return _fail("invalid_state")
+    store.delete_session(_STATE_PREFIX + state)
+
+    try:
+        token = await google_oauth.exchange_code(
+            code=code,
+            client_id=settings.google_client_id,
+            client_secret=settings.google_client_secret,
+            redirect_uri=settings.google_oauth_callback_url,
+        )
+        gg = await google_oauth.get_user(token)
+    except google_oauth.OAuthError as e:
+        logger.warning(f"Google OAuth callback failed: {e}")
+        return _fail("exchange_failed")
+
+    # Find or create the user account, linking by google_id first, then email.
+    google_id = str(gg.get("id"))
+    account = store.get_user_by_google(google_id)
+    if not account and gg.get("email"):
+        account = store.get_user_by_email(gg["email"])
+    if account:
+        store.update_user(
+            account["id"], google_id=google_id,
+            avatar_url=gg.get("avatar_url") or account.get("avatar_url"),
+        )
+        user_id = account["id"]
+    else:
+        user_id = auth_svc.new_user_id()
+        store.create_user({
+            "id": user_id, "email": gg.get("email"),
+            "name": gg.get("name") or gg["login"],
+            "google_id": google_id,
+            "avatar_url": gg.get("avatar_url"), "created_at": time.time(),
+        })
+        logger.info(f"New Google signup: {gg.get('email')}")
+
+    session_id = auth_svc.create_login_session(user_id)
     return RedirectResponse(f"{frontend}/auth/callback?token={session_id}", status_code=307)
 
 

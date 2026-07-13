@@ -37,9 +37,9 @@ export default function StepIndicator({ currentStep }: Props) {
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
                   done
-                    ? "bg-violet-600 border-violet-600 text-white"
+                    ? "bg-progress-600 border-progress-600 text-white"
                     : active
-                    ? "bg-transparent border-violet-500 text-violet-400"
+                    ? "bg-transparent border-progress-500 text-progress-400"
                     : "bg-transparent border-white/15 text-white/25"
                 }`}
               >
@@ -47,7 +47,7 @@ export default function StepIndicator({ currentStep }: Props) {
               </div>
               <span
                 className={`text-xs font-medium transition-colors ${
-                  active ? "text-white" : done ? "text-violet-400" : "text-white/25"
+                  active ? "text-white" : done ? "text-progress-400" : "text-white/25"
                 }`}
               >
                 {step.label}
@@ -57,7 +57,7 @@ export default function StepIndicator({ currentStep }: Props) {
             {i < STEPS.length - 1 && (
               <div
                 className={`w-16 h-px mx-2 mb-5 transition-colors ${
-                  i < current ? "bg-violet-600" : "bg-white/10"
+                  i < current ? "bg-progress-600" : "bg-white/10"
                 }`}
               />
             )}

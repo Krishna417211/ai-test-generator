@@ -63,7 +63,7 @@ export default function GenerateInput({ onAnalyze, loading, error }: Props) {
                   onChange={(e) => setUrl(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && submit()}
                   placeholder="https://github.com/owner/repo"
-                  className="w-full pl-10 pr-4 py-3.5 rounded-xl bg-black/30 border border-white/10 text-white placeholder:text-white/45 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm"
+                  className="w-full pl-10 pr-4 py-3.5 rounded-xl bg-black/30 border border-white/10 text-white placeholder:text-white/50 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm"
                 />
               </div>
               <button onClick={() => setShowToken(!showToken)} className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/60 transition-colors">
@@ -75,7 +75,7 @@ export default function GenerateInput({ onAnalyze, loading, error }: Props) {
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
                   placeholder="ghp_xxxxxxxxxxxx"
-                  className="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white placeholder:text-white/45 focus:outline-none focus:border-brand-500/70 transition-colors text-sm font-mono"
+                  className="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white placeholder:text-white/50 focus:outline-none focus:border-brand-500/70 transition-colors text-sm font-mono"
                 />
               )}
             </div>

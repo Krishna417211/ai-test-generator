@@ -196,7 +196,7 @@ export default function Home() {
           <div className="absolute inset-0 bg-brand-radial opacity-70" />
           <div className="relative">
             <h2 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">Your next deploy could be <span className="font-script font-normal text-gradient text-5xl sm:text-6xl leading-none">bulletproof.</span></h2>
-            <p className="mt-3 text-white/72 max-w-lg mx-auto">Generate a full test suite in the time it takes to read this sentence.</p>
+            <p className="mt-3 text-white/[72%] max-w-lg mx-auto">Generate a full test suite in the time it takes to read this sentence.</p>
             <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
               <Link to="/generate" className="inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl btn-primary font-semibold text-sm">
                 <Sparkles size={16} /> Start now — it's free

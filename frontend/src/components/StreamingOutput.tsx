@@ -18,13 +18,13 @@ export default function StreamingOutput({ output, provider, done }: Props) {
     <div className="w-full max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          {!done && <Loader2 size={14} className="animate-spin text-violet-400" />}
+          {!done && <Loader2 size={14} className="animate-spin text-progress-400" />}
           <span className="text-sm font-semibold text-white">
             {done ? "Generation complete" : "Generating tests..."}
           </span>
         </div>
         {provider && (
-          <div className="flex items-center gap-1.5 text-xs text-violet-300 bg-violet-500/15 px-3 py-1 rounded-full border border-violet-500/20">
+          <div className="flex items-center gap-1.5 text-xs text-progress-300 bg-progress-500/15 px-3 py-1 rounded-full border border-progress-500/20">
             <Zap size={11} />
             {provider}
           </div>

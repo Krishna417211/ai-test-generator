@@ -58,7 +58,7 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
     <div className="w-full max-w-2xl mx-auto space-y-6">
       <div className="flex items-center gap-2 text-white/40 text-xs mb-2">
         <Settings size={13} />
-        <span>Detected: <span className="text-violet-400">{detectedFramework}</span></span>
+        <span>Detected: <span className="text-progress-400">{detectedFramework}</span></span>
       </div>
 
       {/* Framework */}
@@ -71,7 +71,7 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
               onClick={() => handleFrameworkChange(fw.id)}
               className={`p-3 rounded-xl border text-left transition-all ${
                 framework === fw.id
-                  ? "border-violet-500 bg-violet-500/15 text-white"
+                  ? "border-progress-500 bg-progress-500/15 text-white"
                   : "border-white/10 bg-white/5 text-white/50 hover:border-white/20 hover:text-white/70"
               }`}
             >
@@ -92,7 +92,7 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
               onClick={() => setLanguage(lang.id)}
               className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all ${
                 language === lang.id
-                  ? "border-violet-500 bg-violet-500/15 text-white"
+                  ? "border-progress-500 bg-progress-500/15 text-white"
                   : "border-white/10 bg-white/5 text-white/50 hover:text-white/70"
               }`}
             >
@@ -112,7 +112,7 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
           onChange={(e) => setTestFlows(e.target.value)}
           placeholder={`Describe the flows you want tested. For example:\n- User registration and login\n- Product search and add to cart\n- Checkout with payment form\n- Profile settings update`}
           rows={5}
-          className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/25 focus:outline-none focus:border-violet-500 transition-colors text-sm resize-none"
+          className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/25 focus:outline-none focus:border-progress-500 transition-colors text-sm resize-none"
         />
         <p className="text-xs text-white/30 mt-1">
           Leave blank to auto-test all detected pages and flows.
@@ -126,7 +126,7 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
           type="url"
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
-          className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-violet-500 transition-colors text-sm font-mono"
+          className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-progress-500 transition-colors text-sm font-mono"
         />
       </div>
 
@@ -135,7 +135,7 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
         <div
           onClick={() => setIncludeCi(!includeCi)}
           className={`w-10 h-6 rounded-full border transition-all ${
-            includeCi ? "bg-violet-600 border-violet-500" : "bg-white/10 border-white/20"
+            includeCi ? "bg-progress-600 border-progress-500" : "bg-white/10 border-white/20"
           } relative`}
         >
           <span
@@ -152,7 +152,7 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
       <button
         onClick={() => onGenerate({ framework, language, testFlows, baseUrl, includeCi })}
         disabled={loading}
-        className="w-full flex items-center justify-center gap-2 py-4 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white font-bold transition-all"
+        className="w-full flex items-center justify-center gap-2 py-4 rounded-xl bg-progress-600 hover:bg-progress-500 disabled:opacity-40 text-white font-bold transition-all"
       >
         <Play size={16} />
         Generate Test Suite

@@ -4,19 +4,19 @@ import { scanUrl } from "../utils/api";
 import type { ScanResult, SecurityFinding, Severity } from "../types";
 
 const SEV_STYLE: Record<Severity, { label: string; dot: string; text: string; ring: string }> = {
-  critical: { label: "Critical", dot: "bg-red-500", text: "text-red-300", ring: "border-red-500/30 bg-red-500/10" },
-  high: { label: "High", dot: "bg-orange-500", text: "text-orange-300", ring: "border-orange-500/30 bg-orange-500/10" },
-  medium: { label: "Medium", dot: "bg-amber-400", text: "text-amber-300", ring: "border-amber-500/30 bg-amber-500/10" },
-  low: { label: "Low", dot: "bg-sky-400", text: "text-sky-300", ring: "border-sky-500/30 bg-sky-500/10" },
+  critical: { label: "Critical", dot: "bg-rose-500", text: "text-rose-400", ring: "border-rose-500/30 bg-rose-500/10" },
+  high: { label: "High", dot: "bg-rose-400", text: "text-rose-400", ring: "border-rose-400/30 bg-rose-400/10" },
+  medium: { label: "Medium", dot: "bg-amber-400", text: "text-amber-400", ring: "border-amber-500/30 bg-amber-500/10" },
+  low: { label: "Low", dot: "bg-iris-400", text: "text-iris-400", ring: "border-iris-400/30 bg-iris-400/10" },
   info: { label: "Info", dot: "bg-white/40", text: "text-white/70", ring: "border-white/15 bg-white/5" },
 };
 
 const GRADE_COLOR: Record<string, string> = {
   A: "text-emerald-400 border-emerald-500/40 bg-emerald-500/10",
-  B: "text-lime-400 border-lime-500/40 bg-lime-500/10",
+  B: "text-brand-400 border-brand-500/40 bg-brand-500/10",
   C: "text-amber-400 border-amber-500/40 bg-amber-500/10",
-  D: "text-orange-400 border-orange-500/40 bg-orange-500/10",
-  F: "text-red-400 border-red-500/40 bg-red-500/10",
+  D: "text-amber-500 border-amber-500/50 bg-amber-500/15",
+  F: "text-rose-500 border-rose-500/40 bg-rose-500/10",
 };
 
 function FindingCard({ f }: { f: SecurityFinding }) {
@@ -92,7 +92,7 @@ export default function ScanPanel() {
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && run()}
           placeholder="https://your-app.com"
-          className="w-full pl-10 pr-4 py-3.5 rounded-xl bg-black/30 border border-white/10 text-white placeholder:text-white/45 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm"
+          className="w-full pl-10 pr-4 py-3.5 rounded-xl bg-black/30 border border-white/10 text-white placeholder:text-white/50 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm"
         />
       </div>
 
@@ -109,7 +109,7 @@ export default function ScanPanel() {
       </button>
 
       {error && (
-        <div className="px-4 py-3 rounded-xl bg-red-500/15 border border-red-500/30 text-sm text-red-300">
+        <div className="px-4 py-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-sm text-rose-400">
           {error}
         </div>
       )}
