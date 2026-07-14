@@ -30,9 +30,9 @@ observability layers.
                         ┌────────────────────────────────┴───────────┐
                         ▼                                             ▼
               ┌───────────────────┐                       ┌────────────────────┐
-              │   LLMRouter       │  Gemini→Groq→Claude→   │   JobStore (SQLite)│
-              │  key rotation +   │  Together, per-key     │  durable sessions  │
-              │  failover + JSON  │  cooldown on 429       │  survive restarts  │
+              │   LLMRouter       │  Gemini→Groq→Claude    │   JobStore (SQLite)│
+              │  key rotation +   │  per-key cooldown      │  durable sessions  │
+              │  failover + JSON  │  on 429                │  survive restarts  │
               └───────────────────┘                       └────────────────────┘
 ```
 
@@ -61,7 +61,7 @@ JSON mode (POM classes + specs + config), appends CI YAML + README, then
 validates every generated selector against the source and flags hallucinations.
 
 ### `services/llm_router.py` — provider rotation engine
-Tries providers in priority order (Gemini → Groq → Claude → Together), rotates
+Tries providers in priority order (Gemini → Groq → Claude), rotates
 round-robin through each provider's keys, and puts a key on a cooldown when it
 returns 429/errors. A `json_mode` flag forces valid-JSON output per provider.
 Per-request status updates are scoped with a `ContextVar` so concurrent streams

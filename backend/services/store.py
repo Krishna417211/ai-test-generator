@@ -63,7 +63,7 @@ class JobStore:
                 )
                 """
             )
-            # User accounts (email/password and/or GitHub/Google-linked).
+            # User accounts (email/password and/or GitHub-linked).
             c.execute(
                 """
                 CREATE TABLE IF NOT EXISTS users (
@@ -73,18 +73,12 @@ class JobStore:
                     name          TEXT,
                     github_id     TEXT,
                     github_login  TEXT,
-                    google_id     TEXT,
                     avatar_url    TEXT,
                     created_at    REAL NOT NULL
                 )
                 """
             )
-            # Older DBs won't have google_id yet — add it if missing.
-            existing_cols = {row[1] for row in c.execute("PRAGMA table_info(users)")}
-            if "google_id" not in existing_cols:
-                c.execute("ALTER TABLE users ADD COLUMN google_id TEXT")
             c.execute("CREATE INDEX IF NOT EXISTS idx_users_github ON users(github_id)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_users_google ON users(google_id)")
         logger.info(f"JobStore ready at {self.db_path}")
 
     # ── Public API ───────────────────────────
@@ -164,22 +158,22 @@ class JobStore:
 
     # ── Users ────────────────────────────────
 
-    _USER_COLS = "id, email, password_hash, name, github_id, github_login, google_id, avatar_url, created_at"
+    _USER_COLS = "id, email, password_hash, name, github_id, github_login, avatar_url, created_at"
 
     def _row_to_user(self, row) -> dict | None:
         if not row:
             return None
-        keys = ["id", "email", "password_hash", "name", "github_id", "github_login", "google_id", "avatar_url", "created_at"]
+        keys = ["id", "email", "password_hash", "name", "github_id", "github_login", "avatar_url", "created_at"]
         return dict(zip(keys, row))
 
     def create_user(self, user: dict) -> None:
         with self._lock, self._conn() as c:
             c.execute(
-                f"INSERT INTO users ({self._USER_COLS}) VALUES (?,?,?,?,?,?,?,?,?)",
+                f"INSERT INTO users ({self._USER_COLS}) VALUES (?,?,?,?,?,?,?,?)",
                 (
                     user["id"], user.get("email"), user.get("password_hash"),
                     user.get("name"), user.get("github_id"), user.get("github_login"),
-                    user.get("google_id"), user.get("avatar_url"), user.get("created_at", time.time()),
+                    user.get("avatar_url"), user.get("created_at", time.time()),
                 ),
             )
 
@@ -209,17 +203,8 @@ class JobStore:
             ).fetchone()
         return self._row_to_user(row)
 
-    def get_user_by_google(self, google_id: str) -> dict | None:
-        if not google_id:
-            return None
-        with self._lock, self._conn() as c:
-            row = c.execute(
-                f"SELECT {self._USER_COLS} FROM users WHERE google_id = ?", (str(google_id),)
-            ).fetchone()
-        return self._row_to_user(row)
-
     def update_user(self, user_id: str, **fields) -> None:
-        allowed = {"email", "password_hash", "name", "github_id", "github_login", "google_id", "avatar_url"}
+        allowed = {"email", "password_hash", "name", "github_id", "github_login", "avatar_url"}
         sets = {k: v for k, v in fields.items() if k in allowed}
         if not sets:
             return

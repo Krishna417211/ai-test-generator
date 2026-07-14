@@ -8,7 +8,6 @@ const PROVIDER_META: Record<string, { label: string; emoji: string }> = {
   gemini: { label: "Google Gemini", emoji: "✨" },
   groq: { label: "Groq LLaMA", emoji: "⚡" },
   claude: { label: "Anthropic Claude", emoji: "🧠" },
-  together: { label: "Together Mistral", emoji: "🤝" },
 };
 
 function fmtUptime(s: number) {

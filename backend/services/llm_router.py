@@ -2,7 +2,7 @@
 llm_router.py — Multi-provider LLM rotation engine for Testra
 
 Strategy:
-  1. Try providers in priority order (Gemini → Groq → Claude → Together)
+  1. Try providers in priority order (Gemini → Groq → Claude)
   2. Within each provider, rotate through all API keys round-robin
   3. On rate limit (429) or error: exponential backoff then next key/provider
   4. Track exhausted keys per reset window, auto-restore after cooldown
@@ -48,7 +48,7 @@ _last_usage: contextvars.ContextVar = contextvars.ContextVar(
 
 
 def _openai_usage(usage: Optional[dict]) -> Optional[dict]:
-    """Normalise an OpenAI-style usage block (Groq/Together) to {prompt, completion, total}."""
+    """Normalise an OpenAI-style usage block (Groq) to {prompt, completion, total}."""
     if not usage:
         return None
     return {
@@ -65,7 +65,6 @@ class Provider(str, Enum):
     GEMINI   = "gemini"
     GROQ     = "groq"
     CLAUDE   = "claude"
-    TOGETHER = "together"
 
 
 @dataclass
@@ -121,7 +120,6 @@ PROVIDER_PRIORITY = [
     Provider.GEMINI,    # 1M context — best for large repos
     Provider.GROQ,      # Fastest inference
     Provider.CLAUDE,    # Reliable fallback
-    Provider.TOGETHER,  # Last resort
 ]
 
 # How long to wait before retrying an exhausted key (seconds)
@@ -129,7 +127,6 @@ COOLDOWN = {
     Provider.GEMINI:   60,
     Provider.GROQ:     30,
     Provider.CLAUDE:   120,
-    Provider.TOGETHER: 60,
 }
 
 # Max tokens we'll request from each provider
@@ -137,7 +134,6 @@ MAX_OUTPUT_TOKENS = {
     Provider.GEMINI:   8192,
     Provider.GROQ:     4096,
     Provider.CLAUDE:   4096,
-    Provider.TOGETHER: 4096,
 }
 
 
@@ -159,7 +155,6 @@ class LLMRouter:
             Provider.GEMINI:   "GEMINI_API_KEY_",
             Provider.GROQ:     "GROQ_API_KEY_",
             Provider.CLAUDE:   "ANTHROPIC_API_KEY_",
-            Provider.TOGETHER: "TOGETHER_API_KEY_",
         }
 
         for provider, prefix in key_patterns.items():
@@ -322,8 +317,6 @@ class LLMRouter:
             return await self._call_groq(api_key, prompt, system_prompt, temperature, json_mode)
         elif provider == Provider.CLAUDE:
             return await self._call_claude(api_key, prompt, system_prompt, temperature, json_mode)
-        elif provider == Provider.TOGETHER:
-            return await self._call_together(api_key, prompt, system_prompt, temperature, json_mode)
         raise ValueError(f"Unknown provider: {provider}")
 
     async def _stream_provider(
@@ -345,10 +338,6 @@ class LLMRouter:
         elif provider == Provider.CLAUDE:
             async for chunk in self._stream_claude(api_key, prompt, system_prompt, temperature):
                 yield chunk
-        elif provider == Provider.TOGETHER:
-            # Together doesn't always support streaming; fall back
-            result = await self._call_together(api_key, prompt, system_prompt, temperature, json_mode)
-            yield result
 
     # ── Gemini ──────────────────────────────
 
@@ -562,39 +551,6 @@ class LLMRouter:
                                 yield event["delta"].get("text", "")
                         except Exception:
                             continue
-
-    # ── Together AI ─────────────────────────
-
-    async def _call_together(self, key: APIKey, prompt, system, temperature, json_mode: bool = False) -> str:
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-
-        body = {
-            "model": "mistralai/Mistral-7B-Instruct-v0.3",
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": MAX_OUTPUT_TOKENS[Provider.TOGETHER],
-        }
-        if json_mode:
-            body["response_format"] = {"type": "json_object"}
-
-        async with httpx.AsyncClient(timeout=90) as client:
-            r = await client.post(
-                "https://api.together.xyz/v1/chat/completions",
-                json=body,
-                headers={"Authorization": f"Bearer {key.key}"},
-            )
-
-        if r.status_code == 429:
-            raise RateLimitError(f"Together rate limit: {r.text}")
-        if r.status_code != 200:
-            raise ProviderError(f"Together HTTP {r.status_code}: {r.text[:200]}")
-
-        data = r.json()
-        _last_usage.set(_openai_usage(data.get("usage")))
-        return data["choices"][0]["message"]["content"]
 
     # ─────────────────────────────────────────
     # Logging & SSE status broadcasts

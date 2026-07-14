@@ -29,7 +29,7 @@ Always run the generated suite against your app before trusting it in CI.
   large suites can hit provider output-token limits. If a suite looks truncated,
   narrow the "what to test" scope and regenerate.
 - **Free-tier providers.** Generation quality/latency depends on whichever free
-  provider is available (Gemini → Groq → Claude → Together). Under rate limits it
+  provider is available (Gemini → Groq → Claude). Under rate limits it
   falls back automatically, so results can vary run to run.
 
 ## Data handling
