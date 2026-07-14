@@ -17,8 +17,7 @@ import asyncio
 import logging
 import contextvars
 from enum import Enum
-from dataclasses import dataclass, field
-from collections import defaultdict
+from dataclasses import dataclass
 from typing import AsyncGenerator, Optional
 
 import httpx
@@ -38,6 +37,25 @@ logger = logging.getLogger(__name__)
 _status_listener: contextvars.ContextVar = contextvars.ContextVar(
     "testgen_status_listener", default=None
 )
+
+# Token usage from the most recent provider call, scoped per-request (per asyncio
+# task) so concurrent requests never read each other's counts. Each _call_*
+# implementation sets it after parsing the response; complete() reads it for the
+# call log. None means "provider didn't report usage" (e.g. streaming).
+_last_usage: contextvars.ContextVar = contextvars.ContextVar(
+    "testgen_last_usage", default=None
+)
+
+
+def _openai_usage(usage: Optional[dict]) -> Optional[dict]:
+    """Normalise an OpenAI-style usage block (Groq/Together) to {prompt, completion, total}."""
+    if not usage:
+        return None
+    return {
+        "prompt": usage.get("prompt_tokens"),
+        "completion": usage.get("completion_tokens"),
+        "total": usage.get("total_tokens"),
+    }
 
 # ─────────────────────────────────────────────
 # Data structures
@@ -192,12 +210,16 @@ class LLMRouter:
 
             await self._broadcast_status(f"Using {provider.value}...")
 
+            _last_usage.set(None)
+            t0 = time.perf_counter()
             try:
                 result = await self._call_provider(
                     provider, api_key, prompt, system_prompt, temperature, json_mode
                 )
+                latency_ms = round((time.perf_counter() - t0) * 1000)
                 api_key.record_success()
-                self._log_call(provider, api_key, context_hint, success=True)
+                self._log_call(provider, api_key, context_hint, success=True,
+                               latency_ms=latency_ms, usage=_last_usage.get())
                 return result
 
             except RateLimitError as e:
@@ -242,13 +264,16 @@ class LLMRouter:
 
             await self._broadcast_status(f"Streaming from {provider.value}...")
 
+            t0 = time.perf_counter()
             try:
                 async for chunk in self._stream_provider(
                     provider, api_key, prompt, system_prompt, temperature, json_mode
                 ):
                     yield chunk
+                latency_ms = round((time.perf_counter() - t0) * 1000)
                 api_key.record_success()
-                self._log_call(provider, api_key, context_hint, success=True)
+                self._log_call(provider, api_key, context_hint, success=True,
+                               latency_ms=latency_ms)
                 return
 
             except RateLimitError:
@@ -355,6 +380,12 @@ class LLMRouter:
             raise ProviderError(f"Gemini HTTP {r.status_code}: {r.text[:200]}")
 
         data = r.json()
+        um = data.get("usageMetadata") or {}
+        _last_usage.set({
+            "prompt": um.get("promptTokenCount"),
+            "completion": um.get("candidatesTokenCount"),
+            "total": um.get("totalTokenCount"),
+        })
         try:
             return data["candidates"][0]["content"]["parts"][0]["text"]
         except (KeyError, IndexError) as e:
@@ -418,7 +449,9 @@ class LLMRouter:
         if r.status_code != 200:
             raise ProviderError(f"Groq HTTP {r.status_code}: {r.text[:200]}")
 
-        return r.json()["choices"][0]["message"]["content"]
+        data = r.json()
+        _last_usage.set(_openai_usage(data.get("usage")))
+        return data["choices"][0]["message"]["content"]
 
     async def _stream_groq(self, key: APIKey, prompt, system, temperature, json_mode: bool = False):
         messages = []
@@ -487,7 +520,14 @@ class LLMRouter:
         if r.status_code != 200:
             raise ProviderError(f"Claude HTTP {r.status_code}: {r.text[:200]}")
 
-        return r.json()["content"][0]["text"]
+        data = r.json()
+        cu = data.get("usage") or {}
+        _last_usage.set({
+            "prompt": cu.get("input_tokens"),
+            "completion": cu.get("output_tokens"),
+            "total": (cu.get("input_tokens") or 0) + (cu.get("output_tokens") or 0) or None,
+        })
+        return data["content"][0]["text"]
 
     async def _stream_claude(self, key: APIKey, prompt, system, temperature):
         body = {
@@ -552,19 +592,25 @@ class LLMRouter:
         if r.status_code != 200:
             raise ProviderError(f"Together HTTP {r.status_code}: {r.text[:200]}")
 
-        return r.json()["choices"][0]["message"]["content"]
+        data = r.json()
+        _last_usage.set(_openai_usage(data.get("usage")))
+        return data["choices"][0]["message"]["content"]
 
     # ─────────────────────────────────────────
     # Logging & SSE status broadcasts
     # ─────────────────────────────────────────
 
-    def _log_call(self, provider, key, context, success):
+    def _log_call(self, provider, key, context, success, latency_ms=None, usage=None):
         self._call_log.append({
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "provider": provider.value,
             "key_index": key.index,
             "context": context,
             "success": success,
+            "latency_ms": latency_ms,
+            "prompt_tokens": (usage or {}).get("prompt"),
+            "completion_tokens": (usage or {}).get("completion"),
+            "total_tokens": (usage or {}).get("total"),
         })
         # Keep log at a reasonable size
         if len(self._call_log) > 1000:

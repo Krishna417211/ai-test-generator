@@ -2,19 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Dianora — self-hosted script display font. Drop the font file(s) into
-   frontend/public/fonts/ and this activates automatically (falls back to
-   Montserrat until then). */
-@font-face {
-  font-family: "Dianora";
-  src: url("/fonts/Dianora.woff2") format("woff2"),
-       url("/fonts/Dianora.otf") format("opentype"),
-       url("/fonts/Dianora.ttf") format("truetype");
-  font-weight: 400 700;
-  font-style: normal;
-  font-display: swap;
-}
-
 @layer base {
   * { box-sizing: border-box; }
 
@@ -34,7 +21,7 @@
   }
 
   h1, h2, h3, .font-display { font-family: "Montserrat", system-ui, sans-serif; }
-  .font-script { font-family: "Dianora", "Great Vibes", cursive; }
+  .font-script { font-family: "Great Vibes", cursive; }
   /* Keeps text legible when it overlaps the bright 3D orb */
   .text-legible { text-shadow: 0 2px 22px rgba(10, 16, 18, 0.6), 0 1px 3px rgba(10, 16, 18, 0.55); }
 

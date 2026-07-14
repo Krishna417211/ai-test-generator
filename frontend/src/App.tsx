@@ -6,6 +6,7 @@ import ScrollProgress from "./components/ScrollProgress";
 import NavBar from "./components/NavBar";
 import Footer from "./components/Footer";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ErrorBoundary from "./components/ErrorBoundary";
 import Home from "./pages/Home";
 import Generate from "./pages/Generate";
 import Publish from "./pages/Publish";
@@ -14,6 +15,7 @@ import Status from "./pages/Status";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import AuthCallback from "./pages/AuthCallback";
+import NotFound from "./pages/NotFound";
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -29,7 +31,7 @@ function AnimatedRoutes() {
         <Route path="/publish" element={guard(<Publish />)} />
         <Route path="/scan" element={guard(<Scan />)} />
         <Route path="/status" element={guard(<Status />)} />
-        <Route path="*" element={<Home />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </AnimatePresence>
   );
@@ -44,7 +46,9 @@ export default function App() {
         <div className="min-h-screen flex flex-col">
           <NavBar />
           <div className="flex-1 pt-8 pb-4">
-            <AnimatedRoutes />
+            <ErrorBoundary>
+              <AnimatedRoutes />
+            </ErrorBoundary>
           </div>
           <Footer />
         </div>

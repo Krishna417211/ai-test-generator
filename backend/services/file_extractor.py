@@ -17,6 +17,7 @@ Scoring system: files get an importance score 1–10:
 If token budget is tight, we truncate low-score files first.
 """
 
+import os
 import re
 import io
 import json
@@ -24,7 +25,6 @@ import zipfile
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -535,6 +535,12 @@ def extract_zip(zip_bytes: bytes) -> dict[str, str]:
                 continue  # Skip directories
             relative_path = name[len(prefix):]
             if not relative_path:
+                continue
+            # zip-slip guard: never accept absolute paths or ones that escape the
+            # extraction root ("../"), even though we hold contents in a dict —
+            # they later get written to disk when publishing to GitHub.
+            if os.path.isabs(relative_path) or ".." in relative_path.replace("\\", "/").split("/"):
+                logger.warning(f"Skipping unsafe path in ZIP (path traversal): {name}")
                 continue
             try:
                 content = zf.read(name).decode("utf-8", errors="replace")

@@ -25,7 +25,7 @@ import socket
 import asyncio
 import logging
 import ipaddress
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from urllib.parse import urlparse, urljoin
 
 import httpx
@@ -122,6 +122,21 @@ class ScanResult:
 # SSRF guard
 # ─────────────────────────────────────────────
 
+def _assert_public_host(host: str) -> None:
+    """Resolve `host` and reject private/loopback/link-local/reserved/multicast IPs (SSRF)."""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        raise ScanError(f"Could not resolve host '{host}'. Is the URL correct?")
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            raise ScanError(
+                "Refusing to scan an internal/private address. "
+                "Point this at your public production URL."
+            )
+
+
 def _validate_target(url: str) -> str:
     """Normalise + safety-check the URL. Rejects internal/private targets."""
     url = url.strip()
@@ -137,19 +152,25 @@ def _validate_target(url: str) -> str:
     if not host:
         raise ScanError("Could not parse a hostname from that URL.")
 
-    # Resolve and reject private / loopback / link-local / reserved IPs (SSRF).
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except socket.gaierror:
-        raise ScanError(f"Could not resolve host '{host}'. Is the URL correct?")
-    for info in infos:
-        ip = ipaddress.ip_address(info[4][0])
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
-            raise ScanError(
-                "Refusing to scan an internal/private address. "
-                "Point this at your public production URL."
-            )
+    _assert_public_host(host)
     return url
+
+
+async def _redirect_guard(response: "httpx.Response") -> None:
+    """
+    Re-validate every redirect hop so an open redirect can't bounce the scanner
+    onto an internal address (SSRF via 3xx). Runs as an httpx response hook,
+    which fires for each redirect BEFORE it is followed.
+    """
+    if not response.is_redirect:
+        return
+    location = response.headers.get("location")
+    if not location:
+        return
+    nxt = urljoin(str(response.url), location)
+    host = urlparse(nxt).hostname
+    if host:
+        _assert_public_host(host)
 
 
 # ─────────────────────────────────────────────
@@ -168,7 +189,9 @@ class SecurityScanner:
 
         headers = {"User-Agent": "Testra-SecurityScanner/1.0 (+passive-scan)"}
         async with httpx.AsyncClient(
-            timeout=self.timeout, follow_redirects=True, headers=headers, verify=True
+            timeout=self.timeout, follow_redirects=True, max_redirects=5,
+            headers=headers, verify=True,
+            event_hooks={"response": [_redirect_guard]},
         ) as client:
             try:
                 resp = await client.get(target)

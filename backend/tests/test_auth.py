@@ -24,6 +24,26 @@ class TestPasswordHashing:
         assert not auth.verify_password("x", "not-a-bcrypt-hash")
 
 
+class TestSecretEncryption:
+    def test_roundtrip_with_key(self, monkeypatch):
+        monkeypatch.setattr(auth.settings, "session_secret", "unit-test-secret")
+        auth._fernet_cache.clear()
+        enc = auth.encrypt_secret("ghp_token123")
+        assert enc.startswith("enc:v1:")
+        assert "ghp_token123" not in enc            # actually encrypted at rest
+        assert auth.decrypt_secret(enc) == "ghp_token123"
+
+    def test_legacy_plaintext_passthrough(self, monkeypatch):
+        monkeypatch.setattr(auth.settings, "session_secret", "unit-test-secret")
+        auth._fernet_cache.clear()
+        assert auth.decrypt_secret("ghp_legacy_plaintext") == "ghp_legacy_plaintext"
+
+    def test_noop_without_key(self, monkeypatch):
+        monkeypatch.setattr(auth.settings, "session_secret", "")
+        auth._fernet_cache.clear()
+        assert auth.encrypt_secret("x") == "x"
+
+
 class TestValidation:
     def test_valid_email_normalized(self):
         assert auth.validate_email("  Ada@Example.COM ") == "ada@example.com"

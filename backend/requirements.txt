@@ -9,6 +9,7 @@ pydantic-settings>=2.4,<3.0
 python-multipart>=0.0.9
 python-dotenv>=1.0
 bcrypt>=4.0            # password hashing for email/password auth
+cryptography>=42.0     # encrypt linked GitHub tokens at rest (Fernet)
 
 # Dev / test
 pytest>=8.0

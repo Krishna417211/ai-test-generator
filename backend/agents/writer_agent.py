@@ -13,7 +13,6 @@ Framework support: Playwright (JS/TS/Python), Cypress (JS/TS), Selenium (Python/
 import re
 import json
 import logging
-import asyncio
 from dataclasses import dataclass, field
 from typing import AsyncGenerator, Optional
 
@@ -216,17 +215,22 @@ class WriterAgent:
 
         framework_key = self._normalize_framework(framework, language)
 
-        # If the SSE stream already generated the suite, parse that instead of
-        # making a second (duplicate, costly) LLM call for the same job.
+        # If the SSE stream already generated the suite, reuse it instead of
+        # making a second (costly) LLM call — but only if it parsed cleanly.
+        # A large repo can truncate the streamed JSON at the output-token cap,
+        # which yields the single "JSON parsing failed" fallback; in that case
+        # we regenerate robustly (file-by-file) so no files are silently lost.
+        generated_files: list[GeneratedFile] = []
         if pregenerated_raw and pregenerated_raw.strip():
             generated_files = self._parse_response(pregenerated_raw, framework_key)
-        else:
+            if self._looks_truncated(generated_files):
+                logger.info("Streamed output was truncated/invalid — regenerating file-by-file")
+                generated_files = []
+
+        if not generated_files:
             generated_files = await self._generate_tests(
                 filter_result=filter_result,
                 framework_key=framework_key,
-                framework_instructions=FRAMEWORK_INSTRUCTIONS.get(
-                    framework_key, FRAMEWORK_INSTRUCTIONS["playwright_js"]
-                ),
                 test_flows=test_flows,
                 base_url=base_url,
                 language=language,
@@ -435,7 +439,7 @@ Return a JSON object with this exact structure:
       "content": "// Full file content here..."
     }},
     {{
-      "filename": "tests/specs/login.spec.ts", 
+      "filename": "tests/specs/login.spec.ts",
       "description": "Login flow test cases",
       "content": "// Full file content here..."
     }}
@@ -457,15 +461,148 @@ Generate comprehensive tests now:
         self,
         filter_result: FilterResult,
         framework_key: str,
-        framework_instructions: str,
         test_flows: str,
         base_url: str,
         language: str,
     ) -> list[GeneratedFile]:
-        prompt = self._build_prompt(
+        """
+        Generate the suite file-by-file: first plan the file list (a small,
+        non-truncatable response), then generate each file's content in its own
+        call. This keeps every response well under the output-token cap, so a
+        large suite can't be silently truncated the way the old single-JSON-blob
+        approach was. Falls back to single-shot if planning yields nothing.
+        """
+        plan = await self._plan_files(filter_result, framework_key, test_flows, base_url)
+        if not plan:
+            logger.info("File planning produced nothing — falling back to single-shot generation")
+            return await self._generate_single_shot(filter_result, framework_key, test_flows, base_url, language)
+
+        manifest = [p["filename"] for p in plan]
+        files: list[GeneratedFile] = []
+        for spec in plan:
+            content = await self._generate_one_file(
+                spec, manifest, filter_result, framework_key, test_flows, base_url, language
+            )
+            if content and content.strip():
+                files.append(GeneratedFile(
+                    filename=spec["filename"],
+                    content=content,
+                    description=spec.get("description", ""),
+                ))
+
+        # If per-file generation produced nothing usable, fall back to single-shot.
+        return files or await self._generate_single_shot(
             filter_result, framework_key, test_flows, base_url, language
         )
 
+    async def _plan_files(
+        self, filter_result: FilterResult, framework_key: str, test_flows: str, base_url: str,
+    ) -> list[dict]:
+        """Ask the LLM for just the file manifest (names + roles) — a tiny response that can't truncate."""
+        prompt = f"""Plan an E2E test suite for this {filter_result.framework} app using {framework_key}.
+
+## PROJECT
+{filter_result.project_summary}
+
+## ROUTES
+{json.dumps(filter_result.routes, indent=2)}
+
+## KEY PAGES
+{json.dumps(filter_result.key_pages, indent=2)}
+
+## USER'S TEST FLOWS
+{test_flows or "Cover all main user flows: navigation, forms, auth, key interactions."}
+
+List the files the suite needs — a Page Object class per key page, spec files grouped
+by page/flow, and exactly one framework config file. Aim for 3-8 focused files (max 12).
+
+Return ONLY JSON (no markdown, no prose):
+{{"files":[
+  {{"filename":"tests/pages/LoginPage.ts","description":"Page Object for the login page","kind":"page_object"}},
+  {{"filename":"tests/specs/login.spec.ts","description":"Login happy-path + error cases","kind":"spec"}},
+  {{"filename":"playwright.config.ts","description":"Framework config","kind":"config"}}
+]}}"""
+        try:
+            raw = await router.complete(
+                prompt=prompt,
+                system_prompt=self._system_prompt(framework_key),
+                temperature=0.1,
+                context_hint="writer_plan",
+                json_mode=True,
+            )
+            data = json.loads(self._strip_fence(raw))
+            plan = [f for f in data.get("files", []) if isinstance(f, dict) and f.get("filename")]
+            return plan[:12]
+        except Exception as e:
+            logger.warning(f"File planning failed: {e}")
+            return []
+
+    async def _generate_one_file(
+        self, spec: dict, manifest: list[str], filter_result: FilterResult,
+        framework_key: str, test_flows: str, base_url: str, language: str,
+    ) -> str:
+        """Generate the raw contents of a single planned file (small output → no truncation)."""
+        sel = self._extract_available_selectors(filter_result.files)
+
+        def _fmt(items: list[str], n: int) -> str:
+            return ", ".join(items[:n]) if items else "(none found)"
+
+        available = (
+            f"data-testid: {_fmt(sel['testids'], 60)}\n"
+            f"data-cy:     {_fmt(sel['data_cy'], 60)}\n"
+            f"id:          {_fmt(sel['ids'], 60)}\n"
+            f"name:        {_fmt(sel['names'], 60)}\n"
+            f"class:       {_fmt(sel['classes'], 80)}"
+        )
+        prompt = f"""Generate ONE file of an E2E test suite ({framework_key}) for this {filter_result.framework} app.
+
+## FILE TO WRITE
+{spec['filename']} — {spec.get('description', '')}
+
+## ALL FILES IN THE SUITE (so imports/paths line up)
+{json.dumps(manifest, indent=2)}
+
+## PROJECT
+{filter_result.project_summary}
+
+## ROUTES
+{json.dumps(filter_result.routes, indent=2)}
+
+## USER'S TEST FLOWS
+{test_flows or "Cover the main user flows for this file's page/area."}
+
+## BASE URL
+{base_url}
+
+## AVAILABLE SELECTORS (from the real source — prefer these; anything else is a guess)
+{available}
+
+## SOURCE CODE
+{json.dumps(filter_result.files, indent=2)}
+
+Output ONLY the raw contents of {spec['filename']} — no JSON, no markdown fences, no
+commentary. Use only selectors that exist above; if you must guess, add a comment
+`// ⚠️ WARNING: Selector may need verification`. For spec files, include at least 3
+test cases covering positive and negative paths."""
+        try:
+            raw = await router.complete(
+                prompt=prompt,
+                system_prompt=self._system_prompt(framework_key),
+                temperature=0.15,
+                context_hint="writer_file",
+                json_mode=False,
+            )
+            return self._strip_fence(raw)
+        except Exception as e:
+            logger.error(f"Generating {spec['filename']} failed: {e}")
+            return ""
+
+    async def _generate_single_shot(
+        self, filter_result: FilterResult, framework_key: str,
+        test_flows: str, base_url: str, language: str,
+    ) -> list[GeneratedFile]:
+        """Legacy single-call generation (whole suite as one JSON blob). Fallback only."""
+        prompt = self._build_prompt(filter_result, framework_key, test_flows, base_url, language)
         try:
             raw = await router.complete(
                 prompt=prompt,
@@ -477,20 +614,29 @@ Generate comprehensive tests now:
         except Exception as e:
             logger.error(f"Writer agent error: {e}")
             raise
-
         return self._parse_response(raw, framework_key)
+
+    def _looks_truncated(self, files: list[GeneratedFile]) -> bool:
+        """True if a parsed suite looks empty or is the JSON-decode fallback (truncated stream)."""
+        if not files:
+            return True
+        return len(files) == 1 and "JSON parsing failed" in files[0].description
+
+    def _strip_fence(self, raw: str) -> str:
+        """Strip a leading/trailing markdown code fence from an LLM response."""
+        raw = (raw or "").strip()
+        if raw.startswith("```"):
+            raw = re.sub(r"^```[a-zA-Z]*\n?", "", raw)
+            raw = re.sub(r"\n?```$", "", raw)
+        return raw.strip()
 
     def _parse_response(self, raw: str, framework_key: str) -> list[GeneratedFile]:
         """
         Parse the LLM's JSON response into GeneratedFile objects.
-        Shared by both the direct (`_generate_tests`) and streamed paths so the
-        downloaded suite matches exactly what the user watched being generated.
+        Used by the streamed path and the single-shot fallback.
         Falls back to a single raw file if the response isn't valid JSON.
         """
-        raw = (raw or "").strip()
-        if raw.startswith("```"):
-            raw = re.sub(r"^```(?:json)?\n?", "", raw)
-            raw = re.sub(r"\n?```$", "", raw)
+        raw = self._strip_fence(raw)
 
         try:
             data = json.loads(raw)
@@ -603,7 +749,7 @@ Generate comprehensive tests now:
         return "ts"
 
     def _gitlab_ci(self, framework: str) -> str:
-        return f"""stages:
+        return """stages:
   - test
 
 e2e-tests:

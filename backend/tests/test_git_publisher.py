@@ -6,7 +6,6 @@ blobs → tree → commit → ref sequence is exercised without hitting GitHub.
 """
 
 import asyncio
-import json
 
 import httpx
 import pytest

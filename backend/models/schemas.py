@@ -4,7 +4,7 @@ schemas.py — Pydantic models for all API request/response shapes
 
 from enum import Enum
 from typing import Optional
-from pydantic import BaseModel, HttpUrl, field_validator
+from pydantic import BaseModel, field_validator
 
 
 class TestFramework(str, Enum):

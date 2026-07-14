@@ -21,8 +21,8 @@ from services.llm_router import router
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are an expert frontend engineer and QA architect. 
-Your job is to analyze a web project's file structure and identify 
+SYSTEM_PROMPT = """You are an expert frontend engineer and QA architect.
+Your job is to analyze a web project's file structure and identify
 the most important files for end-to-end (E2E) UI testing.
 
 Focus on:
@@ -129,7 +129,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) with this shape:
   ],
   "key_components": [
     {{
-      "path": "src/components/Navbar.tsx", 
+      "path": "src/components/Navbar.tsx",
       "description": "Top navigation with links and user menu"
     }}
   ],

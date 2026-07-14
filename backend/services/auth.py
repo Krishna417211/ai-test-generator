@@ -10,11 +10,13 @@ cannot set custom headers).
 
 import re
 import uuid
-import time
+import base64
+import hashlib
 import secrets
 import logging
 
 import bcrypt
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import Request, HTTPException
 
 from config import settings
@@ -23,6 +25,47 @@ from services.store import store
 logger = logging.getLogger(__name__)
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+# ── secret encryption at rest (session GitHub tokens) ──
+
+_ENC_PREFIX = "enc:v1:"
+_fernet_cache: dict = {}
+
+
+def _fernet():
+    """Fernet built from settings.session_secret, or None if no secret is set."""
+    secret = settings.session_secret
+    if not secret:
+        return None
+    if _fernet_cache.get("secret") != secret:
+        key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
+        _fernet_cache.update(secret=secret, fernet=Fernet(key))
+    return _fernet_cache["fernet"]
+
+
+def encrypt_secret(plaintext: str) -> str:
+    """Encrypt a secret for storage. No-op (returns plaintext) if no key is set."""
+    if not plaintext:
+        return plaintext
+    f = _fernet()
+    if f is None:
+        return plaintext
+    return _ENC_PREFIX + f.encrypt(plaintext.encode()).decode()
+
+
+def decrypt_secret(value: str) -> str:
+    """Decrypt a stored secret. Legacy plaintext (no prefix) is returned as-is."""
+    if not value or not value.startswith(_ENC_PREFIX):
+        return value
+    f = _fernet()
+    if f is None:
+        return value
+    try:
+        return f.decrypt(value[len(_ENC_PREFIX):].encode()).decode()
+    except InvalidToken:
+        logger.warning("Could not decrypt a stored token (session_secret changed?)")
+        return ""
 
 
 # ── password hashing ─────────────────────────
@@ -80,7 +123,7 @@ def create_login_session(user_id: str, *, github_token: str = "") -> str:
     token = secrets.token_urlsafe(32)
     data = {"user_id": user_id}
     if github_token:
-        data["github_token"] = github_token
+        data["github_token"] = encrypt_secret(github_token)
     store.create_session(token, data, settings.oauth_session_ttl_seconds)
     return token
 
@@ -104,6 +147,9 @@ async def require_user(request: Request) -> dict:
     session = store.get_session(token)
     if not session or not session.get("user_id"):
         raise HTTPException(401, "Your session has expired. Please log in again.")
+    # Decrypt the linked GitHub token (if any) so downstream consumers get plaintext.
+    if session.get("github_token"):
+        session["github_token"] = decrypt_secret(session["github_token"])
     user = store.get_user_by_id(session["user_id"])
     if not user:
         raise HTTPException(401, "Account not found. Please log in again.")
