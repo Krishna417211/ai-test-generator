@@ -66,3 +66,25 @@ class TestCountTests:
         assert w._count_tests(gf, "playwright_js") == 3
         gf2 = [GeneratedFile("s.py", "def test_a(): pass\ndef test_b(): pass", "")]
         assert w._count_tests(gf2, "selenium_python") == 2
+
+
+class TestTruncationDetection:
+    def test_empty_is_truncated(self):
+        assert WriterAgent()._looks_truncated([]) is True
+
+    def test_json_parse_fallback_is_truncated(self):
+        # The single-file fallback _parse_response emits on a truncated JSON stream.
+        gf = [GeneratedFile("tests/generated.ts", "half a fi", "Generated test file (raw output — JSON parsing failed)")]
+        assert WriterAgent()._looks_truncated(gf) is True
+
+    def test_real_suite_is_not_truncated(self):
+        gf = [GeneratedFile("a.ts", "x", "Page object"), GeneratedFile("b.ts", "y", "Spec")]
+        assert WriterAgent()._looks_truncated(gf) is False
+
+
+class TestStripFence:
+    def test_strips_json_and_lang_fences(self):
+        w = WriterAgent()
+        assert w._strip_fence("```json\n{\"a\":1}\n```") == '{"a":1}'
+        assert w._strip_fence("```ts\nconst a = 1;\n```") == "const a = 1;"
+        assert w._strip_fence("no fence here") == "no fence here"
