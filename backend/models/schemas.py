@@ -64,6 +64,7 @@ class UserPublic(BaseModel):
     github_login: Optional[str] = None
     avatar_url: Optional[str] = None
     has_github: bool = False
+    plan: str = "free"
 
 
 class AuthResponse(BaseModel):

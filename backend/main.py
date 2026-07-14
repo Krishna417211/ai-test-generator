@@ -13,6 +13,7 @@ Endpoints:
   GET  /health          — Basic health check
 """
 
+import os
 import json
 import time
 import uuid
@@ -20,6 +21,7 @@ import secrets
 import asyncio
 import logging
 import zipfile
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,8 +44,10 @@ from services.git_publisher import GitPublisher, GitPublishError
 from services.security_scanner import SecurityScanner, ScanError
 from services import github_oauth
 from services import auth as auth_svc
+from services import billing
 from services.auth import require_user
-from services.llm_router import router as llm_router
+from services.quota import require_quota, get_quota
+from services.llm_router import router as llm_router, AllProvidersExhausted
 from services.store import store
 
 configure_logging(settings.log_level)
@@ -51,7 +55,47 @@ logger = logging.getLogger(__name__)
 
 _START_TIME = time.time()
 
+# Shown when every LLM key is dry. Deliberately not an upgrade prompt: this is
+# our capacity failing, it affects Pro accounts exactly the same, and paying
+# would not fix it. See services/quota.py.
+PROVIDER_OUTAGE_MESSAGE = (
+    "Test generation is temporarily unavailable — we're out of AI capacity "
+    "right now. This isn't something upgrading would fix; please try again "
+    "shortly. Your quota was not charged."
+)
+
+# How often expired jobs/sessions are swept. Their TTLs would otherwise only be
+# applied at startup, so a long-running server never reclaims the space.
+SWEEP_INTERVAL_SECONDS = int(os.getenv("TESTGEN_SWEEP_INTERVAL", str(60 * 60)))
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async def sweeper():
+        while True:
+            await asyncio.sleep(SWEEP_INTERVAL_SECONDS)
+            try:
+                # store is blocking SQLite — keep it off the event loop.
+                freed = await asyncio.to_thread(store.sweep)
+                if freed["jobs"] or freed["sessions"]:
+                    logger.info(
+                        f"Swept {freed['jobs']} expired job(s), "
+                        f"{freed['sessions']} expired session(s)"
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(f"Store sweep failed: {e}")
+
+    task = asyncio.create_task(sweeper())
+    try:
+        yield
+    finally:
+        task.cancel()
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Testra",
     description="Paste a GitHub URL, get production-ready E2E tests in seconds.",
     version="1.0.0",
@@ -211,6 +255,41 @@ async def analyze_repo(payload: GenerateRequest, ctx: dict = Depends(require_use
 # Phase 1b: Analyze ZIP upload
 # ─────────────────────────────────────────────
 
+MAX_UPLOAD_BYTES = settings.max_repo_size_mb * 1024 * 1024
+
+_TOO_LARGE_HINT = (
+    "Exclude dependency folders (venv/, node_modules/) from the archive — "
+    "they are stripped on push anyway."
+)
+
+
+async def read_zip_upload(file: UploadFile) -> bytes:
+    """Validate a .zip upload and return its bytes.
+
+    The multipart parser records the size on UploadFile, so an oversized
+    archive is rejected before read() pulls it into memory.
+    """
+    if not file.filename or not file.filename.endswith(".zip"):
+        raise HTTPException(400, "Only .zip files are supported")
+
+    if file.size is not None and file.size > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            413,
+            f"ZIP file too large ({file.size / 1024 / 1024:.0f} MB) — "
+            f"max {settings.max_repo_size_mb} MB. {_TOO_LARGE_HINT}",
+        )
+
+    content = await file.read()
+    # Fallback for parsers that leave .size unset.
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            413,
+            f"ZIP file too large ({len(content) / 1024 / 1024:.0f} MB) — "
+            f"max {settings.max_repo_size_mb} MB. {_TOO_LARGE_HINT}",
+        )
+    return content
+
+
 @app.post("/api/upload-zip", dependencies=[Depends(rate_limit(analyze_limiter))])
 async def upload_zip(
     file: UploadFile = File(...),
@@ -220,12 +299,7 @@ async def upload_zip(
     base_url: str = Form("http://localhost:3000"),
     ctx: dict = Depends(require_user),
 ):
-    if not file.filename or not file.filename.endswith(".zip"):
-        raise HTTPException(400, "Only .zip files are supported")
-
-    content = await file.read()
-    if len(content) > 100 * 1024 * 1024:  # 100 MB limit
-        raise HTTPException(413, "ZIP file too large (max 100 MB)")
+    content = await read_zip_upload(file)
 
     try:
         raw_files = extract_zip(content)
@@ -287,9 +361,11 @@ _STATE_PREFIX = "oauthstate:"   # namespaces one-time states inside the session 
 
 @app.get("/api/auth/config")
 async def auth_config():
-    """Tells the frontend which social logins are available."""
+    """Tells the frontend which social logins are available, plus the upload
+    cap so it can reject oversized archives without sending them."""
     return {
         "github_oauth_enabled": settings.github_oauth_enabled,
+        "max_upload_mb": settings.max_repo_size_mb,
     }
 
 
@@ -414,6 +490,77 @@ async def auth_logout(request: Request):
 
 
 # ─────────────────────────────────────────────
+# Billing: plan catalogue, usage, checkout, entitlement webhook
+# ─────────────────────────────────────────────
+
+@app.get("/api/billing/me")
+async def billing_me(ctx: dict = Depends(require_user)):
+    """This user's plan, usage, and the plan catalogue — everything the
+    upgrade modal and the usage meter need, in one call."""
+    return {
+        "quota": get_quota(ctx["user_id"]).as_dict(),
+        "plans": billing.plans(),
+        "checkout_available": settings.billing_enabled,
+        "contact_email": settings.billing_contact_email or None,
+    }
+
+
+@app.post("/api/billing/checkout")
+async def billing_checkout(plan: str = Form(...), ctx: dict = Depends(require_user)):
+    """Hand back the hosted checkout URL for a plan.
+
+    Returns 503 (not a broken link) while no payment provider is configured —
+    the client renders a "not available yet" state from this.
+    """
+    try:
+        url = billing.checkout_url(plan, ctx["user_id"])
+    except billing.BillingNotConfigured as e:
+        raise HTTPException(503, str(e))
+    return {"checkout_url": url}
+
+
+@app.post("/api/billing/webhook")
+async def billing_webhook(request: Request):
+    """Grant Pro after a provider confirms payment.
+
+    This is the ONLY path that may upgrade an account: it's the only one that
+    can prove money moved. Signature is checked over the raw bytes before the
+    body is trusted at all.
+    """
+    raw = await request.body()
+    signature = (
+        request.headers.get("X-Razorpay-Signature")
+        or request.headers.get("Stripe-Signature")
+        or ""
+    )
+    if not billing.verify_webhook(raw, signature):
+        logger.warning("Rejected a billing webhook with a bad/missing signature")
+        raise HTTPException(400, "Invalid signature")
+
+    try:
+        event = json.loads(raw)
+    except json.JSONDecodeError:
+        raise HTTPException(400, "Malformed webhook body")
+
+    # A good signature only proves Razorpay sent this — payment.failed and
+    # subscription.cancelled are signed too. The event name decides.
+    if not billing.is_granting_event(event):
+        logger.info(f"Ignoring non-granting billing event: {event.get('event')}")
+        return {"ok": True, "granted": False}
+
+    user_id, plan_id = billing.extract_grant(event)
+    if not user_id or not plan_id:
+        raise HTTPException(400, "Webhook is missing client_reference_id or plan_id")
+    if not store.get_user_by_id(user_id):
+        logger.warning(f"Billing webhook for unknown user {user_id}")
+        raise HTTPException(404, "Unknown user")
+
+    store.set_plan(user_id, "pro", time.time() + billing.grant_seconds(plan_id))
+    logger.info(f"Granted Pro ({plan_id}) to {user_id} via billing webhook")
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────
 # Publish: push a project ZIP to a fresh GitHub repo (optionally with CI/CD)
 # ─────────────────────────────────────────────
 
@@ -474,8 +621,6 @@ async def publish_zip(
     generated and validated locally (WriterAgent self-heal loop) BEFORE the
     push — so what lands in git is already green, and we push exactly once.
     """
-    if not file.filename or not file.filename.endswith(".zip"):
-        raise HTTPException(400, "Only .zip files are supported")
     if not repo_name.strip():
         raise HTTPException(400, "A repository name is required")
 
@@ -486,9 +631,7 @@ async def publish_zip(
             403, "Connect your GitHub account to publish (use 'Continue with GitHub')."
         )
 
-    content = await file.read()
-    if len(content) > 100 * 1024 * 1024:  # 100 MB limit
-        raise HTTPException(413, "ZIP file too large (max 100 MB)")
+    content = await read_zip_upload(file)
 
     try:
         raw_files = extract_zip(content)
@@ -527,25 +670,47 @@ async def publish_zip(
                 max_heal_attempts=4,
             )
         except Exception as e:
-            logger.error(f"CI generation failed: {e}")
-            raise HTTPException(500, "CI/CD generation failed. Please try again.")
-
-        test_count = result.test_count
-        validation = result.validation
-        all_valid = all(v.get("ok", False) for v in validation)
-        if not all_valid:
-            bad = sum(1 for v in validation if not v.get("ok", False))
+            # Writing tests needs an LLM; pushing the project doesn't. A provider
+            # outage shouldn't cost the user their push — land the code and say
+            # what's missing. The CI workflow is deliberately dropped too: it runs
+            # `npx playwright test`, which fails a repo that has no specs, and a
+            # red pipeline is worse than none.
+            logger.warning(f"CI generation unavailable — pushing without it: {e}")
             warnings.append(
-                f"{bad} generated test file(s) still failed validation after auto-fix "
-                "attempts — pushed anyway; review before relying on CI."
+                f"Test generation is unavailable right now ({str(e)[:160]}). Your "
+                "project was pushed without tests or the CI/CD pipeline — "
+                "re-publish to add them once capacity is back."
             )
+        else:
+            test_count = result.test_count
+            validation = result.validation
+            all_valid = all(v.get("ok", False) for v in validation)
+            if result.failed_files:
+                # Partial suite: some files never generated (quota ran out mid-run).
+                # The writer already withheld the CI workflow, so don't claim CI
+                # was added — say what's missing instead of shipping a red pipeline.
+                warnings.append(
+                    f"{len(result.failed_files)} of "
+                    f"{len(result.files) + len(result.failed_files)} test file(s) "
+                    f"couldn't be generated ({', '.join(result.failed_files[:3])}"
+                    f"{'...' if len(result.failed_files) > 3 else ''}) — the CI/CD "
+                    "pipeline was left out because an incomplete suite can't pass. "
+                    "Re-publish once capacity is back for the full suite."
+                )
+            if not all_valid:
+                bad = sum(1 for v in validation if not v.get("ok", False))
+                warnings.append(
+                    f"{bad} generated test file(s) still failed validation after auto-fix "
+                    "attempts — pushed anyway; review before relying on CI."
+                )
 
-        for gf in result.files:
-            # Don't clobber the project's own README with the test-suite README.
-            path = ("TESTING.md" if gf.filename == "README.md" and "README.md" in push_files
-                    else gf.filename)
-            push_files[path] = gf.content
-        cicd_added = True
+            for gf in result.files:
+                # Don't clobber the project's own README with the test-suite README.
+                path = ("TESTING.md" if gf.filename == "README.md" and "README.md" in push_files
+                        else gf.filename)
+                push_files[path] = gf.content
+            # Only true when the suite is whole and the CI workflow actually shipped.
+            cicd_added = not result.failed_files
 
     # Ensure a .gitignore exists so the pushed repo stays clean.
     if ".gitignore" not in push_files:
@@ -565,6 +730,9 @@ async def publish_zip(
         raise HTTPException(400, str(e))
 
     logger.info(f"Published {pub.files_pushed} files to {pub.full_name} (cicd={cicd_added})")
+
+    # Remember what we created — /api/repo deletion is limited to these.
+    store.record_published_repo(pub.full_name, ctx["user_id"], pub.repo_url)
 
     return PublishResponse(
         success=True,
@@ -620,6 +788,51 @@ def _fallback_summary(result) -> str:
     return "No issues detected by the passive checks. Nice work."
 
 
+@app.get("/api/repos")
+async def list_published_repos(ctx: dict = Depends(require_user)):
+    """Repos this user created through Testra — the only ones we offer to delete."""
+    return {"repos": store.list_published_repos(ctx["user_id"])}
+
+
+@app.delete("/api/repo/{owner}/{repo}", dependencies=[Depends(rate_limit(analyze_limiter))])
+async def delete_published_repo(
+    owner: str,
+    repo: str,
+    confirm: str = "",
+    ctx: dict = Depends(require_user),
+):
+    """Delete a repo Testra created for this user. Irreversible.
+
+    Guards, in order: the repo must be in this user's published_repos (so a
+    stolen token can't reach unrelated repos), and `confirm` must echo the
+    full name back.
+    """
+    full_name = f"{owner}/{repo}"
+
+    if not store.was_published_by(full_name, ctx["user_id"]):
+        # 404 rather than 403: don't confirm the repo exists to a non-owner.
+        raise HTTPException(
+            404, f"{full_name} was not published through Testra by this account."
+        )
+    if confirm != full_name:
+        raise HTTPException(
+            400, f"Confirmation mismatch — pass confirm={full_name} to delete it."
+        )
+
+    token = ctx["session"].get("github_token")
+    if not token:
+        raise HTTPException(403, "Connect your GitHub account to delete a repository.")
+
+    try:
+        await GitPublisher(token=token).delete_repo(full_name)
+    except GitPublishError as e:
+        raise HTTPException(400, str(e))
+
+    store.forget_published_repo(full_name, ctx["user_id"])
+    logger.info(f"Deleted repo {full_name} on behalf of user {ctx['user_id']}")
+    return {"success": True, "deleted": full_name}
+
+
 @app.post("/api/scan", response_model=ScanResponse,
           dependencies=[Depends(rate_limit(analyze_limiter))])
 async def scan_url(payload: ScanRequest, ctx: dict = Depends(require_user)):
@@ -665,14 +878,21 @@ async def scan_url(payload: ScanRequest, ctx: dict = Depends(require_user)):
 @app.post("/api/generate/{job_id}", response_model=GenerateResponse,
           dependencies=[Depends(rate_limit(generate_limiter))])
 async def generate_tests(job_id: str, payload: GenerateRequest,
-                         ctx: dict = Depends(require_user)):
+                         ctx: dict = Depends(require_quota)):
     """
     Phase 2: Given a job_id from Phase 1, generate the test scripts.
+
+    Costs one generation credit (see services/quota.py). The credit is reserved
+    by the require_quota dependency and refunded below if the run fails.
     """
+    lease = ctx["quota_lease"]
+
     session = store.get(job_id)
     if not session:
+        lease.refund()
         raise HTTPException(404, "Job not found. Please re-analyze the repo first.")
     if session.get("user_id") != ctx["user_id"]:
+        lease.refund()
         raise HTTPException(403, "This job belongs to another account.")
 
     filter_result = session["filter_result"]
@@ -689,11 +909,20 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
             pregenerated_raw=session.get("streamed_raw"),
             self_heal=payload.self_heal,
         )
+    except AllProvidersExhausted as e:
+        # Our shared API keys are dry — this is an outage on our side and hits
+        # Pro users identically, so it must not be dressed up as an upsell.
+        lease.refund()
+        logger.error(f"Test generation unavailable: {e}")
+        raise HTTPException(503, PROVIDER_OUTAGE_MESSAGE)
     except Exception as e:
+        lease.refund()
         logger.error(f"Test generation failed: {e}")
         raise HTTPException(500, "Test generation failed. Please try again.")
 
-    return GenerateResponse(
+    lease.commit()
+
+    response = GenerateResponse(
         success=True,
         files=[
             GeneratedFile(
@@ -710,6 +939,12 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
         summary=result.summary,
         validation=result.validation,
     )
+
+    # Generation is the last step that needs the job — drop the uploaded source
+    # now rather than holding it for the full TTL.
+    store.delete(job_id)
+
+    return response
 
 
 # ─────────────────────────────────────────────
