@@ -14,6 +14,7 @@ import Status from "./pages/Status";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import AuthCallback from "./pages/AuthCallback";
+import NotFound from "./pages/NotFound";
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -29,7 +30,7 @@ function AnimatedRoutes() {
         <Route path="/publish" element={guard(<Publish />)} />
         <Route path="/scan" element={guard(<Scan />)} />
         <Route path="/status" element={guard(<Status />)} />
-        <Route path="*" element={<Home />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </AnimatePresence>
   );

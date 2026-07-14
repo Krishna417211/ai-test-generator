@@ -354,7 +354,9 @@ async def github_callback(code: str = "", state: str = "", error: str = ""):
     frontend = settings.frontend_url.rstrip("/")
 
     def _fail(reason: str):
-        return RedirectResponse(f"{frontend}/?login_error={reason}", status_code=307)
+        # Send failures to /auth/callback (not /) — that's the only page that
+        # reads ?login_error= and shows it to the user.
+        return RedirectResponse(f"{frontend}/auth/callback?login_error={reason}", status_code=307)
 
     if error or not code:
         return _fail(error or "access_denied")
@@ -422,7 +424,9 @@ async def google_callback(code: str = "", state: str = "", error: str = ""):
     frontend = settings.frontend_url.rstrip("/")
 
     def _fail(reason: str):
-        return RedirectResponse(f"{frontend}/?login_error={reason}", status_code=307)
+        # Send failures to /auth/callback (not /) — that's the only page that
+        # reads ?login_error= and shows it to the user.
+        return RedirectResponse(f"{frontend}/auth/callback?login_error={reason}", status_code=307)
 
     if error or not code:
         return _fail(error or "access_denied")
@@ -863,5 +867,5 @@ async def stream_generation(
 # ─────────────────────────────────────────────
 
 @app.get("/api/logs")
-async def get_logs(limit: int = 50):
+async def get_logs(limit: int = 50, ctx: dict = Depends(require_user)):
     return {"logs": llm_router.get_call_log(limit=limit)}

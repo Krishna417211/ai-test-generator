@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { NavLink, Link, useNavigate } from "react-router-dom";
-import { TestTube2, Sparkles, Rocket, ShieldCheck, Activity, LogOut, ChevronDown } from "lucide-react";
+import { NavLink, Link, useNavigate, useLocation } from "react-router-dom";
+import { TestTube2, Sparkles, Rocket, ShieldCheck, Activity, LogOut, ChevronDown, Menu, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 const LINKS = [
@@ -13,7 +13,9 @@ const LINKS = [
 export default function NavBar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [menu, setMenu] = useState(false);
+  const [mobileNav, setMobileNav] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -21,6 +23,9 @@ export default function NavBar() {
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
+
+  // Close the mobile nav whenever the route changes.
+  useEffect(() => { setMobileNav(false); }, [location.pathname]);
 
   const initial = (user?.name || user?.email || "?").trim().charAt(0).toUpperCase();
 
@@ -53,6 +58,16 @@ export default function NavBar() {
           )}
 
           <div className="flex items-center gap-2">
+            {user && (
+              <button
+                onClick={() => setMobileNav((v) => !v)}
+                aria-label="Toggle navigation menu"
+                aria-expanded={mobileNav}
+                className="md:hidden flex items-center justify-center w-9 h-9 rounded-xl btn-ghost text-white/80"
+              >
+                {mobileNav ? <X size={18} /> : <Menu size={18} />}
+              </button>
+            )}
             {user ? (
               <div className="relative" ref={ref}>
                 <button onClick={() => setMenu(!menu)}
@@ -95,6 +110,22 @@ export default function NavBar() {
             )}
           </div>
         </nav>
+
+        {user && mobileNav && (
+          <div className="md:hidden mt-2 glass-strong rounded-2xl p-2 shadow-card">
+            {LINKS.map(({ to, label, icon: Icon }) => (
+              <NavLink key={to} to={to}
+                onClick={() => setMobileNav(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-2.5 px-3.5 py-3 rounded-xl text-sm font-medium transition-all ${
+                    isActive ? "text-white bg-white/10" : "text-white/[72%] hover:text-white hover:bg-white/5"
+                  }`}
+              >
+                <Icon size={16} /> {label}
+              </NavLink>
+            ))}
+          </div>
+        )}
       </div>
     </header>
   );

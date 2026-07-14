@@ -7,8 +7,8 @@ export default {
         // Clean sans for all UI/headings; script for decorative accent words.
         display: ['"Montserrat"', "system-ui", "sans-serif"],
         sans: ['"Montserrat"', "system-ui", "-apple-system", "sans-serif"],
-        // Dianora (self-hosted) → Great Vibes (Google, live stand-in) → cursive.
-        script: ['"Dianora"', '"Great Vibes"', "cursive"],
+        // Great Vibes (Google Fonts) → cursive.
+        script: ['"Great Vibes"', "cursive"],
         mono: ['"JetBrains Mono"', "ui-monospace", "SFMono-Regular", "monospace"],
       },
       colors: {

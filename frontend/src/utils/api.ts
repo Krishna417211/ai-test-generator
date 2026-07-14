@@ -16,7 +16,18 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
 }
 async function parseError(res: Response, fallback: string): Promise<never> {
   const err = await res.json().catch(() => ({ detail: res.statusText }));
-  throw new Error(err.detail || fallback);
+  let detail = err?.detail;
+  // FastAPI/Pydantic returns `detail` as an array of {loc, msg, ...} for
+  // validation (422) errors — flatten it to a readable string instead of
+  // letting `new Error([...])` stringify to "[object Object]".
+  if (Array.isArray(detail)) {
+    detail = detail
+      .map((d) => (typeof d === "string" ? d : d?.msg || JSON.stringify(d)))
+      .join("; ");
+  } else if (detail && typeof detail === "object") {
+    detail = detail.msg || JSON.stringify(detail);
+  }
+  throw new Error(detail || fallback);
 }
 
 export interface User {
