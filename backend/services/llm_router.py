@@ -67,6 +67,21 @@ class Provider(str, Enum):
     CLAUDE   = "claude"
 
 
+def is_hard_quota(text: str) -> bool:
+    """True when a provider is out of credit or has burned a daily quota.
+
+    Distinct from a per-minute 429: waiting won't clear these, so they're the
+    only thing that justifies telling a user capacity is genuinely gone.
+    """
+    t = text.lower()
+    return (
+        "credit balance is too low" in t                 # Anthropic: no credits
+        or "generaterequestsperdayperproject" in t.replace("_", "").lower()  # Gemini: daily free quota
+        or "insufficient_quota" in t
+        or "billing" in t and "quota" in t
+    )
+
+
 @dataclass
 class APIKey:
     key: str
@@ -76,6 +91,7 @@ class APIKey:
     error_count: int = 0
     exhausted_until: float = 0.0       # epoch seconds — 0 means available
     last_used: float = 0.0
+    hard_blocked: bool = False         # out of credit / daily quota, not a 429
 
     @property
     def is_available(self) -> bool:
@@ -93,6 +109,7 @@ class APIKey:
         self.call_count += 1
         self.last_used = time.time()
         self.error_count = 0          # reset on success
+        self.hard_blocked = False     # credit was topped up / quota reset
 
 
 @dataclass
@@ -189,6 +206,7 @@ class LLMRouter:
         Returns the complete LLM response as a string.
         """
         last_error = None
+        cooling: list[str] = []     # providers skipped because every key is in cooldown
 
         for provider in PROVIDER_PRIORITY:
             if provider not in self._providers:
@@ -201,6 +219,7 @@ class LLMRouter:
 
             if api_key is None:
                 logger.info(f"[{provider}] All keys exhausted — skipping")
+                cooling.append(provider.value)
                 continue
 
             await self._broadcast_status(f"Using {provider.value}...")
@@ -219,18 +238,49 @@ class LLMRouter:
 
             except RateLimitError as e:
                 logger.warning(f"[{provider}] Rate limited: {e}")
+                api_key.hard_blocked = is_hard_quota(str(e))
                 api_key.mark_exhausted(COOLDOWN[provider])
                 last_error = e
                 continue
 
             except ProviderError as e:
                 logger.error(f"[{provider}] Error: {e}")
+                api_key.hard_blocked = is_hard_quota(str(e))
                 api_key.mark_exhausted(COOLDOWN[provider] // 2)
                 last_error = e
                 continue
 
+        # Distinguish the ways we get here. Reporting "Last error: None" for the
+        # cooldown case (nothing was tried, so nothing set last_error) made a
+        # transient rate limit look like a hard crash.
+        all_keys = [k for st in self._providers.values() for k in st.keys]
+
+        if not all_keys:
+            raise AllProvidersExhausted(
+                "No LLM providers are configured — set GEMINI_API_KEY_1, GROQ_API_KEY_1 "
+                "or ANTHROPIC_API_KEY_1 in backend/.env.",
+                reason="not_configured",
+            )
+
+        # Only claim capacity is gone when EVERY key is out of credit or has burned
+        # a daily quota. If even one is merely rate-limited, waiting fixes it and
+        # saying otherwise would be a lie.
+        if all(k.hard_blocked for k in all_keys):
+            raise AllProvidersExhausted(
+                "Every LLM provider is out of credit or has exhausted its quota. "
+                "Test generation needs more capacity before it can run again.",
+                reason="quota_exhausted",
+            )
+
+        if last_error is not None:
+            raise AllProvidersExhausted(
+                f"All LLM providers failed. Last error: {last_error}",
+                reason="failed",
+            )
         raise AllProvidersExhausted(
-            f"All LLM providers failed. Last error: {last_error}"
+            f"Every LLM provider is rate-limited right now "
+            f"({', '.join(cooling)}) — try again in a minute.",
+            reason="rate_limited",
         )
 
     async def stream_complete(
@@ -602,7 +652,16 @@ class ProviderError(Exception):
     """Non-rate-limit error from a provider (HTTP 5xx, malformed response, etc.)."""
 
 class AllProvidersExhausted(Exception):
-    """Every provider and every key has been tried and failed."""
+    """Every provider and every key has been tried and failed.
+
+    `reason` lets callers tell a transient rate limit ("rate_limited") apart
+    from genuinely spent capacity ("quota_exhausted") — only the latter should
+    ever be surfaced to a user as an upgrade prompt.
+    """
+
+    def __init__(self, message: str, reason: str = "failed"):
+        super().__init__(message)
+        self.reason = reason
 
 
 # ─────────────────────────────────────────────

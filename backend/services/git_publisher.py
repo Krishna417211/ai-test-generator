@@ -101,6 +101,27 @@ class GitPublisher:
 
     # ── individual API steps ─────────────────────────────
 
+    async def delete_repo(self, full_name: str) -> None:
+        """Delete `owner/repo` on GitHub. Irreversible.
+
+        Callers must confirm the repo was created by this app for the
+        requesting user — this method does no ownership vetting of its own.
+        """
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            r = await client.delete(f"{BASE_API}/repos/{full_name}", headers=self._headers)
+
+        if r.status_code == 204:
+            logger.info(f"Deleted GitHub repo {full_name}")
+            return
+        if r.status_code == 404:
+            raise GitPublishError(f"Repository {full_name} no longer exists on GitHub.")
+        if r.status_code in (401, 403):
+            raise GitPublishError(
+                "GitHub refused the delete. The token needs the 'delete_repo' scope — "
+                "disconnect and reconnect your GitHub account to grant it."
+            )
+        raise GitPublishError(f"Could not delete {full_name} (GitHub returned {r.status_code}).")
+
     async def _get_owner(self, client: httpx.AsyncClient) -> str:
         r = await client.get(f"{BASE_API}/user", headers=self._headers)
         if r.status_code == 401:
@@ -180,14 +201,36 @@ class GitPublisher:
         self, client: httpx.AsyncClient, owner: str, repo: str,
         base_tree_sha: str, tree_items: list[dict],
     ) -> str:
-        r = await client.post(
-            f"{BASE_API}/repos/{owner}/{repo}/git/trees",
-            headers=self._headers,
-            json={"base_tree": base_tree_sha, "tree": tree_items},
-        )
-        if r.status_code not in (200, 201):
+        # A freshly created repo can 404 here for a beat even though the ref read
+        # and every blob upload just succeeded — GitHub serves those from a
+        # different subsystem than the git-data writes. Retry: building a tree is
+        # side-effect-free (it creates a dangling object, touching no refs), so a
+        # repeat is harmless. A 404 that outlives the retries is reported as-is.
+        # Malformed paths/shas come back as 422 and are surfaced immediately.
+        for attempt in range(4):
+            r = await client.post(
+                f"{BASE_API}/repos/{owner}/{repo}/git/trees",
+                headers=self._headers,
+                json={"base_tree": base_tree_sha, "tree": tree_items},
+            )
+            if r.status_code in (200, 201):
+                return r.json()["sha"]
+
+            transient = r.status_code in (404, 500, 502, 503)
+            if transient and attempt < 3:
+                logger.warning(
+                    f"git/trees returned {r.status_code} for {owner}/{repo} — "
+                    f"retrying ({attempt + 1}/3)"
+                )
+                await asyncio.sleep(1.5 * (attempt + 1))
+                continue
+            if transient:
+                raise GitPublishError(
+                    f"Failed to build the git tree — GitHub kept returning "
+                    f"{r.status_code} for {owner}/{repo}, a repo it had just created. "
+                    "This is usually temporary; try publishing again."
+                )
             raise GitPublishError(self._msg(r, "Failed to build the git tree"))
-        return r.json()["sha"]
 
     async def _create_commit(
         self, client: httpx.AsyncClient, owner: str, repo: str,

@@ -185,6 +185,9 @@ class WriterResult:
     selector_warnings: list[str]
     summary: str
     validation: list[dict] = field(default_factory=list)   # per-file syntax validity
+    # Planned files the LLM never produced (quota ran out mid-run, etc). A suite
+    # missing pieces can't pass CI, so callers must not treat this as success.
+    failed_files: list[str] = field(default_factory=list)
 
 
 # ─────────────────────────────────────────────
@@ -214,6 +217,7 @@ class WriterAgent:
     ) -> WriterResult:
 
         framework_key = self._normalize_framework(framework, language)
+        self._failed_files: list[str] = []
 
         # If the SSE stream already generated the suite, reuse it instead of
         # making a second (costly) LLM call — but only if it parsed cleanly.
@@ -246,8 +250,15 @@ class WriterAgent:
                 logger.info(f"Self-heal: fixing {len(failing)} invalid file(s)")
                 generated_files = await self._heal(generated_files, failing, framework_key)
 
-        # Add CI/CD yaml
-        if include_ci:
+        # Add CI/CD yaml — but only for a complete suite. The workflow runs
+        # `npx playwright test`, so shipping it alongside a suite that's missing
+        # files (or its config) guarantees a red pipeline on the first push.
+        if include_ci and self._failed_files:
+            logger.warning(
+                f"Skipping CI workflow — {len(self._failed_files)} planned file(s) "
+                f"were never generated: {', '.join(self._failed_files[:5])}"
+            )
+        if include_ci and not self._failed_files:
             ci_framework = framework.split("_")[0]  # playwright, cypress, selenium
             ci_yaml = CI_TEMPLATES.get(ci_framework, CI_TEMPLATES["playwright"])
             generated_files.append(GeneratedFile(
@@ -289,6 +300,7 @@ class WriterAgent:
             test_count=test_count,
             selector_warnings=warnings,
             validation=validation,
+            failed_files=self._failed_files,
             summary=(
                 f"Generated {test_count} tests across {len(generated_files)} files "
                 f"for {filter_result.framework} app using {framework_key}. "
@@ -479,21 +491,38 @@ Generate comprehensive tests now:
 
         manifest = [p["filename"] for p in plan]
         files: list[GeneratedFile] = []
+        failed: list[str] = []
+        last_error: Optional[Exception] = None
+
         for spec in plan:
-            content = await self._generate_one_file(
-                spec, manifest, filter_result, framework_key, test_flows, base_url, language
-            )
+            try:
+                content = await self._generate_one_file(
+                    spec, manifest, filter_result, framework_key, test_flows, base_url, language
+                )
+            except Exception as e:
+                failed.append(spec["filename"])
+                last_error = e
+                continue
             if content and content.strip():
                 files.append(GeneratedFile(
                     filename=spec["filename"],
                     content=content,
                     description=spec.get("description", ""),
                 ))
+            else:
+                failed.append(spec["filename"])
 
-        # If per-file generation produced nothing usable, fall back to single-shot.
-        return files or await self._generate_single_shot(
-            filter_result, framework_key, test_flows, base_url, language
-        )
+        # Nothing usable — fall back to single-shot, which raises if it also fails
+        # (the caller degrades to pushing the project without tests).
+        if not files:
+            if last_error is not None:
+                raise last_error
+            return await self._generate_single_shot(
+                filter_result, framework_key, test_flows, base_url, language
+            )
+
+        self._failed_files = failed
+        return files
 
     async def _plan_files(
         self, filter_result: FilterResult, framework_key: str, test_flows: str, base_url: str,
@@ -594,8 +623,11 @@ test cases covering positive and negative paths."""
             )
             return self._strip_fence(raw)
         except Exception as e:
+            # Swallowing this used to turn "the LLM died mid-suite" into a silent
+            # gap: the file vanished, the run still looked successful, and CI got
+            # pushed against a suite that couldn't run. Let the caller record it.
             logger.error(f"Generating {spec['filename']} failed: {e}")
-            return ""
+            raise
 
     async def _generate_single_shot(
         self, filter_result: FilterResult, framework_key: str,
