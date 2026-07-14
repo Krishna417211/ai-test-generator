@@ -41,7 +41,7 @@ export default function Status() {
       <div className="glass rounded-2xl p-5">
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${tint}`}><Icon size={18} /></div>
         <div className="font-display text-2xl font-bold">{value}</div>
-        <div className="text-xs text-white/60 mt-0.5">{label}</div>
+        <div className="text-xs text-grey-400 mt-0.5">{label}</div>
       </div>
     );
   };
@@ -65,7 +65,7 @@ export default function Status() {
               </span>
               <span className="font-display font-semibold">{allHealthy ? "All systems operational" : "Degraded — some providers cooling down"}</span>
             </div>
-            <button onClick={load} className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white/80 transition-colors">
+            <button onClick={load} className="flex items-center gap-1.5 text-xs text-grey-400 hover:text-white/80 transition-colors">
               <RefreshCw size={13} className={ticking ? "animate-spin" : ""} /> Refresh
             </button>
           </div>
@@ -97,7 +97,7 @@ export default function Status() {
                   <div className="h-2 rounded-full bg-white/8 overflow-hidden">
                     <div className="h-full rounded-full bg-brand-gradient transition-all duration-700" style={{ width: `${pct}%` }} />
                   </div>
-                  <div className="flex justify-between mt-2 text-xs text-white/60">
+                  <div className="flex justify-between mt-2 text-xs text-grey-400">
                     <span>{p.available_keys}/{p.total_keys} keys available</span>
                     <span>{p.total_calls} calls</span>
                   </div>

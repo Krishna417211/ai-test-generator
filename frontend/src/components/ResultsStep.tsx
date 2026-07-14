@@ -29,15 +29,15 @@ function FileCard({ file }: { file: GeneratedFile }) {
     ? "text-iris-400 bg-iris-400/10 border-iris-400/20"
     : isPOM
     ? "text-progress-400 bg-progress-400/10 border-progress-400/20"
-    : "text-white/40 bg-white/5 border-white/10";
+    : "text-grey-500 bg-white/5 border-grey-700";
 
   const tag = isTest ? "Test Spec" : isCI ? "CI/CD" : isPOM ? "Page Object" : "Config";
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/3 overflow-hidden">
+    <div className="rounded-xl border border-grey-700 bg-white/3 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 bg-white/5">
         <div className="flex items-center gap-3 min-w-0">
-          <FileCode size={14} className="text-white/40 shrink-0" />
+          <FileCode size={14} className="text-grey-500 shrink-0" />
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono text-white/80 truncate">{file.filename}</span>
@@ -45,27 +45,27 @@ function FileCard({ file }: { file: GeneratedFile }) {
                 {tag}
               </span>
             </div>
-            <p className="text-xs text-white/30 mt-0.5 truncate">{file.description}</p>
+            <p className="text-xs text-grey-500 mt-0.5 truncate">{file.description}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 ml-3 shrink-0">
           <button
             onClick={copy}
-            className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white/70 transition-all"
+            className="p-1.5 rounded-lg hover:bg-white/10 text-grey-500 hover:text-grey-300 transition-all"
             title="Copy to clipboard"
           >
             {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
           </button>
           <button
             onClick={() => downloadSingleFile(file.filename, file.content)}
-            className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white/70 transition-all"
+            className="p-1.5 rounded-lg hover:bg-white/10 text-grey-500 hover:text-grey-300 transition-all"
             title="Download file"
           >
             <Download size={13} />
           </button>
           <button
             onClick={() => setExpanded(!expanded)}
-            className="px-2.5 py-1 rounded-lg text-xs bg-white/10 hover:bg-white/15 text-white/60 hover:text-white/90 transition-all"
+            className="px-2.5 py-1 rounded-lg text-xs bg-white/10 hover:bg-white/15 text-grey-400 hover:text-white/90 transition-all"
           >
             {expanded ? "Hide" : "Preview"}
           </button>
@@ -73,7 +73,7 @@ function FileCard({ file }: { file: GeneratedFile }) {
       </div>
 
       {expanded && (
-        <div className="border-t border-white/10">
+        <div className="border-t border-grey-700">
           <CodeViewer filename={file.filename} content={file.content} />
         </div>
       )}
@@ -114,7 +114,7 @@ export default function ResultsStep({ result, onReset }: Props) {
           <CheckCircle size={18} className="text-emerald-400" />
           <div>
             <p className="text-sm font-semibold text-white">{result.summary}</p>
-            <p className="text-xs text-white/40 mt-0.5">
+            <p className="text-xs text-grey-500 mt-0.5">
               {result.files.length} files · {result.test_count} test cases · {result.framework}
             </p>
             {validation.length > 0 && (
@@ -132,7 +132,7 @@ export default function ResultsStep({ result, onReset }: Props) {
               </span>
             )}
             {validation.length > 0 && (
-              <p className="mt-1.5 text-[11px] text-white/40">
+              <p className="mt-1.5 text-[11px] text-grey-500">
                 Syntax-checked only — not executed. Run them against your app to confirm they pass.
               </p>
             )}
@@ -184,7 +184,7 @@ export default function ResultsStep({ result, onReset }: Props) {
       <div className="flex gap-3 pt-2">
         <button
           onClick={onReset}
-          className="flex-1 py-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white text-sm font-medium transition-all"
+          className="flex-1 py-3 rounded-xl border border-grey-700 bg-white/5 hover:bg-white/10 text-grey-300 hover:text-white text-sm font-medium transition-all"
         >
           Generate for another repo
         </button>

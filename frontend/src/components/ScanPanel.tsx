@@ -8,7 +8,7 @@ const SEV_STYLE: Record<Severity, { label: string; dot: string; text: string; ri
   high: { label: "High", dot: "bg-rose-400", text: "text-rose-400", ring: "border-rose-400/30 bg-rose-400/10" },
   medium: { label: "Medium", dot: "bg-amber-400", text: "text-amber-400", ring: "border-amber-500/30 bg-amber-500/10" },
   low: { label: "Low", dot: "bg-iris-400", text: "text-iris-400", ring: "border-iris-400/30 bg-iris-400/10" },
-  info: { label: "Info", dot: "bg-white/40", text: "text-white/70", ring: "border-white/15 bg-white/5" },
+  info: { label: "Info", dot: "bg-white/40", text: "text-grey-300", ring: "border-white/15 bg-white/5" },
 };
 
 const GRADE_COLOR: Record<string, string> = {
@@ -29,25 +29,25 @@ function FindingCard({ f }: { f: SecurityFinding }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-[10px] font-bold uppercase tracking-wider ${s.text}`}>{s.label}</span>
-            <span className="text-[10px] text-white/30 uppercase tracking-wider">{f.category}</span>
+            <span className="text-[10px] text-grey-500 uppercase tracking-wider">{f.category}</span>
           </div>
           <div className="text-sm text-white/90 font-medium mt-0.5">{f.title}</div>
           {open && (
             <div className="mt-2 space-y-2 text-xs">
-              <p className="text-white/70 leading-relaxed">{f.description}</p>
+              <p className="text-grey-300 leading-relaxed">{f.description}</p>
               {f.evidence && (
-                <div className="font-mono text-[11px] text-white/40 bg-black/30 rounded px-2 py-1 break-all">
+                <div className="font-mono text-[11px] text-grey-500 bg-black/30 rounded px-2 py-1 break-all">
                   {f.evidence}
                 </div>
               )}
               <div className="rounded-lg bg-emerald-500/8 border border-emerald-500/20 px-3 py-2">
                 <div className="text-emerald-300 font-semibold mb-0.5">Fix</div>
-                <p className="text-white/70 leading-relaxed">{f.remediation}</p>
+                <p className="text-grey-300 leading-relaxed">{f.remediation}</p>
               </div>
             </div>
           )}
         </div>
-        <span className="text-xs text-white/30 shrink-0">{open ? "−" : "+"}</span>
+        <span className="text-xs text-grey-500 shrink-0">{open ? "−" : "+"}</span>
       </button>
     </div>
   );
@@ -77,7 +77,7 @@ export default function ScanPanel() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-white/70 leading-relaxed">
+      <p className="text-sm text-grey-300 leading-relaxed">
         Enter your deployed URL and we'll audit it for common production security issues —
         HTTPS/TLS, security headers, cookie flags, CORS, and accidentally-exposed files —
         with a concrete fix for each. Passive & non-intrusive: it inspects configuration,
@@ -85,14 +85,14 @@ export default function ScanPanel() {
       </p>
 
       <div className="relative">
-        <Globe size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" />
+        <Globe size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-grey-500" />
         <input
           type="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && run()}
           placeholder="https://your-app.com"
-          className="w-full pl-10 pr-4 py-3.5 rounded-xl bg-black/30 border border-white/10 text-white placeholder:text-white/50 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm"
+          className="w-full pl-10 pr-4 py-3.5 rounded-xl bg-black/30 border border-grey-700 text-white placeholder:text-grey-400 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm"
         />
       </div>
 
@@ -117,14 +117,14 @@ export default function ScanPanel() {
       {result && (
         <div className="space-y-4">
           {/* Score header */}
-          <div className="flex items-center gap-4 rounded-xl border border-white/10 bg-white/5 p-4">
+          <div className="flex items-center gap-4 rounded-xl border border-grey-700 bg-white/5 p-4">
             <div className={`w-16 h-16 rounded-xl border flex flex-col items-center justify-center ${GRADE_COLOR[result.grade] || GRADE_COLOR.F}`}>
               <span className="text-2xl font-black leading-none">{result.grade}</span>
               <span className="text-[10px] opacity-70">{result.score}/100</span>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs text-white/40 font-mono break-all">{result.final_url}</div>
-              <p className="text-sm text-white/70 mt-1 leading-relaxed">{result.summary}</p>
+              <div className="text-xs text-grey-500 font-mono break-all">{result.final_url}</div>
+              <p className="text-sm text-grey-300 mt-1 leading-relaxed">{result.summary}</p>
             </div>
           </div>
 
@@ -146,7 +146,7 @@ export default function ScanPanel() {
             </div>
           ) : (
             <div className="space-y-2">
-              <div className="flex items-center gap-1.5 text-xs text-white/40">
+              <div className="flex items-center gap-1.5 text-xs text-grey-500">
                 <AlertTriangle size={12} />
                 {result.findings.length} finding(s) · tap any to see details & the fix
               </div>

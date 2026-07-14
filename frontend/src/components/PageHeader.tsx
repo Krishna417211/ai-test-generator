@@ -9,7 +9,7 @@ export default function PageHeader({ icon: Icon, eyebrow, title, subtitle }: {
         <Icon size={13} /> {eyebrow}
       </div>
       <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">{title}</h1>
-      <p className="mt-3 text-white/70 leading-relaxed">{subtitle}</p>
+      <p className="mt-3 text-grey-300 leading-relaxed">{subtitle}</p>
     </div>
   );
 }

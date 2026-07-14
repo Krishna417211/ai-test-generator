@@ -18,9 +18,6 @@ export default function Footer() {
           <a href="https://github.com" className="hover:text-white/80 transition-colors">GitHub</a>
         </div>
       </div>
-      <div className="text-center text-[11px] text-white/20 pb-8">
-        Built with AI · No account required · {new Date().getFullYear()}
-      </div>
     </footer>
   );
 }

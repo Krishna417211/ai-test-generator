@@ -31,12 +31,12 @@ export default function StreamingOutput({ output, provider, done }: Props) {
         )}
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-black/30 overflow-hidden">
-        <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-white/10 bg-white/3">
+      <div className="rounded-xl border border-grey-700 bg-black/30 overflow-hidden">
+        <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-grey-700 bg-white/3">
           <div className="w-3 h-3 rounded-full bg-red-500/60" />
           <div className="w-3 h-3 rounded-full bg-yellow-500/60" />
           <div className="w-3 h-3 rounded-full bg-green-500/60" />
-          <span className="ml-2 text-xs text-white/30 font-mono">output</span>
+          <span className="ml-2 text-xs text-grey-500 font-mono">output</span>
         </div>
         <pre className="p-4 text-xs text-green-300/80 font-mono leading-relaxed max-h-[500px] overflow-y-auto whitespace-pre-wrap">
           {output || <span className="text-white/20">Waiting for output...</span>}

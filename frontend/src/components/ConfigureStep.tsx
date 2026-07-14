@@ -56,7 +56,7 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
 
   return (
     <div className="w-full max-w-2xl mx-auto space-y-6">
-      <div className="flex items-center gap-2 text-white/40 text-xs mb-2">
+      <div className="flex items-center gap-2 text-grey-500 text-xs mb-2">
         <Settings size={13} />
         <span>Detected: <span className="text-progress-400">{detectedFramework}</span></span>
       </div>
@@ -72,7 +72,7 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
               className={`p-3 rounded-xl border text-left transition-all ${
                 framework === fw.id
                   ? "border-progress-500 bg-progress-500/15 text-white"
-                  : "border-white/10 bg-white/5 text-white/50 hover:border-white/20 hover:text-white/70"
+                  : "border-grey-700 bg-white/5 text-grey-400 hover:border-white/20 hover:text-grey-300"
               }`}
             >
               <div className="font-semibold text-sm">{fw.label}</div>
@@ -93,7 +93,7 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
               className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all ${
                 language === lang.id
                   ? "border-progress-500 bg-progress-500/15 text-white"
-                  : "border-white/10 bg-white/5 text-white/50 hover:text-white/70"
+                  : "border-grey-700 bg-white/5 text-grey-400 hover:text-grey-300"
               }`}
             >
               {lang.label}
@@ -105,16 +105,16 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
       {/* Test flows */}
       <div>
         <label className="block text-sm font-semibold text-white mb-2">
-          What to test <span className="text-white/30 font-normal">(optional)</span>
+          What to test <span className="text-grey-500 font-normal">(optional)</span>
         </label>
         <textarea
           value={testFlows}
           onChange={(e) => setTestFlows(e.target.value)}
           placeholder={`Describe the flows you want tested. For example:\n- User registration and login\n- Product search and add to cart\n- Checkout with payment form\n- Profile settings update`}
           rows={5}
-          className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/25 focus:outline-none focus:border-progress-500 transition-colors text-sm resize-none"
+          className="w-full px-4 py-3 rounded-xl bg-white/5 border border-grey-700 text-white placeholder:text-white/25 focus:outline-none focus:border-progress-500 transition-colors text-sm resize-none"
         />
-        <p className="text-xs text-white/30 mt-1">
+        <p className="text-xs text-grey-500 mt-1">
           Leave blank to auto-test all detected pages and flows.
         </p>
       </div>
@@ -126,7 +126,7 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
           type="url"
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
-          className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-progress-500 transition-colors text-sm font-mono"
+          className="w-full px-4 py-3 rounded-xl bg-white/5 border border-grey-700 text-white focus:outline-none focus:border-progress-500 transition-colors text-sm font-mono"
         />
       </div>
 
@@ -144,7 +144,7 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
             }`}
           />
         </div>
-        <span className="text-sm text-white/70">
+        <span className="text-sm text-grey-300">
           Include GitHub Actions + GitLab CI yaml
         </span>
       </label>

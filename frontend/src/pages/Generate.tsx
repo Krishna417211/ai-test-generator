@@ -1,7 +1,8 @@
 import { useState, useCallback } from "react";
 import { Sparkles } from "lucide-react";
 import type { ProjectAnalysis, GenerateResponse } from "../types";
-import { analyzeRepo, uploadZip, generateTests, streamGeneration } from "../utils/api";
+import { analyzeRepo, uploadZip, generateTests, streamGeneration, QuotaExceededError } from "../utils/api";
+import UpgradeModal from "../components/UpgradeModal";
 import Page from "../components/Page";
 import PageHeader from "../components/PageHeader";
 import GenerateInput from "../components/GenerateInput";
@@ -23,6 +24,8 @@ export default function Generate() {
   const [error, setError] = useState<string | null>(null);
   const [currentProvider, setCurrentProvider] = useState("");
   const [streamOutput, setStreamOutput] = useState("");
+  // Set only by a 402 from the server — never by a provider outage.
+  const [quotaHit, setQuotaHit] = useState<QuotaExceededError | null>(null);
 
   const reset = () => {
     setStep("input"); setJobId(null); setAnalysis(null); setResult(null);
@@ -55,7 +58,13 @@ export default function Generate() {
           try {
             const r = await generateTests(jobId, config.framework, config.language, config.testFlows, config.baseUrl, config.includeCi);
             setResult(r); setStep("done"); celebrate();
-          } catch (err: any) { setStep("configure"); setError(err.message); }
+          } catch (err: any) {
+            setStep("configure");
+            // Out of personal quota → offer Pro. Anything else (including us
+            // being out of AI capacity, which Pro wouldn't fix) is just an error.
+            if (err instanceof QuotaExceededError) setQuotaHit(err);
+            else setError(err.message);
+          }
         },
         (err) => { setStep("configure"); setError(err); }
       );
@@ -63,6 +72,7 @@ export default function Generate() {
 
   return (
     <Page>
+      <UpgradeModal quota={quotaHit} onClose={() => setQuotaHit(null)} />
       {step === "input" || step === "analyzing" ? (
         <>
           <PageHeader icon={Sparkles} eyebrow="AI test generation"
@@ -84,9 +94,9 @@ export default function Generate() {
               <ProviderStatus currentProvider={currentProvider} />
               {analysis && (
                 <div className="glass rounded-2xl p-4 text-xs space-y-2">
-                  <div className="text-white/60 font-semibold uppercase tracking-wider mb-3">Session</div>
+                  <div className="text-grey-400 font-semibold uppercase tracking-wider mb-3">Session</div>
                   {[["Framework", analysis.framework], ["Files", String(analysis.file_count)], ["Routes", String(analysis.routes.length)], ["Tokens", `~${(analysis.total_tokens / 1000).toFixed(0)}k`]].map(([k, v]) => (
-                    <div key={k} className="flex justify-between"><span className="text-white/60">{k}</span><span className="text-white/70">{v}</span></div>
+                    <div key={k} className="flex justify-between"><span className="text-grey-400">{k}</span><span className="text-grey-300">{v}</span></div>
                   ))}
                 </div>
               )}

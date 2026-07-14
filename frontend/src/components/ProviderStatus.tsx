@@ -26,10 +26,10 @@ export default function ProviderStatus({ currentProvider }: Props) {
   if (!status) return null;
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+    <div className="rounded-xl border border-grey-700 bg-white/5 p-4">
       <div className="flex items-center gap-2 mb-3">
         <Zap size={14} className="text-progress-400" />
-        <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">LLM Providers</span>
+        <span className="text-xs font-semibold text-grey-400 uppercase tracking-wider">LLM Providers</span>
       </div>
 
       {currentProvider && (
@@ -48,11 +48,11 @@ export default function ProviderStatus({ currentProvider }: Props) {
               ) : (
                 <AlertCircle size={12} className="text-rose-400" />
               )}
-              <span className="text-xs text-white/70">
+              <span className="text-xs text-grey-300">
                 {PROVIDER_LABELS[p.name] || p.name}
               </span>
             </div>
-            <span className="text-xs text-white/40">
+            <span className="text-xs text-grey-500">
               {p.available_keys}/{p.total_keys} keys
             </span>
           </div>

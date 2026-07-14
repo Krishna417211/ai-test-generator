@@ -20,11 +20,11 @@ export default function Publish() {
         <div className="space-y-3">
           {PERKS.map((p) => (
             <div key={p.title} className="glass rounded-2xl p-5">
-              <div className="w-10 h-10 rounded-xl bg-iris-500/15 border border-white/10 flex items-center justify-center mb-3">
+              <div className="w-10 h-10 rounded-xl bg-iris-500/15 border border-grey-700 flex items-center justify-center mb-3">
                 <p.icon size={18} className="text-iris-400" />
               </div>
               <h3 className="font-display font-semibold text-sm mb-1">{p.title}</h3>
-              <p className="text-xs text-white/50 leading-relaxed">{p.desc}</p>
+              <p className="text-xs text-grey-400 leading-relaxed">{p.desc}</p>
             </div>
           ))}
         </div>

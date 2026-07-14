@@ -39,6 +39,22 @@ export default {
         },
         // Slate gray-green — for depth against the sage
         iris: { 400: "#7a8f88", 500: "#5f746d", 600: "#4a5b55" },
+        // Neutral grey — secondary surfaces, borders, muted text. Cool rather
+        // than a true 50% grey: a neutral #808080 reads warm and dirty against
+        // the cool ink base, so these carry a slight blue bias to sit with it
+        // without pulling back toward the sage.
+        grey: {
+          200: "#dcdfe1",
+          300: "#c9ced1",  // 9.8:1 on ink-950
+          400: "#9aa3a8",  // 6.1:1
+          // 4.5:1 — the floor for helper text ("(optional)", file sizes, hints),
+          // which is what this tier is used for. Anything darker reads as
+          // decoration and fails WCAG AA for body copy.
+          500: "#818c92",
+          600: "#545c60",  // non-text only: borders, dividers
+          700: "#3a4145",
+          800: "#2a3034",
+        },
         // Pale mint — the light end of gradients
         cyanx: { 300: "#e6f3ec", 400: "#c9e6d4", 500: "#a9d4bb" },
         // Functional semantic accents (kept for status/severity signals)
