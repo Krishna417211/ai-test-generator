@@ -10,7 +10,6 @@ const PROVIDER_LABELS: Record<string, string> = {
   gemini: "Gemini 1.5 Flash",
   groq: "Groq LLaMA 3.1",
   claude: "Claude Haiku",
-  together: "Together Mistral",
 };
 
 export default function ProviderStatus({ currentProvider }: Props) {

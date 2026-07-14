@@ -74,7 +74,7 @@ export default function Home() {
         <motion.div variants={fade} custom={0} initial="hidden" animate="show"
           className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass text-xs text-brand-200 mb-7">
           <span className="w-1.5 h-1.5 rounded-full bg-cyanx-400 animate-pulse" />
-          Gemini · Groq · Claude · Together — all free, auto-rotated
+          Gemini · Groq · Claude — all free, auto-rotated
         </motion.div>
 
         <motion.h1 variants={fade} custom={1} initial="hidden" animate="show"
@@ -175,7 +175,7 @@ export default function Home() {
         <div className="glass rounded-3xl px-6 py-10 grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
           {[
             { n: 3, s: "", label: "Frameworks" },
-            { n: 4, s: "", label: "Free LLM providers" },
+            { n: 3, s: "", label: "Free LLM providers" },
             { n: 100, s: "%", label: "Open source" },
             { n: 0, s: "$", label: "Cost to you" },
           ].map((st, i) => (

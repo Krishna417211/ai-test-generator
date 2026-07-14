@@ -37,7 +37,6 @@ export interface User {
   github_login?: string | null;
   avatar_url?: string | null;
   has_github: boolean;
-  has_google: boolean;
 }
 
 export async function signup(email: string, password: string, name?: string): Promise<{ token: string; user: User }> {
@@ -81,13 +80,9 @@ export function githubLoginUrl(): string {
   return `${API_BASE}/api/auth/github/login`;
 }
 
-export function googleLoginUrl(): string {
-  return `${API_BASE}/api/auth/google/login`;
-}
-
-export async function getAuthConfig(): Promise<{ github_oauth_enabled: boolean; google_oauth_enabled: boolean }> {
+export async function getAuthConfig(): Promise<{ github_oauth_enabled: boolean }> {
   const res = await fetch(`${API_BASE}/api/auth/config`);
-  if (!res.ok) return { github_oauth_enabled: false, google_oauth_enabled: false };
+  if (!res.ok) return { github_oauth_enabled: false };
   return res.json();
 }
 

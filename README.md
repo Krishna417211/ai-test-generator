@@ -11,7 +11,7 @@ Testra scans your web project's codebase and automatically generates complete, r
 ## ✨ Features
 
 - **Two-agent LLM pipeline** — Agent 1 filters your repo to UI-relevant files only. Agent 2 writes tests with real selectors from your code.
-- **Smart LLM rotation** — Automatically rotates through Gemini 1.5 Flash → Groq LLaMA 3.1 → Claude Haiku → Together Mistral. Never hits rate limits.
+- **Smart LLM rotation** — Automatically rotates through Gemini 1.5 Flash → Groq LLaMA 3.1 → Claude Haiku. Never hits rate limits.
 - **Multi-framework** — Playwright (JS/TS/Python), Cypress (JS/TS), Selenium (Python/Java)
 - **Page Object Model** — Generates POM classes, not spaghetti scripts
 - **CI/CD included** — GitHub Actions + GitLab CI yaml bundled in every download
@@ -47,7 +47,6 @@ Get your free API keys:
 | Google Gemini 1.5 Flash | 1M context, 15 RPM | [aistudio.google.com](https://aistudio.google.com/app/apikey) |
 | Groq (LLaMA 3.1 70B) | Ultra-fast, generous limits | [console.groq.com](https://console.groq.com) |
 | Anthropic Claude Haiku | Reliable fallback | [console.anthropic.com](https://console.anthropic.com) |
-| Together AI (Mistral 7B) | Free $25 credit | [api.together.xyz](https://api.together.xyz) |
 
 You only need **one** key to get started. Add more for better rate limit handling.
 
@@ -142,7 +141,7 @@ Try Gemini 1.5 Flash (key 1)
             └── ❌ Rate limit → next key...
                    │
                    ▼
-               Try Claude Haiku → Try Together Mistral
+               Try Claude Haiku
                                          │
                                          └── ❌ AllProvidersExhausted exception
 ```

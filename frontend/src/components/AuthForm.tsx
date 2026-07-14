@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Mail, Lock, User as UserIcon, Loader2, Github, ArrowRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { getAuthConfig, githubLoginUrl, googleLoginUrl } from "../utils/api";
+import { getAuthConfig, githubLoginUrl } from "../utils/api";
 import Page from "./Page";
 
 export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
@@ -18,11 +18,10 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [githubOauth, setGithubOauth] = useState(false);
-  const [googleOauth, setGoogleOauth] = useState(false);
 
   useEffect(() => {
     getAuthConfig()
-      .then((c) => { setGithubOauth(c.github_oauth_enabled); setGoogleOauth(c.google_oauth_enabled); })
+      .then((c) => setGithubOauth(c.github_oauth_enabled))
       .catch(() => {});
   }, []);
 
@@ -49,24 +48,11 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
         </div>
 
         <div className="glass rounded-3xl p-9 shadow-card space-y-6">
-          {(githubOauth || googleOauth) && (
+          {githubOauth && (
             <>
-              {githubOauth && (
-                <a href={githubLoginUrl()} className="w-full flex items-center justify-center gap-2.5 py-4 rounded-xl bg-white/10 hover:bg-white/15 border border-white/25 text-white font-semibold transition-all text-[15px] leading-[22px] shadow-card">
-                  <Github size={17} /> Continue with GitHub
-                </a>
-              )}
-              {googleOauth && (
-                <a href={googleLoginUrl()} className="w-full flex items-center justify-center gap-2.5 py-4 rounded-xl bg-white hover:bg-white/90 border border-white/15 text-ink-950 font-semibold transition-all text-[15px] leading-[22px]">
-                  <svg width="17" height="17" viewBox="0 0 48 48" aria-hidden="true">
-                    <path fill="#FFC107" d="M43.6 20.5H42V20.4H24v7.2h11.3c-1.6 4.7-6.1 8.1-11.3 8.1-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l5.1-5.1C33.6 6.1 29.1 4.4 24 4.4 13.2 4.4 4.4 13.2 4.4 24S13.2 43.6 24 43.6 43.6 34.8 43.6 24c0-1.2-.1-2.3-.4-3.5z"/>
-                    <path fill="#FF3D00" d="m6.3 14.7 5.9 4.3C13.8 15.5 18.5 12.4 24 12.4c3.1 0 5.8 1.1 8 3l5.1-5.1C33.6 6.1 29.1 4.4 24 4.4c-7.4 0-13.8 4.2-17 10.3z"/>
-                    <path fill="#4CAF50" d="M24 43.6c5 0 9.5-1.9 12.9-5.1l-6-4.9c-1.9 1.4-4.4 2.2-6.9 2.2-5.2 0-9.6-3.4-11.2-8.1l-6 4.6c3.2 6.2 9.6 11.3 17.2 11.3z"/>
-                    <path fill="#1976D2" d="M43.6 20.5H42V20.4H24v7.2h11.3c-.8 2.3-2.2 4.2-4.1 5.6l6 4.9c-.4.4 6.8-5 6.8-14.7 0-1.2-.1-2.3-.4-3.5z"/>
-                  </svg>
-                  Continue with Google
-                </a>
-              )}
+              <a href={githubLoginUrl()} className="w-full flex items-center justify-center gap-2.5 py-4 rounded-xl bg-white/10 hover:bg-white/15 border border-white/25 text-white font-semibold transition-all text-[15px] leading-[22px] shadow-card">
+                <Github size={17} /> Continue with GitHub
+              </a>
               <div className="flex items-center gap-3 text-xs text-white/50">
                 <div className="h-px flex-1 bg-white/10" /> or {isSignup ? "sign up" : "log in"} with email <div className="h-px flex-1 bg-white/10" />
               </div>
