@@ -1,0 +1,16 @@
+[tool.ruff]
+# Pragmatic lint config for an existing codebase: catch real problems
+# (unused names, undefined refs, obvious bugs) without churning on style.
+line-length = 100
+target-version = "py311"
+exclude = ["venv", ".venv", "__pycache__"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+# E501 (line length) and E701 (compound statements) are stylistic and pervasive
+# in this codebase — not worth blocking CI over.
+ignore = ["E501", "E701"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

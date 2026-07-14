@@ -11,7 +11,9 @@ import httpx
 import pytest
 
 from services import security_scanner
-from services.security_scanner import SecurityScanner, ScanError, _validate_target, _looks_sensitive
+from services.security_scanner import (
+    SecurityScanner, ScanError, _validate_target, _looks_sensitive, _redirect_guard,
+)
 
 
 # ── SSRF guard (uses real DNS for localhost/link-local) ──
@@ -37,6 +39,26 @@ class TestSSRFGuard:
             lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))],
         )
         assert _validate_target("example.com").startswith("https://")
+
+    def test_redirect_guard_blocks_internal_hop(self):
+        # An open redirect pointing at cloud metadata must be rejected mid-scan.
+        resp = httpx.Response(
+            302, headers={"location": "http://169.254.169.254/latest/meta-data"},
+            request=httpx.Request("GET", "https://safe.example"),
+        )
+        with pytest.raises(ScanError):
+            asyncio.run(_redirect_guard(resp))
+
+    def test_redirect_guard_allows_public_hop(self, monkeypatch):
+        monkeypatch.setattr(
+            security_scanner.socket, "getaddrinfo",
+            lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))],
+        )
+        resp = httpx.Response(
+            302, headers={"location": "https://other.example/next"},
+            request=httpx.Request("GET", "https://safe.example"),
+        )
+        asyncio.run(_redirect_guard(resp))  # no raise
 
 
 # ── sensitive-file signature matching ────────

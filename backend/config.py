@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     # How long a login session (stored access token) stays valid.
     oauth_session_ttl_seconds: int = 8 * 60 * 60
 
+    # Secret used to encrypt sensitive session data (e.g. the linked GitHub
+    # access token) at rest. Set a long random value in production; if empty,
+    # tokens are stored as-is (fine for local dev). Rotating it invalidates
+    # previously-encrypted tokens, so users would need to re-connect GitHub.
+    session_secret: str = ""
+
     # Limits
     max_repo_size_mb: int = 100
     max_files_per_repo: int = 2000

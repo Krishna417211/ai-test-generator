@@ -13,7 +13,6 @@ Endpoints:
   GET  /health          — Basic health check
 """
 
-import io
 import json
 import time
 import uuid
@@ -21,12 +20,10 @@ import secrets
 import asyncio
 import logging
 import zipfile
-from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse, RedirectResponse
-from pydantic import ValidationError
+from fastapi.responses import StreamingResponse, RedirectResponse
 
 from config import settings
 from logging_config import configure_logging, request_id_var
@@ -39,7 +36,7 @@ from models.schemas import (
     PublishResponse, ScanRequest, ScanResponse,
     SignupRequest, LoginRequest, AuthResponse,
 )
-from services.file_extractor import extract_zip, FileExtractor, filter_for_push
+from services.file_extractor import extract_zip, filter_for_push
 from services.github_service import GitHubService, parse_github_url, RepoNotFoundError, RepoAccessError
 from services.git_publisher import GitPublisher, GitPublishError
 from services.security_scanner import SecurityScanner, ScanError
@@ -602,7 +599,7 @@ async def publish_zip(
             )
         except Exception as e:
             logger.error(f"CI generation failed: {e}")
-            raise HTTPException(500, f"CI/CD generation failed: {e}")
+            raise HTTPException(500, "CI/CD generation failed. Please try again.")
 
         test_count = result.test_count
         validation = result.validation
@@ -709,7 +706,7 @@ async def scan_url(payload: ScanRequest, ctx: dict = Depends(require_user)):
         raise HTTPException(400, str(e))
     except Exception as e:
         logger.error(f"Scan failed: {e}")
-        raise HTTPException(500, f"Scan failed: {e}")
+        raise HTTPException(500, "Scan failed unexpectedly. Please try again.")
 
     summary = ""
     if payload.ai_summary and result.findings:
@@ -765,7 +762,7 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
         )
     except Exception as e:
         logger.error(f"Test generation failed: {e}")
-        raise HTTPException(500, f"Generation failed: {e}")
+        raise HTTPException(500, "Test generation failed. Please try again.")
 
     return GenerateResponse(
         success=True,

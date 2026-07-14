@@ -320,6 +320,18 @@ class TestExtractZip:
         result = extract_zip(buf.getvalue())
         assert "src/binary.bin" in result  # Should not raise
 
+    def test_zip_slip_paths_are_skipped(self):
+        # Malicious archives must not be able to escape the extraction root.
+        z = self._make_zip({
+            "src/App.tsx": "ok",
+            "../../etc/passwd": "root:x:0:0:",
+            "/abs/evil.sh": "rm -rf /",
+        })
+        result = extract_zip(z)
+        assert "src/App.tsx" in result
+        assert not any(".." in k for k in result)
+        assert not any(k.startswith("/") for k in result)
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

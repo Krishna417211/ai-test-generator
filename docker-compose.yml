@@ -32,10 +32,3 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
-
-  # Optional: Redis for caching (free tier on Upstash in prod)
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    restart: unless-stopped

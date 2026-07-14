@@ -127,9 +127,14 @@ export default function ResultsStep({ result, onReset }: Props) {
               >
                 <CheckCircle size={11} />
                 {allValid
-                  ? "All files passed syntax validation"
-                  : `${validCount}/${validation.length} files validated`}
+                  ? "All files passed a syntax check"
+                  : `${validCount}/${validation.length} passed a syntax check`}
               </span>
+            )}
+            {validation.length > 0 && (
+              <p className="mt-1.5 text-[11px] text-white/40">
+                Syntax-checked only — not executed. Run them against your app to confirm they pass.
+              </p>
             )}
           </div>
         </div>

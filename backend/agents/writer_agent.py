@@ -13,7 +13,6 @@ Framework support: Playwright (JS/TS/Python), Cypress (JS/TS), Selenium (Python/
 import re
 import json
 import logging
-import asyncio
 from dataclasses import dataclass, field
 from typing import AsyncGenerator, Optional
 
@@ -435,7 +434,7 @@ Return a JSON object with this exact structure:
       "content": "// Full file content here..."
     }},
     {{
-      "filename": "tests/specs/login.spec.ts", 
+      "filename": "tests/specs/login.spec.ts",
       "description": "Login flow test cases",
       "content": "// Full file content here..."
     }}
@@ -603,7 +602,7 @@ Generate comprehensive tests now:
         return "ts"
 
     def _gitlab_ci(self, framework: str) -> str:
-        return f"""stages:
+        return """stages:
   - test
 
 e2e-tests:

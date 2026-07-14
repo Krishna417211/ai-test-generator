@@ -34,3 +34,7 @@ build/
 *.db
 *.sqlite
 *.sqlite3
+
+# Coverage / test artifacts
+.coverage
+.playwright-mcp/

@@ -2,13 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [master, main, develop]
   pull_request:
-    branches: [main]
+    branches: [master, main]
 
 jobs:
   backend:
-    name: Backend (pytest)
+    name: Backend (lint + pytest)
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -23,9 +23,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Run tests
-        run: pytest tests/ -v
+        run: pip install -r requirements.txt ruff pytest-cov
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Run tests with coverage
+        run: pytest tests/ -v --cov=. --cov-report=term-missing
 
   frontend:
     name: Frontend (build)

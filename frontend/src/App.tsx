@@ -6,6 +6,7 @@ import ScrollProgress from "./components/ScrollProgress";
 import NavBar from "./components/NavBar";
 import Footer from "./components/Footer";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ErrorBoundary from "./components/ErrorBoundary";
 import Home from "./pages/Home";
 import Generate from "./pages/Generate";
 import Publish from "./pages/Publish";
@@ -45,7 +46,9 @@ export default function App() {
         <div className="min-h-screen flex flex-col">
           <NavBar />
           <div className="flex-1 pt-8 pb-4">
-            <AnimatedRoutes />
+            <ErrorBoundary>
+              <AnimatedRoutes />
+            </ErrorBoundary>
           </div>
           <Footer />
         </div>
