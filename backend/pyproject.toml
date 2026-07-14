@@ -14,3 +14,6 @@ ignore = ["E501", "E701"]
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+# Put the backend/ root on sys.path so tests can `from services import ...`
+# under a bare `pytest` invocation (CI), not just `python -m pytest`.
+pythonpath = ["."]
