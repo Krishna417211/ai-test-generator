@@ -1,14 +1,107 @@
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 // ── Auth token management ────────────────────
+//
+// The token lives in sessionStorage, not localStorage: it must not outlive the
+// window. sessionStorage is cleared by the browser when the last tab of an
+// origin closes, which is exactly the requirement — close the window, you're
+// logged out — and it's enforced by the browser rather than by us remembering
+// to expire something.
+//
+// The cost is that sessionStorage is per-tab, so a new tab (or a middle-click
+// on a link) starts blank and would show a logged-out app while the original
+// tab is still signed in. The handshake below fixes that by asking the other
+// tabs for the token. If no tab answers, there is nothing to inherit — which is
+// the closed-the-window case, and staying logged out is the correct outcome.
 const TOKEN_KEY = "tg_token";
 
+// localStorage keys used only as a postMessage-style bus between tabs. `storage`
+// events fire in *other* tabs of the same origin, never the one that wrote —
+// which is what makes this work as a request/response.
+const SHARE_REQUEST_KEY = "tg_session_request";
+const SHARE_REPLY_KEY = "tg_session_reply";
+const LOGOUT_BROADCAST_KEY = "tg_logout";
+
 export function getToken(): string {
-  return localStorage.getItem(TOKEN_KEY) || "";
+  return sessionStorage.getItem(TOKEN_KEY) || "";
 }
 export function setToken(token: string): void {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+  if (token) sessionStorage.setItem(TOKEN_KEY, token);
+  else sessionStorage.removeItem(TOKEN_KEY);
+}
+
+/** Write a value for other tabs, then immediately remove it.
+ *
+ *  The `storage` event other tabs receive carries the value as it was written,
+ *  so removing it on the next line doesn't race them — they still see it. This
+ *  keeps the token from lingering in localStorage, which would defeat the whole
+ *  point of sessionStorage: a leftover copy would survive the window closing.
+ */
+function broadcast(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+    localStorage.removeItem(key);
+  } catch {
+    // Private mode / storage disabled: tab sync degrades to "log in again",
+    // which is inconvenient but not broken.
+  }
+}
+
+/** Answer other tabs' requests for the session. Call once, at startup. */
+export function serveSessionToOtherTabs(): () => void {
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== SHARE_REQUEST_KEY || !e.newValue) return;
+    const token = getToken();
+    if (token) broadcast(SHARE_REPLY_KEY, token);
+  };
+  window.addEventListener("storage", onStorage);
+  return () => window.removeEventListener("storage", onStorage);
+}
+
+/** Ask any open tab for the current session token. Resolves to "" if none answers.
+ *
+ *  The timeout is what distinguishes "another tab has a session" from "this is a
+ *  fresh window and nobody is logged in" — there's no way to enumerate tabs, so
+ *  silence is the only available signal.
+ */
+export function requestSessionFromOtherTabs(timeoutMs = 250): Promise<string> {
+  if (getToken()) return Promise.resolve(getToken());
+
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (token: string) => {
+      if (done) return;
+      done = true;
+      window.removeEventListener("storage", onReply);
+      clearTimeout(timer);
+      resolve(token);
+    };
+    const onReply = (e: StorageEvent) => {
+      if (e.key !== SHARE_REPLY_KEY || !e.newValue) return;
+      setToken(e.newValue);
+      finish(e.newValue);
+    };
+    const timer = setTimeout(() => finish(""), timeoutMs);
+
+    window.addEventListener("storage", onReply);
+    broadcast(SHARE_REQUEST_KEY, String(Date.now()));
+  });
+}
+
+/** Tell other tabs to drop their session. */
+export function broadcastLogout(): void {
+  broadcast(LOGOUT_BROADCAST_KEY, String(Date.now()));
+}
+
+/** React to another tab logging out. Call once, at startup. */
+export function onLogoutElsewhere(handler: () => void): () => void {
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== LOGOUT_BROADCAST_KEY || !e.newValue) return;
+    setToken("");
+    handler();
+  };
+  window.addEventListener("storage", onStorage);
+  return () => window.removeEventListener("storage", onStorage);
 }
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const t = getToken();
@@ -68,28 +161,107 @@ export interface User {
   github_login?: string | null;
   avatar_url?: string | null;
   has_github: boolean;
+  email_verified?: boolean;
   plan?: "free" | "pro";
+  /** Whether to render the Admin nav item. A hint, not a permission: the server
+   *  re-checks the allowlist on every /api/admin call, so flipping this in
+   *  devtools only produces a page whose requests 404. */
+  is_admin?: boolean;
 }
 
-export async function signup(email: string, password: string, name?: string): Promise<{ token: string; user: User }> {
+/** Where a signup/login attempt landed. Mirrors LoginResponse in the backend:
+ *  `ok` carries a session, the other two carry the next step instead. */
+export interface LoginResult {
+  status: "ok" | "otp_required" | "verification_required";
+  token?: string | null;
+  user?: User | null;
+  challenge_id?: string | null;
+  email_hint?: string | null;
+  expires_in?: number | null;
+  message?: string | null;
+}
+
+/** Store the token only for a completed login. A half-finished attempt has no
+ *  token, and writing an undefined one would clear an existing session. */
+function adoptIfComplete(data: LoginResult): LoginResult {
+  if (data.status === "ok" && data.token) setToken(data.token);
+  return data;
+}
+
+export async function signup(email: string, password: string, name?: string): Promise<LoginResult> {
   const res = await fetch(`${API_BASE}/api/auth/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password, name }),
   });
   if (!res.ok) await parseError(res, "Sign up failed");
-  const data = await res.json();
-  setToken(data.token);
-  return data;
+  return adoptIfComplete(await res.json());
 }
 
-export async function login(email: string, password: string): Promise<{ token: string; user: User }> {
+export async function login(email: string, password: string): Promise<LoginResult> {
   const res = await fetch(`${API_BASE}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
   if (!res.ok) await parseError(res, "Login failed");
+  return adoptIfComplete(await res.json());
+}
+
+/** Second step of login: exchange the emailed 6-digit code for a session. */
+export async function verifyLoginOtp(challengeId: string, code: string): Promise<{ token: string; user: User }> {
+  const res = await fetch(`${API_BASE}/api/auth/login/verify-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ challenge_id: challengeId, code }),
+  });
+  if (!res.ok) await parseError(res, "That code didn't work");
+  const data = await res.json();
+  setToken(data.token);
+  return data;
+}
+
+/** Redeem a verification link. Logs the user in on success. */
+export async function verifyEmail(token: string): Promise<{ token: string; user: User }> {
+  const res = await fetch(`${API_BASE}/api/auth/verify-email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) await parseError(res, "This verification link didn't work");
+  const data = await res.json();
+  setToken(data.token);
+  return data;
+}
+
+export async function resendVerification(email: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/auth/resend-verification`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) await parseError(res, "Could not resend the link");
+  return (await res.json()).message || "";
+}
+
+export async function forgotPassword(email: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) await parseError(res, "Could not start the reset");
+  return (await res.json()).message || "";
+}
+
+/** Set a new password from a reset link. Logs the user in on success. */
+export async function resetPassword(token: string, password: string): Promise<{ token: string; user: User }> {
+  const res = await fetch(`${API_BASE}/api/auth/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, password }),
+  });
+  if (!res.ok) await parseError(res, "Could not reset your password");
   const data = await res.json();
   setToken(data.token);
   return data;
@@ -118,18 +290,39 @@ export async function fetchMe(): Promise<User | null> {
 export async function logout(): Promise<void> {
   await fetch(`${API_BASE}/api/auth/logout`, { method: "POST", headers: authHeaders() }).catch(() => {});
   setToken("");
+  // Other tabs hold their own copy in their own sessionStorage; without this
+  // they'd keep showing a signed-in UI against a token the server just revoked.
+  broadcastLogout();
 }
 
 export function githubLoginUrl(): string {
   return `${API_BASE}/api/auth/github/login`;
 }
 
-export async function getAuthConfig(): Promise<{ github_oauth_enabled: boolean; max_upload_mb: number }> {
-  const res = await fetch(`${API_BASE}/api/auth/config`);
-  if (!res.ok) return { github_oauth_enabled: false, max_upload_mb: maxUploadMb };
+export interface AuthConfig {
+  github_oauth_enabled: boolean;
+  max_upload_mb: number;
+  email_verification_enabled: boolean;
+  login_otp_enabled: boolean;
+  password_reset_enabled: boolean;
+}
+
+export async function getAuthConfig(): Promise<AuthConfig> {
+  const fallback: AuthConfig = {
+    github_oauth_enabled: false,
+    max_upload_mb: maxUploadMb,
+    // Assume the email flows are on when we can't ask: the UI only uses these
+    // to decide what to offer, and hiding a real "forgot password" link is
+    // worse than showing one that turns out to be unavailable.
+    email_verification_enabled: true,
+    login_otp_enabled: true,
+    password_reset_enabled: true,
+  };
+  const res = await fetch(`${API_BASE}/api/auth/config`).catch(() => null);
+  if (!res || !res.ok) return fallback;
   const cfg = await res.json();
   if (typeof cfg.max_upload_mb === "number") maxUploadMb = cfg.max_upload_mb;
-  return cfg;
+  return { ...fallback, ...cfg };
 }
 
 // ── Test generation ──────────────────────────
@@ -326,4 +519,213 @@ export async function getProfile(): Promise<import("../types").Profile> {
   const res = await fetch(`${API_BASE}/api/profile`, { headers: authHeaders() });
   if (!res.ok) await parseError(res, "Could not load your profile");
   return res.json();
+}
+
+// ── Dashboard ────────────────────────────────
+
+/** Totals, quota, the unified activity feed, and the 30-day series — one call.
+ *  Same scoping as the profile: the server reads the session's own user_id. */
+export async function getDashboard(): Promise<import("../types").Dashboard> {
+  const res = await fetch(`${API_BASE}/api/dashboard`, { headers: authHeaders() });
+  if (!res.ok) await parseError(res, "Could not load your dashboard");
+  return res.json();
+}
+
+// ── Settings ─────────────────────────────────
+
+export async function getSettings(): Promise<import("../types").UserSettings> {
+  const res = await fetch(`${API_BASE}/api/settings`, { headers: authHeaders() });
+  if (!res.ok) await parseError(res, "Could not load your settings");
+  return res.json();
+}
+
+/** Patch form defaults. Omitted fields keep their current server-side value. */
+export async function saveSettings(
+  patch: Partial<import("../types").UserSettings>
+): Promise<import("../types").UserSettings> {
+  const res = await fetch(`${API_BASE}/api/settings`, {
+    method: "PUT",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) await parseError(res, "Could not save your settings");
+  return res.json();
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/auth/change-password`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+  if (!res.ok) await parseError(res, "Could not change your password");
+  return (await res.json()).message || "Password updated.";
+}
+
+/** Revoke every session, including this one — so drop the local token too. */
+export async function logoutEverywhere(): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/auth/logout-all`, {
+    method: "POST", headers: authHeaders(),
+  });
+  if (!res.ok) await parseError(res, "Could not sign out your other sessions");
+  const data = await res.json();
+  setToken("");
+  broadcastLogout();
+  return data.message || "";
+}
+
+/** Delete the account and all its history. `confirm` must echo the account's
+ *  own email (or GitHub login) back — the server re-checks it. */
+export async function deleteAccount(confirm: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/account`, {
+    method: "DELETE",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ confirm }),
+  });
+  if (!res.ok) await parseError(res, "Could not delete your account");
+  setToken("");
+  broadcastLogout();
+}
+
+// ── Admin console ────────────────────────────
+//
+// Everything below is served behind the server's admin allowlist
+// (backend/services/admin.py). A non-admin session gets 404 from all of it —
+// deliberately, so the console doesn't announce itself to accounts that can't
+// use it. That means `is_admin` on the User is the only reason to *render* these
+// screens, and never the reason they're allowed to work.
+
+export interface AdminUser {
+  id: string;
+  email?: string | null;
+  name?: string | null;
+  github_login?: string | null;
+  avatar_url?: string | null;
+  created_at: number;
+  plan: string;
+  plan_expires_at?: number | null;
+  email_verified: boolean;
+  suspended: boolean;
+  suspended_at?: number | null;
+  suspended_reason?: string | null;
+  is_admin: boolean;
+  generations: number;
+  scans: number;
+  usage_this_period: number;
+}
+
+export interface AdminUserList {
+  users: AdminUser[];
+  /** Rows matching the search, not the page — the pager needs the whole count. */
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AdminUserDetail {
+  user: AdminUser;
+  quota: QuotaInfo;
+  totals: Record<string, number>;
+  active_sessions: number;
+  recent_generations: any[];
+  recent_scans: any[];
+  published_repos: any[];
+}
+
+export interface AdminOverview {
+  totals: Record<string, number>;
+  series: { date: string; generate: number; publish: number; scan: number; signups: number }[];
+  frameworks: { name: string; count: number }[];
+  languages: { name: string; count: number }[];
+  recent_failures: any[];
+}
+
+export interface AdminKeyHealth {
+  provider: string;
+  /** The .env variable this key came from — never the key itself. */
+  env_var: string;
+  index: number;
+  available: boolean;
+  /** Out of credit or past a daily cap: waiting will NOT clear this. */
+  hard_blocked: boolean;
+  cooldown_seconds_left: number;
+  call_count: number;
+  error_count: number;
+  last_used?: number | null;
+}
+
+export interface AdminSystem {
+  app_env: string;
+  uptime_seconds: number;
+  jobs_stored: number;
+  providers: { name: string; total_keys: number; available_keys: number; total_calls: number; healthy: boolean }[];
+  keys: AdminKeyHealth[];
+  call_log: any[];
+  config: Record<string, boolean | number>;
+}
+
+async function adminGet<T>(path: string, fallback: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
+  if (!res.ok) await parseError(res, fallback);
+  return res.json();
+}
+
+async function adminPost<T>(path: string, body: unknown, fallback: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) await parseError(res, fallback);
+  return res.json();
+}
+
+export function fetchAdminUsers(q = "", limit = 25, offset = 0): Promise<AdminUserList> {
+  const params = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
+  return adminGet(`/api/admin/users?${params}`, "Could not load users");
+}
+
+export function fetchAdminUser(userId: string): Promise<AdminUserDetail> {
+  return adminGet(`/api/admin/users/${encodeURIComponent(userId)}`, "Could not load that user");
+}
+
+export function fetchAdminOverview(): Promise<AdminOverview> {
+  return adminGet("/api/admin/overview", "Could not load the overview");
+}
+
+export function fetchAdminSystem(): Promise<AdminSystem> {
+  return adminGet("/api/admin/system", "Could not load system status");
+}
+
+export function adminSuspendUser(userId: string, suspended: boolean, reason = ""): Promise<AdminUser> {
+  return adminPost(`/api/admin/users/${encodeURIComponent(userId)}/suspend`,
+    { suspended, reason }, "Could not update that account");
+}
+
+/** Grant or revoke a plan by hand. `expiresInDays` omitted means it never lapses. */
+export function adminSetPlan(userId: string, plan: string, expiresInDays?: number | null, reason = ""): Promise<AdminUser> {
+  return adminPost(`/api/admin/users/${encodeURIComponent(userId)}/plan`,
+    { plan, expires_in_days: expiresInDays ?? null, reason }, "Could not change that plan");
+}
+
+export function adminSetUsage(userId: string, count: number): Promise<AdminUser> {
+  return adminPost(`/api/admin/users/${encodeURIComponent(userId)}/usage`,
+    { count }, "Could not adjust usage");
+}
+
+export function adminLogoutUser(userId: string): Promise<{ message: string }> {
+  return adminPost(`/api/admin/users/${encodeURIComponent(userId)}/logout-all`,
+    {}, "Could not sign that user out");
+}
+
+/** Irreversible. `confirm` must echo the target's own email — the server
+ *  re-checks it, exactly as the self-serve delete does. */
+export async function adminDeleteUser(userId: string, confirm: string): Promise<string> {
+  const params = new URLSearchParams({ confirm });
+  const res = await fetch(
+    `${API_BASE}/api/admin/users/${encodeURIComponent(userId)}?${params}`,
+    { method: "DELETE", headers: authHeaders() },
+  );
+  if (!res.ok) await parseError(res, "Could not delete that account");
+  return (await res.json()).message || "";
 }
