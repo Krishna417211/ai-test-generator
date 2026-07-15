@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { NavLink, Link, useNavigate, useLocation } from "react-router-dom";
-import { TestTube2, Sparkles, Rocket, ShieldCheck, Activity, LogOut, ChevronDown, Menu, X } from "lucide-react";
+import { TestTube2, Sparkles, Rocket, ShieldCheck, Activity, LogOut, UserRound, ChevronDown, Menu, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 const LINKS = [
@@ -82,6 +82,13 @@ export default function NavBar() {
                       <div className="text-sm font-medium text-white truncate">{user.name || "Account"}</div>
                       <div className="text-xs text-grey-400 truncate">{user.email || (user.github_login ? `@${user.github_login}` : "")}</div>
                     </div>
+                    <NavLink
+                      to="/profile"
+                      onClick={() => setMenu(false)}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-white/80 hover:bg-white/8 transition-colors"
+                    >
+                      <UserRound size={15} /> Profile &amp; usage
+                    </NavLink>
                     <button onClick={doLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-white/80 hover:bg-white/8 transition-colors">
                       <LogOut size={15} /> Log out
                     </button>

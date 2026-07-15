@@ -10,6 +10,7 @@ FilterResult from Agent 1, the original request, and any streamed output.
 import os
 import json
 import time
+import uuid
 import sqlite3
 import logging
 from threading import Lock
@@ -104,6 +105,46 @@ class JobStore:
                     PRIMARY KEY (full_name, user_id)
                 )
                 """
+            )
+            # Completed work, kept for the user's own history. Deliberately
+            # separate from `jobs`, which holds whole file bodies and is pruned
+            # at 24h — these rows are small and are never pruned, so a profile
+            # can still show what someone did months ago. `usage` can't serve
+            # this: it's a bare per-month counter with no detail.
+            c.execute(
+                """
+                CREATE TABLE IF NOT EXISTS generations (
+                    id         TEXT PRIMARY KEY,
+                    user_id    TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    source     TEXT,
+                    framework  TEXT,
+                    language   TEXT,
+                    test_count INTEGER NOT NULL DEFAULT 0,
+                    file_count INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            c.execute(
+                "CREATE INDEX IF NOT EXISTS idx_generations_user "
+                "ON generations(user_id, created_at DESC)"
+            )
+            c.execute(
+                """
+                CREATE TABLE IF NOT EXISTS scans (
+                    id         TEXT PRIMARY KEY,
+                    user_id    TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    url        TEXT NOT NULL,
+                    grade      TEXT,
+                    score      INTEGER,
+                    findings   INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            c.execute(
+                "CREATE INDEX IF NOT EXISTS idx_scans_user "
+                "ON scans(user_id, created_at DESC)"
             )
             self._migrate(c)
         logger.info(f"JobStore ready at {self.db_path}")
@@ -260,6 +301,83 @@ class JobStore:
                 (user_id,),
             ).fetchall()
         return [{"full_name": r[0], "repo_url": r[1], "created_at": r[2]} for r in rows]
+
+    # ── Activity history (profile) ───────────
+
+    def record_generation(
+        self,
+        user_id: str,
+        source: str,
+        framework: str,
+        language: str,
+        test_count: int,
+        file_count: int,
+    ) -> None:
+        with self._lock, self._conn() as c:
+            c.execute(
+                "INSERT INTO generations "
+                "(id, user_id, created_at, source, framework, language, test_count, file_count) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (uuid.uuid4().hex, user_id, time.time(), source, framework,
+                 language, test_count, file_count),
+            )
+
+    def list_generations(self, user_id: str, limit: int = 20) -> list[dict]:
+        with self._lock, self._conn() as c:
+            rows = c.execute(
+                "SELECT created_at, source, framework, language, test_count, file_count "
+                "FROM generations WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+                (user_id, limit),
+            ).fetchall()
+        return [
+            {"created_at": r[0], "source": r[1], "framework": r[2],
+             "language": r[3], "test_count": r[4], "file_count": r[5]}
+            for r in rows
+        ]
+
+    def record_scan(
+        self, user_id: str, url: str, grade: str, score: int, findings: int
+    ) -> None:
+        with self._lock, self._conn() as c:
+            c.execute(
+                "INSERT INTO scans (id, user_id, created_at, url, grade, score, findings) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (uuid.uuid4().hex, user_id, time.time(), url, grade, score, findings),
+            )
+
+    def list_scans(self, user_id: str, limit: int = 20) -> list[dict]:
+        with self._lock, self._conn() as c:
+            rows = c.execute(
+                "SELECT created_at, url, grade, score, findings "
+                "FROM scans WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+                (user_id, limit),
+            ).fetchall()
+        return [
+            {"created_at": r[0], "url": r[1], "grade": r[2],
+             "score": r[3], "findings": r[4]}
+            for r in rows
+        ]
+
+    def activity_totals(self, user_id: str) -> dict[str, int]:
+        """Lifetime counts. Separate from list_*(), which is capped for display —
+        the headline number must not silently become "20" once someone passes it."""
+        with self._lock, self._conn() as c:
+            gens = c.execute(
+                "SELECT COUNT(*), COALESCE(SUM(test_count), 0) FROM generations WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+            scans = c.execute(
+                "SELECT COUNT(*) FROM scans WHERE user_id = ?", (user_id,)
+            ).fetchone()[0]
+            repos = c.execute(
+                "SELECT COUNT(*) FROM published_repos WHERE user_id = ?", (user_id,)
+            ).fetchone()[0]
+        return {
+            "generations": gens[0],
+            "tests_written": gens[1],
+            "scans": scans,
+            "repos_published": repos,
+        }
 
     # ── Users ────────────────────────────────
 

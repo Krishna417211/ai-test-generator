@@ -317,3 +317,13 @@ export async function getMetrics(): Promise<any> {
   if (!res.ok) throw new Error("Metrics unavailable");
   return res.json();
 }
+
+// ── Profile ──────────────────────────────────
+
+/** Identity, plan/quota, and work history in one call. Scoped server-side to
+ *  the session's own user — no id is sent from here. */
+export async function getProfile(): Promise<import("../types").Profile> {
+  const res = await fetch(`${API_BASE}/api/profile`, { headers: authHeaders() });
+  if (!res.ok) await parseError(res, "Could not load your profile");
+  return res.json();
+}

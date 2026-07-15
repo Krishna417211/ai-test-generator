@@ -486,6 +486,40 @@ async def auth_me(ctx: dict = Depends(require_user)):
     return {"authenticated": True, "user": ctx["user"]}
 
 
+@app.get("/api/profile")
+async def profile(ctx: dict = Depends(require_user)):
+    """Everything the profile page renders, in one call: identity, plan and
+    quota, lifetime totals, and recent work.
+
+    Every read is keyed by the session's own user_id — never a client-supplied
+    id — so one account can't enumerate another's history.
+    """
+    user_id = ctx["user_id"]
+    row = store.get_user_by_id(user_id) or {}
+    quota = get_quota(user_id).as_dict()
+
+    # get_quota() already lapses an expired plan to free; only report a renewal
+    # date when the plan it belongs to is actually still live.
+    expires_at = row.get("plan_expires_at") if quota["plan"] != "free" else None
+
+    return {
+        "user": ctx["user"],
+        "member_since": row.get("created_at"),
+        "plan": {
+            **quota,
+            "expires_at": expires_at,
+            # False here is why the upgrade CTA must render an honest
+            # "not available yet" instead of a button that 503s on click.
+            "checkout_available": settings.billing_enabled,
+            "catalogue": billing.plans(),
+        },
+        "totals": store.activity_totals(user_id),
+        "generations": store.list_generations(user_id, limit=10),
+        "scans": store.list_scans(user_id, limit=10),
+        "repos": store.list_published_repos(user_id),
+    }
+
+
 @app.post("/api/auth/logout")
 async def auth_logout(request: Request):
     token = request.headers.get("Authorization", "")
@@ -878,6 +912,20 @@ async def scan_url(payload: ScanRequest, ctx: dict = Depends(require_user)):
     logger.info(f"Scanned {result.final_url}: grade {result.grade}, "
                 f"{len(result.findings)} findings")
 
+    # Scans were previously not recorded anywhere, so a user's audit history
+    # vanished the moment they navigated away. As with generations, a failure
+    # to log must not discard the result the user is waiting on.
+    try:
+        store.record_scan(
+            user_id=ctx["user_id"],
+            url=result.final_url or result.url,
+            grade=result.grade,
+            score=result.score,
+            findings=len(result.findings),
+        )
+    except Exception as e:
+        logger.warning(f"Could not record scan history: {e}")
+
     return ScanResponse(
         url=result.url,
         final_url=result.final_url,
@@ -940,6 +988,23 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
         raise HTTPException(500, "Test generation failed. Please try again.")
 
     lease.commit()
+
+    # History for the user's profile. `jobs` holds the detail but is pruned at
+    # 24h, and `usage` is only a per-month counter — neither can answer "what
+    # have I generated?". Never let bookkeeping sink a successful generation:
+    # the user's tests are already made and paid for.
+    try:
+        req = session.get("request", {})
+        store.record_generation(
+            user_id=ctx["user_id"],
+            source=req.get("repo_url") or req.get("zip_name") or "ZIP upload",
+            framework=result.framework,
+            language=payload.language or req.get("language", ""),
+            test_count=result.test_count,
+            file_count=len(result.files),
+        )
+    except Exception as e:
+        logger.warning(f"Could not record generation history: {e}")
 
     response = GenerateResponse(
         success=True,

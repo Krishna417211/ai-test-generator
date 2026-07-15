@@ -1,3 +1,7 @@
+// `User` is owned by api.ts (it mirrors the server's public_user shape). Import
+// it type-only so this stays erased at build time and no import cycle forms.
+import type { User } from "../utils/api";
+
 export type Framework = "playwright" | "cypress" | "selenium";
 export type Language = "typescript" | "javascript" | "python" | "java";
 
@@ -98,6 +102,66 @@ export interface ProviderStatus {
   available_keys: number;
   total_calls: number;
   healthy: boolean;
+}
+
+// ── Profile ──────────────────────────────────
+
+export interface GenerationRecord {
+  created_at: number;
+  source: string;
+  framework: string;
+  language: string;
+  test_count: number;
+  file_count: number;
+}
+
+export interface ScanRecord {
+  created_at: number;
+  url: string;
+  grade: string;
+  score: number;
+  findings: number;
+}
+
+export interface PublishedRepo {
+  full_name: string;
+  repo_url: string;
+  created_at: number;
+}
+
+export interface PlanCatalogueEntry {
+  id: "monthly" | "yearly";
+  name: string;
+  price_usd: number;
+  interval: string;
+  checkout_url: string | null;
+  savings_usd?: number;
+}
+
+export interface Profile {
+  user: User;
+  member_since: number | null;
+  plan: {
+    plan: string;
+    used: number;
+    limit: number | null;
+    remaining: number | null;
+    period: string;
+    resets_at: number;
+    /** Only set for a live paid plan; free plans never carry a renewal date. */
+    expires_at: number | null;
+    checkout_available: boolean;
+    catalogue: PlanCatalogueEntry[];
+  };
+  totals: {
+    generations: number;
+    tests_written: number;
+    scans: number;
+    repos_published: number;
+  };
+  generations: GenerationRecord[];
+  scans: ScanRecord[];
+  repos: PublishedRepo[];
 }
 
 export interface AppState {
