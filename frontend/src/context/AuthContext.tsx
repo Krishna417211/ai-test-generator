@@ -8,8 +8,12 @@ interface AuthContextValue {
   /** Token is present but the server couldn't confirm it (down/5xx). */
   unavailable: boolean;
   retry: () => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, name?: string) => Promise<void>;
+  /** Resolves to where the attempt landed — a session, an OTP challenge, or a
+   *  verification wall. Only "ok" means the user is now logged in. */
+  login: (email: string, password: string) => Promise<api.LoginResult>;
+  signup: (email: string, password: string, name?: string) => Promise<api.LoginResult>;
+  /** Finish an OTP login with the emailed code. */
+  completeOtp: (challengeId: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   adoptToken: (token: string) => Promise<void>;
@@ -29,6 +33,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // otherwise a blip bounces the user off the page they were on.
   const hydrate = async () => {
     setLoading(true);
+    // This tab's sessionStorage is empty on every new tab, even while another
+    // tab is signed in — ask them before concluding nobody is logged in. Costs
+    // a short wait only when there's genuinely no token to find.
+    await api.requestSessionFromOtherTabs();
     for (let attempt = 0; ; attempt++) {
       try {
         setUser(await api.fetchMe());
@@ -55,12 +63,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { hydrate(); }, []);
 
+  // Serve other tabs for as long as this one is open, and follow them out when
+  // one logs out. Both listen on `storage`, which only fires cross-tab.
+  useEffect(() => {
+    const stopServing = api.serveSessionToOtherTabs();
+    const stopListening = api.onLogoutElsewhere(() => {
+      setUser(null);
+      setUnavailable(false);
+    });
+    return () => { stopServing(); stopListening(); };
+  }, []);
+
+  // login/signup no longer imply a session — they may hand back an OTP
+  // challenge or a verification wall instead. Only set the user when one was
+  // actually issued, and let the caller route on `status`.
   const login = async (email: string, password: string) => {
-    const { user } = await api.login(email, password);
-    setUser(user);
+    const result = await api.login(email, password);
+    if (result.status === "ok" && result.user) setUser(result.user);
+    return result;
   };
   const signup = async (email: string, password: string, name?: string) => {
-    const { user } = await api.signup(email, password, name);
+    const result = await api.signup(email, password, name);
+    if (result.status === "ok" && result.user) setUser(result.user);
+    return result;
+  };
+  const completeOtp = async (challengeId: string, code: string) => {
+    const { user } = await api.verifyLoginOtp(challengeId, code);
     setUser(user);
   };
   const logout = async () => {
@@ -75,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, unavailable, retry: hydrate, login, signup, logout, refresh, adoptToken }}>
+    <AuthContext.Provider value={{ user, loading, unavailable, retry: hydrate, login, signup, completeOtp, logout, refresh, adoptToken }}>
       {children}
     </AuthContext.Provider>
   );
