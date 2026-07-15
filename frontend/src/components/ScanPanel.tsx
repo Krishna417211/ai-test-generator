@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ShieldCheck, Loader2, Globe, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { ShieldCheck, Loader2, Globe, AlertTriangle, CheckCircle2, Youtube } from "lucide-react";
 import { scanUrl } from "../utils/api";
 import { pluralize } from "../utils/format";
 import type { ScanResult, SecurityFinding, Severity } from "../types";
@@ -25,7 +25,14 @@ function FindingCard({ f }: { f: SecurityFinding }) {
   const [open, setOpen] = useState(false);
   return (
     <div className={`rounded-xl border ${s.ring} p-3.5`}>
-      <button onClick={() => setOpen(!open)} className="w-full flex items-start gap-3 text-left">
+      {/* The detail panel is a sibling of this button, not a child of it: it
+          now contains a link, and an <a> inside a <button> is invalid HTML —
+          the click would toggle the card as well as follow the link. */}
+      <button
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="w-full flex items-start gap-3 text-left"
+      >
         <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${s.dot}`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -33,23 +40,39 @@ function FindingCard({ f }: { f: SecurityFinding }) {
             <span className="text-[10px] text-grey-500 uppercase tracking-wider">{f.category}</span>
           </div>
           <div className="text-sm text-white/90 font-medium mt-0.5">{f.title}</div>
-          {open && (
-            <div className="mt-2 space-y-2 text-xs">
-              <p className="text-grey-300 leading-relaxed">{f.description}</p>
-              {f.evidence && (
-                <div className="font-mono text-[11px] text-grey-500 bg-black/30 rounded px-2 py-1 break-all">
-                  {f.evidence}
-                </div>
-              )}
-              <div className="rounded-lg bg-emerald-500/8 border border-emerald-500/20 px-3 py-2">
-                <div className="text-emerald-300 font-semibold mb-0.5">Fix</div>
-                <p className="text-grey-300 leading-relaxed">{f.remediation}</p>
-              </div>
-            </div>
-          )}
         </div>
         <span className="text-xs text-grey-500 shrink-0">{open ? "−" : "+"}</span>
       </button>
+
+      {open && (
+        <div className="mt-2 space-y-2 text-xs pl-5">
+          <p className="text-grey-300 leading-relaxed">{f.description}</p>
+          {f.evidence && (
+            <div className="font-mono text-[11px] text-grey-500 bg-black/30 rounded px-2 py-1 break-all">
+              {f.evidence}
+            </div>
+          )}
+          <div className="rounded-lg bg-emerald-500/8 border border-emerald-500/20 px-3 py-2">
+            <div className="text-emerald-300 font-semibold mb-0.5">Fix</div>
+            <p className="text-grey-300 leading-relaxed">{f.remediation}</p>
+            {f.video_url && (
+              // Labelled as a search, not "the" video: it opens YouTube results
+              // for this issue. Promising a specific video would mean shipping
+              // hard-coded ids that rot, or model-invented ones that never
+              // existed. Saying what the link does costs nothing and is true.
+              <a
+                href={f.video_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-rose-300 hover:text-rose-200 transition-colors"
+              >
+                <Youtube size={12} className="shrink-0" />
+                Search YouTube for how to fix this
+              </a>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
