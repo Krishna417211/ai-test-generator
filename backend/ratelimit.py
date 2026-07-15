@@ -45,3 +45,13 @@ def rate_limit(limiter: SlidingWindowLimiter):
 # Endpoint limiters (calls per 60s per IP).
 analyze_limiter = SlidingWindowLimiter(max_calls=20, window_seconds=60)
 generate_limiter = SlidingWindowLimiter(max_calls=10, window_seconds=60)
+
+# Anything that sends an email, per hour per IP. Deliberately much tighter than
+# the others: each call puts a message in someone else's inbox, so an unlimited
+# one is a free mail-bombing service pointed at any address an attacker names,
+# and it burns the relay's reputation and sending quota along the way.
+email_limiter = SlidingWindowLimiter(max_calls=6, window_seconds=3600)
+
+# Guessing an OTP is capped per-challenge in verification.py; this stops someone
+# from parallelising that across many freshly-minted challenges from one host.
+otp_limiter = SlidingWindowLimiter(max_calls=20, window_seconds=600)
