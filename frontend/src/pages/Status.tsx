@@ -3,6 +3,7 @@ import { Activity, Cpu, Clock, Database, Zap, RefreshCw } from "lucide-react";
 import Page from "../components/Page";
 import PageHeader from "../components/PageHeader";
 import { getProviderStatus, getMetrics } from "../utils/api";
+import { pluralize } from "../utils/format";
 
 const PROVIDER_META: Record<string, { label: string; emoji: string }> = {
   gemini: { label: "Google Gemini", emoji: "✨" },
@@ -41,7 +42,7 @@ export default function Status() {
       <div className="glass rounded-2xl p-5">
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${tint}`}><Icon size={18} /></div>
         <div className="font-display text-2xl font-bold">{value}</div>
-        <div className="text-xs text-white/60 mt-0.5">{label}</div>
+        <div className="text-xs text-grey-400 mt-0.5">{label}</div>
       </div>
     );
   };
@@ -65,14 +66,14 @@ export default function Status() {
               </span>
               <span className="font-display font-semibold">{allHealthy ? "All systems operational" : "Degraded — some providers cooling down"}</span>
             </div>
-            <button onClick={load} className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white/80 transition-colors">
+            <button onClick={load} className="flex items-center gap-1.5 text-xs text-grey-400 hover:text-white/80 transition-colors">
               <RefreshCw size={13} className={ticking ? "animate-spin" : ""} /> Refresh
             </button>
           </div>
 
           {/* Metric tiles */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {stat(Zap, "LLM calls served", metrics ? String(metrics.total_llm_calls) : "—", "bg-brand-500/15 text-brand-300")}
+            {stat(Zap, metrics && metrics.total_llm_calls === 1 ? "LLM call served" : "LLM calls served", metrics ? String(metrics.total_llm_calls) : "—", "bg-brand-500/15 text-brand-300")}
             {stat(Clock, "Uptime", metrics ? fmtUptime(metrics.uptime_seconds) : "—", "bg-cyanx-400/15 text-cyanx-300")}
             {stat(Database, "Jobs stored", metrics ? String(metrics.jobs_stored) : "—", "bg-iris-500/15 text-iris-400")}
             {stat(Cpu, "Providers", String(providers.length), "bg-emerald-500/15 text-emerald-400")}
@@ -97,9 +98,9 @@ export default function Status() {
                   <div className="h-2 rounded-full bg-white/8 overflow-hidden">
                     <div className="h-full rounded-full bg-brand-gradient transition-all duration-700" style={{ width: `${pct}%` }} />
                   </div>
-                  <div className="flex justify-between mt-2 text-xs text-white/60">
+                  <div className="flex justify-between mt-2 text-xs text-grey-400">
                     <span>{p.available_keys}/{p.total_keys} keys available</span>
-                    <span>{p.total_calls} calls</span>
+                    <span>{pluralize(p.total_calls, "call")}</span>
                   </div>
                 </div>
               );

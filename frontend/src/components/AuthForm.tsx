@@ -53,7 +53,7 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
               <a href={githubLoginUrl()} className="w-full flex items-center justify-center gap-2.5 py-4 rounded-xl bg-white/10 hover:bg-white/15 border border-white/25 text-white font-semibold transition-all text-[15px] leading-[22px] shadow-card">
                 <Github size={17} /> Continue with GitHub
               </a>
-              <div className="flex items-center gap-3 text-xs text-white/50">
+              <div className="flex items-center gap-3 text-xs text-grey-400">
                 <div className="h-px flex-1 bg-white/10" /> or {isSignup ? "sign up" : "log in"} with email <div className="h-px flex-1 bg-white/10" />
               </div>
             </>
@@ -62,21 +62,21 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
           <form onSubmit={submit} className="space-y-3">
             {isSignup && (
               <div className="relative">
-                <UserIcon size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/50" />
+                <UserIcon size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-grey-400" />
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name (optional)"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white placeholder:text-white/50 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm" />
+                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-black/30 border border-grey-700 text-white placeholder:text-grey-400 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm" />
               </div>
             )}
             <div className="relative">
-              <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/50" />
+              <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-grey-400" />
               <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com"
-                className="w-full pl-10 pr-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white placeholder:text-white/50 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm" />
+                className="w-full pl-10 pr-4 py-3 rounded-xl bg-black/30 border border-grey-700 text-white placeholder:text-grey-400 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm" />
             </div>
             <div className="relative">
-              <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/50" />
+              <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-grey-400" />
               <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
                 placeholder={isSignup ? "Create a password (min 8 chars)" : "Your password"}
-                className="w-full pl-10 pr-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white placeholder:text-white/50 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm" />
+                className="w-full pl-10 pr-4 py-3 rounded-xl bg-black/30 border border-grey-700 text-white placeholder:text-grey-400 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm" />
             </div>
 
             {error && <div className="px-4 py-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-sm text-rose-300">{error}</div>}

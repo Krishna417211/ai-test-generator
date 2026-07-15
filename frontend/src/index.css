@@ -30,11 +30,11 @@
   ::-webkit-scrollbar { width: 9px; height: 9px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
-    background: linear-gradient(#a1d1b1, #a9d4bb);
+    background: linear-gradient(#545c60, #6b7479);
     border-radius: 8px;
     border: 2px solid #1c2529;
   }
-  ::-webkit-scrollbar-thumb:hover { background: linear-gradient(#cbe6d5, #c9e6d4); }
+  ::-webkit-scrollbar-thumb:hover { background: linear-gradient(#6b7479, #9aa3a8); }
 }
 
 @layer components {
@@ -54,15 +54,17 @@
     animation: gradientmove 6s ease infinite;
   }
 
-  /* Glass surfaces */
+  /* Glass surfaces — neutral grey tint. The fill/border were a mint white
+     (220,238,228), which put a faint sage cast on every card edge in the app;
+     these are neutral so the sage reads as an accent, not the ambient. */
   .glass {
-    background: rgba(220, 238, 228, 0.05);
-    border: 1px solid rgba(220, 238, 228, 0.12);
+    background: rgba(226, 232, 236, 0.05);
+    border: 1px solid rgba(226, 232, 236, 0.12);
     backdrop-filter: blur(14px);
   }
   .glass-strong {
     background: rgba(33, 43, 48, 0.68);
-    border: 1px solid rgba(220, 238, 228, 0.1);
+    border: 1px solid rgba(226, 232, 236, 0.1);
     backdrop-filter: blur(20px);
   }
 

@@ -35,7 +35,7 @@ export default function CodeViewer({ filename, content, height = 384 }: Props) {
       language={languageFor(filename)}
       value={content}
       theme="vs-dark"
-      loading={<div className="p-4 text-xs text-white/40">Loading editor…</div>}
+      loading={<div className="p-4 text-xs text-grey-500">Loading editor…</div>}
       options={{
         readOnly: true,
         domReadOnly: true,

@@ -9,6 +9,7 @@ cannot set custom headers).
 """
 
 import re
+import time
 import uuid
 import base64
 import hashlib
@@ -107,6 +108,12 @@ def new_user_id() -> str:
 
 def public_user(user: dict) -> dict:
     """Strip secrets before sending a user to the client."""
+    # An expired paid plan reads as free — mirrors store.get_plan() so the UI
+    # never shows Pro to someone whose subscription has lapsed.
+    plan = user.get("plan") or "free"
+    expires_at = user.get("plan_expires_at")
+    if expires_at is not None and expires_at < time.time():
+        plan = "free"
     return {
         "id": user["id"],
         "email": user.get("email"),
@@ -114,6 +121,7 @@ def public_user(user: dict) -> dict:
         "github_login": user.get("github_login"),
         "avatar_url": user.get("avatar_url"),
         "has_github": bool(user.get("github_login")),
+        "plan": plan,
     }
 
 

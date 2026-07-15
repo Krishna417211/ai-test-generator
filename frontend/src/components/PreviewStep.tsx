@@ -1,5 +1,6 @@
 import { ChevronRight, Layers, AlertTriangle, Route } from "lucide-react";
 import type { ProjectAnalysis } from "../types";
+import { formatTokens, pluralize } from "../utils/format";
 
 interface Props {
   analysis: ProjectAnalysis;
@@ -16,37 +17,37 @@ export default function PreviewStep({ analysis, onContinue }: Props) {
   return (
     <div className="w-full max-w-3xl mx-auto space-y-5">
       {/* Summary card */}
-      <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+      <div className="rounded-xl border border-grey-700 bg-white/5 p-5">
         <div className="flex items-start justify-between mb-3">
           <div>
-            <span className="text-xs font-semibold text-progress-400 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-grey-400 uppercase tracking-wider">
               {analysis.framework}
             </span>
             <h3 className="text-base font-semibold text-white mt-1">Project Analysis</h3>
           </div>
           <div className="text-right">
             <div className="text-2xl font-bold text-white">{analysis.file_count}</div>
-            <div className="text-xs text-white/40">UI files found</div>
+            <div className="text-xs text-grey-500">UI files found</div>
           </div>
         </div>
-        <p className="text-sm text-white/60 leading-relaxed">{analysis.project_summary}</p>
-        <div className="mt-3 text-xs text-white/30">
-          ~{(analysis.total_tokens / 1000).toFixed(0)}k tokens • {analysis.routes.length} routes detected
+        <p className="text-sm text-grey-400 leading-relaxed">{analysis.project_summary}</p>
+        <div className="mt-3 text-xs text-grey-500">
+          {formatTokens(analysis.total_tokens)} tokens • {pluralize(analysis.routes.length, "route")} detected
         </div>
       </div>
 
       {/* Routes */}
       {analysis.routes.length > 0 && (
-        <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+        <div className="rounded-xl border border-grey-700 bg-white/5 p-5">
           <div className="flex items-center gap-2 mb-3">
-            <Route size={14} className="text-progress-400" />
+            <Route size={14} className="text-grey-400" />
             <span className="text-sm font-semibold text-white">Detected Routes</span>
           </div>
           <div className="flex flex-wrap gap-2">
             {analysis.routes.map((route) => (
               <span
                 key={route}
-                className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-xs text-white/60 font-mono"
+                className="px-2.5 py-1 rounded-lg bg-white/5 border border-grey-700 text-xs text-grey-400 font-mono"
               >
                 {route}
               </span>
@@ -57,9 +58,9 @@ export default function PreviewStep({ analysis, onContinue }: Props) {
 
       {/* Key pages */}
       {analysis.key_pages.length > 0 && (
-        <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+        <div className="rounded-xl border border-grey-700 bg-white/5 p-5">
           <div className="flex items-center gap-2 mb-4">
-            <Layers size={14} className="text-progress-400" />
+            <Layers size={14} className="text-grey-400" />
             <span className="text-sm font-semibold text-white">Key Pages to Test</span>
           </div>
           <div className="space-y-3">
@@ -67,7 +68,7 @@ export default function PreviewStep({ analysis, onContinue }: Props) {
               <div key={i} className="flex gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-mono text-progress-300 truncate">{page.path}</span>
+                    <span className="text-xs font-mono text-grey-200 truncate">{page.path}</span>
                     <span
                       className={`shrink-0 px-1.5 py-0.5 rounded text-xs border ${
                         PRIORITY_COLORS[page.test_priority as keyof typeof PRIORITY_COLORS] ||
@@ -77,11 +78,11 @@ export default function PreviewStep({ analysis, onContinue }: Props) {
                       {page.test_priority}
                     </span>
                   </div>
-                  <p className="text-xs text-white/50">{page.description}</p>
+                  <p className="text-xs text-grey-400">{page.description}</p>
                   {page.suggested_tests?.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1.5">
                       {page.suggested_tests.map((t, j) => (
-                        <span key={j} className="text-xs text-white/30 bg-white/5 px-2 py-0.5 rounded">
+                        <span key={j} className="text-xs text-grey-500 bg-white/5 px-2 py-0.5 rounded">
                           {t}
                         </span>
                       ))}
@@ -114,7 +115,7 @@ export default function PreviewStep({ analysis, onContinue }: Props) {
 
       <button
         onClick={onContinue}
-        className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-progress-600 hover:bg-progress-500 text-white font-semibold transition-all text-sm"
+        className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl btn-primary font-semibold text-sm"
       >
         Configure Test Generation
         <ChevronRight size={16} />

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Play, Settings } from "lucide-react";
+import { Play, Settings, AlertTriangle } from "lucide-react";
 import type { Framework, Language } from "../types";
 
 interface Config {
@@ -14,6 +14,9 @@ interface Props {
   detectedFramework: string;
   onGenerate: (config: Config) => void;
   loading: boolean;
+  /** A failed generation returns the user to this step. Without surfacing the
+   *  reason here, a 503 looked identical to the button doing nothing at all. */
+  error?: string | null;
 }
 
 const FRAMEWORKS: { id: Framework; label: string; desc: string }[] = [
@@ -39,7 +42,7 @@ const LANGUAGES: Record<Framework, { id: Language; label: string }[]> = {
   ],
 };
 
-export default function ConfigureStep({ detectedFramework, onGenerate, loading }: Props) {
+export default function ConfigureStep({ detectedFramework, onGenerate, loading, error }: Props) {
   const [framework, setFramework] = useState<Framework>("playwright");
   const [language, setLanguage] = useState<Language>("typescript");
   const [testFlows, setTestFlows] = useState("");
@@ -56,9 +59,9 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
 
   return (
     <div className="w-full max-w-2xl mx-auto space-y-6">
-      <div className="flex items-center gap-2 text-white/40 text-xs mb-2">
+      <div className="flex items-center gap-2 text-grey-500 text-xs mb-2">
         <Settings size={13} />
-        <span>Detected: <span className="text-progress-400">{detectedFramework}</span></span>
+        <span>Detected: <span className="text-grey-300">{detectedFramework}</span></span>
       </div>
 
       {/* Framework */}
@@ -69,14 +72,17 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
             <button
               key={fw.id}
               onClick={() => handleFrameworkChange(fw.id)}
+              aria-pressed={framework === fw.id}
               className={`p-3 rounded-xl border text-left transition-all ${
                 framework === fw.id
-                  ? "border-progress-500 bg-progress-500/15 text-white"
-                  : "border-white/10 bg-white/5 text-white/50 hover:border-white/20 hover:text-white/70"
+                  ? "border-grey-300 bg-white/[0.08] text-white shadow-inner-hi"
+                  : "border-grey-700 bg-white/[0.02] text-grey-400 hover:border-grey-600 hover:text-grey-300"
               }`}
             >
               <div className="font-semibold text-sm">{fw.label}</div>
-              <div className="text-xs mt-1 opacity-60">{fw.desc}</div>
+              <div className={`text-xs mt-1 ${framework === fw.id ? "text-grey-400" : "text-grey-500"}`}>
+                {fw.desc}
+              </div>
             </button>
           ))}
         </div>
@@ -90,10 +96,11 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
             <button
               key={lang.id}
               onClick={() => setLanguage(lang.id)}
+              aria-pressed={language === lang.id}
               className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all ${
                 language === lang.id
-                  ? "border-progress-500 bg-progress-500/15 text-white"
-                  : "border-white/10 bg-white/5 text-white/50 hover:text-white/70"
+                  ? "border-grey-300 bg-white/[0.08] text-white shadow-inner-hi"
+                  : "border-grey-700 bg-white/[0.02] text-grey-400 hover:border-grey-600 hover:text-grey-300"
               }`}
             >
               {lang.label}
@@ -105,16 +112,16 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
       {/* Test flows */}
       <div>
         <label className="block text-sm font-semibold text-white mb-2">
-          What to test <span className="text-white/30 font-normal">(optional)</span>
+          What to test <span className="text-grey-500 font-normal">(optional)</span>
         </label>
         <textarea
           value={testFlows}
           onChange={(e) => setTestFlows(e.target.value)}
           placeholder={`Describe the flows you want tested. For example:\n- User registration and login\n- Product search and add to cart\n- Checkout with payment form\n- Profile settings update`}
           rows={5}
-          className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/25 focus:outline-none focus:border-progress-500 transition-colors text-sm resize-none"
+          className="w-full px-4 py-3 rounded-xl bg-black/20 border border-grey-700 text-white placeholder:text-grey-500 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm resize-none"
         />
-        <p className="text-xs text-white/30 mt-1">
+        <p className="text-xs text-grey-500 mt-1">
           Leave blank to auto-test all detected pages and flows.
         </p>
       </div>
@@ -126,36 +133,49 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading }
           type="url"
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
-          className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-progress-500 transition-colors text-sm font-mono"
+          className="w-full px-4 py-3 rounded-xl bg-black/20 border border-grey-700 text-white focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm font-mono"
         />
       </div>
 
-      {/* CI toggle */}
-      <label className="flex items-center gap-3 cursor-pointer select-none">
-        <div
-          onClick={() => setIncludeCi(!includeCi)}
-          className={`w-10 h-6 rounded-full border transition-all ${
-            includeCi ? "bg-progress-600 border-progress-500" : "bg-white/10 border-white/20"
-          } relative`}
+      {/* CI toggle — a real switch, so the whole row (not just the 40px track)
+          is a hit target and screen readers get the on/off state. */}
+      <button
+        type="button"
+        role="switch"
+        aria-checked={includeCi}
+        onClick={() => setIncludeCi(!includeCi)}
+        className="flex items-center gap-3 select-none group"
+      >
+        <span
+          className={`w-10 h-6 rounded-full border transition-colors relative shrink-0 ${
+            includeCi ? "bg-brand-500 border-brand-400" : "bg-white/5 border-grey-600"
+          }`}
         >
           <span
-            className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-              includeCi ? "left-4" : "left-0.5"
+            className={`absolute top-0.5 w-5 h-5 rounded-full shadow transition-all ${
+              includeCi ? "left-4 bg-ink-950" : "left-0.5 bg-grey-400"
             }`}
           />
-        </div>
-        <span className="text-sm text-white/70">
+        </span>
+        <span className="text-sm text-grey-300 group-hover:text-white transition-colors">
           Include GitHub Actions + GitLab CI yaml
         </span>
-      </label>
+      </button>
+
+      {error && (
+        <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-sm text-rose-300">
+          <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+          <span>{error}</span>
+        </div>
+      )}
 
       <button
         onClick={() => onGenerate({ framework, language, testFlows, baseUrl, includeCi })}
         disabled={loading}
-        className="w-full flex items-center justify-center gap-2 py-4 rounded-xl bg-progress-600 hover:bg-progress-500 disabled:opacity-40 text-white font-bold transition-all"
+        className="w-full flex items-center justify-center gap-2 py-4 rounded-xl btn-primary disabled:opacity-40 font-semibold"
       >
         <Play size={16} />
-        Generate Test Suite
+        {loading ? "Generating..." : "Generate Test Suite"}
       </button>
     </div>
   );

@@ -142,12 +142,19 @@ def _validate_target(url: str) -> str:
     url = url.strip()
     if not url:
         raise ScanError("Please provide a URL to scan.")
-    if not re.match(r"^https?://", url, re.I):
+    # Only bare hosts get a scheme prepended. Testing for `^https?://` instead
+    # meant any *other* scheme was treated as scheme-less: "ftp://evil.com"
+    # became "https://ftp://evil.com", whose hostname parses as "ftp" — so the
+    # user got "Could not resolve host 'ftp'" and the scheme check below was
+    # unreachable.
+    if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.\-]*://", url):
         url = "https://" + url  # assume https if scheme omitted
 
     parsed = urlparse(url)
     if parsed.scheme.lower() not in ("http", "https"):
-        raise ScanError("Only http and https URLs can be scanned.")
+        raise ScanError(
+            f"Only http:// and https:// URLs can be scanned — got '{parsed.scheme}://'."
+        )
     host = parsed.hostname
     if not host:
         raise ScanError("Could not parse a hostname from that URL.")

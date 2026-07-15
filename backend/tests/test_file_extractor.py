@@ -125,6 +125,74 @@ class TestDetectFramework:
         assert "React" in detect_framework(files)
 
 
+class TestDetectFrameworkSplitLayout:
+    """Manifests must be found at any depth.
+
+    Detection only read root-level package.json / requirements.txt, so the very
+    common frontend/ + backend/ layout matched neither and fell through to
+    backend guesswork — testgen-ai itself reported "Flask (Jinja2 templates)".
+    """
+
+    def test_nested_frontend_package_json_detects_react(self):
+        files = {
+            "frontend/package.json": json.dumps({"dependencies": {"react": "^18.3.1"}}),
+            "frontend/src/App.tsx": "export default function App() { return <div/>; }",
+            "backend/requirements.txt": "fastapi==0.110.0",
+        }
+        assert "React" in detect_framework(files)
+
+    def test_nested_requirements_detects_django(self):
+        files = {"backend/requirements.txt": "Django==5.0", "backend/app/views.py": "x = 1"}
+        assert "Django" in detect_framework(files)
+
+    def test_nested_fastapi_without_ui(self):
+        files = {"api/requirements.txt": "fastapi==0.110.0", "api/main.py": "x = 1"}
+        assert "FastAPI" in detect_framework(files)
+
+    def test_root_manifest_beats_nested_one(self):
+        files = {
+            "package.json": json.dumps({"dependencies": {"vue": "^3.4.0"}}),
+            "examples/demo/package.json": json.dumps({"dependencies": {"react": "^18.0.0"}}),
+        }
+        assert "Vue" in detect_framework(files)
+
+
+class TestFlaskDetectionIsPrecise:
+    """A substring match on "from flask import" also hit code that merely
+    mentions the string — including this detector's own source and its tests —
+    so a React monorepo containing that literal detected itself as Flask."""
+
+    def test_mentioning_flask_in_a_string_is_not_a_flask_app(self):
+        files = {
+            "frontend/package.json": json.dumps({"dependencies": {"react": "^18.0.0"}}),
+            "backend/detector.py": '''
+def detect(files):
+    return any("from flask import" in c for c in files.values())
+''',
+        }
+        assert "Flask" not in detect_framework(files)
+        assert "React" in detect_framework(files)
+
+    def test_real_flask_import_still_detected(self):
+        files = {"app.py": "from flask import Flask\napp = Flask(__name__)\n"}
+        assert "Flask" in detect_framework(files)
+
+    def test_real_flask_import_indented_still_detected(self):
+        files = {"app/factory.py": "def create():\n    import flask\n    return flask.Flask(__name__)\n"}
+        assert "Flask" in detect_framework(files)
+
+    def test_this_repos_own_extractor_is_not_a_flask_app(self):
+        """Regression on the literal file that caused it."""
+        from pathlib import Path
+
+        extractor_src = Path(__file__).parent.parent / "services" / "file_extractor.py"
+        files = {
+            "frontend/package.json": json.dumps({"dependencies": {"react": "^18.3.1"}}),
+            "backend/services/file_extractor.py": extractor_src.read_text(),
+        }
+        assert "React" in detect_framework(files)
+
+
 # ─────────────────────────────────────────────
 # detect_monorepo tests
 # ─────────────────────────────────────────────

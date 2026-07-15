@@ -139,6 +139,29 @@ class ExtractionResult:
 # Framework detection
 # ─────────────────────────────────────────────
 
+def find_manifest(files: dict[str, str], name: str) -> str:
+    """Content of the shallowest file called `name`, searched at any depth.
+
+    Looking only at the repo root broke every split-layout project: a repo with
+    frontend/package.json and backend/requirements.txt matched neither, so React
+    detection was skipped entirely and the stack fell through to backend
+    guesswork. Shallowest wins, so a root manifest still beats a nested one.
+    """
+    candidates = [p for p in files if p == name or p.endswith("/" + name)]
+    if not candidates:
+        return ""
+    candidates.sort(key=lambda p: (p.count("/"), len(p)))
+    return files[candidates[0]]
+
+
+# A real Flask app imports flask at the start of a line. Substring-matching
+# "from flask import" anywhere in a .py also matched this module's own detection
+# code and its tests, so testgen-ai — a React app — detected itself as Flask.
+_PY_IMPORT_RE = {
+    "flask": re.compile(r"^\s*(from flask import|import flask\b)", re.M),
+}
+
+
 def detect_framework(files: dict[str, str]) -> str:
     """
     Detect the app's UI stack — SPA frameworks (React/Vue/…), server-rendered
@@ -155,7 +178,7 @@ def detect_framework(files: dict[str, str]) -> str:
         return any(p.lower().endswith(exts) for p in paths)
 
     # ── 1. JavaScript / SPA frameworks (package.json is authoritative) ──
-    pkg_content = files.get("package.json", "")
+    pkg_content = find_manifest(files, "package.json")
     if pkg_content:
         try:
             pkg = json.loads(pkg_content)
@@ -186,7 +209,7 @@ def detect_framework(files: dict[str, str]) -> str:
 
     # ── 2. Python backends ──
     py_reqs = " ".join(
-        files.get(name, "")
+        find_manifest(files, name)
         for name in ("requirements.txt", "pyproject.toml", "Pipfile", "setup.py")
     ).lower()
     settings_blob = " ".join(
@@ -199,19 +222,19 @@ def detect_framework(files: dict[str, str]) -> str:
     ):
         return "Django (server-rendered templates)"
     if "flask" in py_reqs or any(
-        "from flask import" in files.get(p, "") for p in paths if p.endswith(".py")
+        _PY_IMPORT_RE["flask"].search(files.get(p, "")) for p in paths if p.endswith(".py")
     ):
         return "Flask (Jinja2 templates)"
     if "fastapi" in py_reqs:
         return "FastAPI (Jinja2 templates)" if has_ext(".html", ".j2") else "FastAPI (API)"
 
     # ── 3. Ruby on Rails ──
-    gemfile = files.get("Gemfile", "").lower()
+    gemfile = find_manifest(files, "Gemfile").lower()
     if "rails" in gemfile or has_ext(".erb") or any(p.endswith("config/routes.rb") for p in paths):
         return "Ruby on Rails (ERB templates)"
 
     # ── 4. PHP / Laravel ──
-    composer = files.get("composer.json", "").lower()
+    composer = find_manifest(files, "composer.json").lower()
     if "laravel/framework" in composer or "laravel" in pkg_content.lower() or has_ext(".blade.php"):
         return "Laravel/Blade"
 
@@ -227,7 +250,7 @@ def detect_framework(files: dict[str, str]) -> str:
         return "Vue 3"
     if ".svelte" in path_blob:
         return "Svelte/SvelteKit"
-    if "angular.json" in files:
+    if find_manifest(files, "angular.json"):
         return "Angular"
     if has_ext(".jsx", ".tsx"):
         return "React (Vite/CRA)"
@@ -240,11 +263,11 @@ def detect_monorepo(files: dict[str, str]) -> tuple[bool, list[str]]:
     # A malformed package.json must not crash the whole analysis, so parse
     # defensively and treat unparseable content as an empty object.
     try:
-        pkg = json.loads(files.get("package.json", "{}"))
+        pkg = json.loads(find_manifest(files, "package.json") or "{}")
     except json.JSONDecodeError:
         pkg = {}
 
-    if "lerna.json" in files or "nx.json" in files:
+    if find_manifest(files, "lerna.json") or find_manifest(files, "nx.json"):
         workspaces = pkg.get("workspaces", [])
         if isinstance(workspaces, dict):
             workspaces = workspaces.get("packages", [])

@@ -25,7 +25,9 @@ USER_ENDPOINT = "https://api.github.com/user"
 
 # 'repo' is required to create private repos and push to them. If you only ever
 # push public repos, 'public_repo' is narrower — but 'repo' covers both.
-DEFAULT_SCOPE = "repo"
+# 'delete_repo' backs the delete button. It authorises deleting ANY repo the
+# user owns, so the API only ever deletes repos recorded in published_repos.
+DEFAULT_SCOPE = "repo,delete_repo"
 
 
 class OAuthError(Exception):

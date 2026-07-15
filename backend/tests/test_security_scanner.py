@@ -29,9 +29,28 @@ class TestSSRFGuard:
         with pytest.raises(ScanError):
             _validate_target(url)
 
-    def test_rejects_non_http_scheme(self):
-        with pytest.raises(ScanError):
-            _validate_target("ftp://example.com")
+    # Asserting only on ScanError let a bug hide in plain sight: "ftp://x" was
+    # rewritten to "https://ftp://x", so this raised for the wrong reason — DNS
+    # failing on the host "ftp" — and the scheme check was never reached. Assert
+    # the *reason*, not just the type.
+    @pytest.mark.parametrize(
+        "url, scheme",
+        [
+            ("ftp://example.com", "ftp"),
+            ("file:///etc/passwd", "file"),
+            ("gopher://example.com", "gopher"),
+            ("ws://example.com", "ws"),
+        ],
+    )
+    def test_rejects_non_http_scheme(self, url, scheme):
+        with pytest.raises(ScanError) as exc:
+            _validate_target(url)
+        msg = str(exc.value)
+        assert "Only http:// and https:// URLs" in msg, (
+            f"expected a scheme rejection, got: {msg!r}"
+        )
+        assert scheme in msg
+        assert "resolve host" not in msg
 
     def test_prepends_https_when_scheme_missing(self, monkeypatch):
         monkeypatch.setattr(
@@ -39,6 +58,26 @@ class TestSSRFGuard:
             lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))],
         )
         assert _validate_target("example.com").startswith("https://")
+
+    @pytest.mark.parametrize(
+        "url",
+        ["example.com", "example.com:8080", "example.com/path?q=1", "sub.example.co.uk"],
+    )
+    def test_bare_hosts_still_get_https(self, monkeypatch, url):
+        """The stricter scheme regex must not mistake a port or a dotted host
+        for a scheme and refuse to prepend https://."""
+        monkeypatch.setattr(
+            security_scanner.socket, "getaddrinfo",
+            lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))],
+        )
+        assert _validate_target(url) == "https://" + url
+
+    def test_existing_http_scheme_is_preserved(self, monkeypatch):
+        monkeypatch.setattr(
+            security_scanner.socket, "getaddrinfo",
+            lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))],
+        )
+        assert _validate_target("http://example.com") == "http://example.com"
 
     def test_redirect_guard_blocks_internal_hop(self):
         # An open redirect pointing at cloud metadata must be rejected mid-scan.

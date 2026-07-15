@@ -74,13 +74,13 @@ export default function NavBar() {
                   className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl btn-ghost">
                   <span className="w-7 h-7 rounded-lg bg-brand-gradient flex items-center justify-center text-xs font-bold text-ink-950">{initial}</span>
                   <span className="hidden sm:block text-[13px] text-white/[72%] max-w-[120px] truncate">{user.name || user.email}</span>
-                  <ChevronDown size={14} className="text-white/50" />
+                  <ChevronDown size={14} className="text-grey-400" />
                 </button>
                 {menu && (
                   <div className="absolute right-0 mt-2 w-56 glass-strong rounded-2xl p-2 shadow-card">
-                    <div className="px-3 py-2 border-b border-white/10 mb-1">
+                    <div className="px-3 py-2 border-b border-grey-700 mb-1">
                       <div className="text-sm font-medium text-white truncate">{user.name || "Account"}</div>
-                      <div className="text-xs text-white/50 truncate">{user.email || (user.github_login ? `@${user.github_login}` : "")}</div>
+                      <div className="text-xs text-grey-400 truncate">{user.email || (user.github_login ? `@${user.github_login}` : "")}</div>
                     </div>
                     <button onClick={doLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-white/80 hover:bg-white/8 transition-colors">
                       <LogOut size={15} /> Log out

@@ -35,7 +35,7 @@ export default function AuthCallback() {
         ) : (
           <>
             <Loader2 size={28} className="text-brand-300 mx-auto mb-3 animate-spin" />
-            <p className="text-white/70 text-sm">Signing you in with GitHub…</p>
+            <p className="text-grey-300 text-sm">Signing you in with GitHub…</p>
           </>
         )}
       </div>
