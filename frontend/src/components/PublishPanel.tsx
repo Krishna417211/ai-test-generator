@@ -3,6 +3,7 @@ import {
   Github, Upload, Lock, Loader2, Rocket, CheckCircle2, ExternalLink, AlertTriangle, Trash2,
 } from "lucide-react";
 import { publishZip, getAuthConfig, githubLoginUrl, validateZip, deleteRepo } from "../utils/api";
+import { pluralize } from "../utils/format";
 import type { PublishResult } from "../types";
 import { useAuth } from "../context/AuthContext";
 import { celebrate } from "../lib/celebrate";
@@ -150,9 +151,9 @@ export default function PublishPanel() {
             {pubResult.full_name} <ExternalLink size={13} />
           </a>
           <div className="text-xs text-grey-300 space-y-1">
-            <div>{pubResult.files_pushed} files pushed to <span className="font-mono">{pubResult.branch}</span></div>
+            <div>{pluralize(pubResult.files_pushed, "file")} pushed to <span className="font-mono">{pubResult.branch}</span></div>
             {pubResult.cicd_added && (
-              <div>CI/CD added · {pubResult.test_count} tests · {pubResult.all_valid ? "all files validated ✓" : "some files need review"}</div>
+              <div>CI/CD added · {pluralize(pubResult.test_count, "test")} · {pubResult.all_valid ? "all files validated ✓" : "some files need review"}</div>
             )}
           </div>
           {pubResult.warnings?.length > 0 && (

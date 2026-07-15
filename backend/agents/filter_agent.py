@@ -34,6 +34,26 @@ Focus on:
 Be precise and practical. Output only valid JSON when asked."""
 
 
+class NoTestableUIError(Exception):
+    """No browser-renderable files survived extraction.
+
+    Raised instead of letting the pipeline continue: with an empty file tree the
+    LLM has nothing to describe, and it answers by echoing the shape of the
+    example in the prompt — inventing a login page, a /dashboard route and a JWT
+    flow for a project that has none. Failing loudly beats a confident fiction.
+    """
+
+    def __init__(self, framework: str, scanned: int):
+        self.framework = framework
+        self.scanned = scanned
+        super().__init__(
+            f"No testable UI found. Testra writes browser-based E2E tests, but none "
+            f"of the {scanned} file(s) scanned render in a browser "
+            f"(detected: {framework}). Point it at a project with pages or "
+            f"components — .jsx, .tsx, .vue, .svelte or .html."
+        )
+
+
 @dataclass
 class FilterResult:
     project_summary: str           # Human-readable summary for the UI
@@ -73,6 +93,14 @@ class FilterAgent:
             f"~{extraction.total_tokens:,} tokens, framework={extraction.framework}"
         )
 
+        # Stop before the LLM sees an empty tree — see NoTestableUIError.
+        if extraction.file_count == 0:
+            logger.warning(
+                f"No UI files extracted from {len(raw_files)} raw file(s); "
+                f"framework={extraction.framework}. Refusing to analyze."
+            )
+            raise NoTestableUIError(extraction.framework, len(raw_files))
+
         # ── Phase 1b: LLM project analysis ──
         file_tree_summary = self._build_file_tree_summary(extraction.files)
         analysis = await self._analyze_with_llm(
@@ -105,6 +133,12 @@ class FilterAgent:
         """
         Ask the LLM to analyze the project and return structured JSON.
         """
+        # The schema below deliberately uses <angle-bracket> placeholders rather
+        # than realistic sample values. An earlier version illustrated the shape
+        # with "src/pages/Login.tsx", routes ["/", "/login", "/dashboard"] and a
+        # JWT/infinite-scroll challenge — and the model reproduced those verbatim
+        # for projects that contained none of them. Describe the shape; never
+        # supply content that is plausible enough to copy.
         prompt = f"""
 Analyze this {framework} web project file structure and return a JSON object.
 
@@ -116,27 +150,35 @@ USER'S TESTING GOALS:
 
 {"WARNINGS: " + "; ".join(warnings) if warnings else ""}
 
+GROUNDING RULES — these override everything else:
+- Every "path" you output MUST appear verbatim in FILE TREE above. Never invent a path.
+- Every route MUST be one you can point to in the file contents shown. Do not guess
+  conventional routes just because most apps have them.
+- Describe only features you can see evidence of. If FILE TREE is small or unclear,
+  return fewer items — a short, accurate answer is correct; a padded one is a failure.
+- If you cannot ground an item in the files shown, omit it entirely.
+- Return empty arrays rather than plausible-sounding filler.
+
 Return ONLY a valid JSON object (no markdown, no explanation) with this shape:
 {{
-  "project_summary": "2-3 sentence description of what this app does and its main features",
+  "project_summary": "<2-3 sentences describing what THIS app does, based only on the files above>",
   "key_pages": [
     {{
-      "path": "src/pages/Login.tsx",
-      "description": "User login page with email/password form",
-      "test_priority": "high",
-      "suggested_tests": ["successful login", "invalid credentials", "forgot password link"]
+      "path": "<exact path copied from FILE TREE>",
+      "description": "<what this page does>",
+      "test_priority": "<high|medium|low>",
+      "suggested_tests": ["<flow grounded in this file's contents>"]
     }}
   ],
   "key_components": [
     {{
-      "path": "src/components/Navbar.tsx",
-      "description": "Top navigation with links and user menu"
+      "path": "<exact path copied from FILE TREE>",
+      "description": "<what this component does>"
     }}
   ],
-  "routes": ["/", "/login", "/dashboard", "/profile"],
+  "routes": ["<route found in the routing code above>"],
   "testing_challenges": [
-    "App uses JWT auth — tokens need to be seeded in localStorage before protected route tests",
-    "Product grid uses infinite scroll — need special waits for dynamic content"
+    "<a real obstacle you can see in these files, or omit>"
   ]
 }}
 

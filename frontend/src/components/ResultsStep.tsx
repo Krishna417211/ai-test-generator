@@ -2,12 +2,48 @@ import { useState } from "react";
 import { Download, FileCode, AlertTriangle, CheckCircle, Copy, Check, FolderDown } from "lucide-react";
 import type { GenerateResponse, GeneratedFile } from "../types";
 import { downloadAsZip, downloadSingleFile } from "../utils/download";
+import { frameworkLabel, pluralize } from "../utils/format";
 import CodeViewer from "./CodeViewer";
 
 interface Props {
   result: GenerateResponse;
   onReset: () => void;
 }
+
+type Kind = "spec" | "pom" | "ci" | "docs" | "config";
+
+/** Classify by basename and directory, never by a substring of the whole path:
+ *  every generated file lives under `tests/`, so matching "test" anywhere in
+ *  the path tagged the entire suite — CI workflows included — as a test spec. */
+function classify(filename: string): Kind {
+  const base = filename.split("/").pop() ?? filename;
+  const dir = filename.slice(0, filename.length - base.length);
+
+  if (/\.ya?ml$/i.test(base)) return "ci";
+  if (/\.mdx?$/i.test(base)) return "docs";
+  if (/\.(spec|test)\./i.test(base)) return "spec";
+  if (/(^|\/)pages\//i.test(dir) || /Page\.[jt]sx?$/.test(base)) return "pom";
+  if (/\.config\./i.test(base)) return "config";
+  return "config";
+}
+
+const KIND_LABEL: Record<Kind, string> = {
+  spec: "Test Spec",
+  pom: "Page Object",
+  ci: "CI/CD",
+  docs: "Docs",
+  config: "Config",
+};
+
+// Sage marks the specs — the thing the user actually came for. Everything else
+// is supporting material and stays neutral, so the eye lands on the tests.
+const KIND_BADGE: Record<Kind, string> = {
+  spec: "text-brand-300 bg-brand-400/10 border-brand-400/25",
+  pom: "text-grey-300 bg-white/[0.06] border-grey-600",
+  ci: "text-grey-300 bg-white/[0.06] border-grey-600",
+  docs: "text-grey-400 bg-white/[0.04] border-grey-700",
+  config: "text-grey-400 bg-white/[0.04] border-grey-700",
+};
 
 function FileCard({ file }: { file: GeneratedFile }) {
   const [expanded, setExpanded] = useState(false);
@@ -19,30 +55,18 @@ function FileCard({ file }: { file: GeneratedFile }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const isTest = file.filename.includes("spec") || file.filename.includes("test");
-  const isCI = file.filename.includes(".yml") || file.filename.includes(".yaml");
-  const isPOM = file.filename.includes("Page") || file.filename.includes("pages/");
-
-  const tagColor = isTest
-    ? "text-emerald-400 bg-emerald-400/10 border-emerald-400/20"
-    : isCI
-    ? "text-iris-400 bg-iris-400/10 border-iris-400/20"
-    : isPOM
-    ? "text-progress-400 bg-progress-400/10 border-progress-400/20"
-    : "text-grey-500 bg-white/5 border-grey-700";
-
-  const tag = isTest ? "Test Spec" : isCI ? "CI/CD" : isPOM ? "Page Object" : "Config";
+  const kind = classify(file.filename);
 
   return (
-    <div className="rounded-xl border border-grey-700 bg-white/3 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 bg-white/5">
+    <div className="rounded-xl border border-grey-700 bg-white/[0.02] overflow-hidden transition-colors hover:border-grey-600">
+      <div className="flex items-center justify-between px-4 py-3 bg-white/[0.04]">
         <div className="flex items-center gap-3 min-w-0">
           <FileCode size={14} className="text-grey-500 shrink-0" />
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-mono text-white/80 truncate">{file.filename}</span>
-              <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded border ${tagColor}`}>
-                {tag}
+              <span className="text-xs font-mono text-grey-200 truncate">{file.filename}</span>
+              <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded border ${KIND_BADGE[kind]}`}>
+                {KIND_LABEL[kind]}
               </span>
             </div>
             <p className="text-xs text-grey-500 mt-0.5 truncate">{file.description}</p>
@@ -94,43 +118,40 @@ export default function ResultsStep({ result, onReset }: Props) {
   const validation = result.validation ?? [];
   const validCount = validation.filter(v => v.ok).length;
   const allValid = validation.length > 0 && validCount === validation.length;
+  const someInvalid = validation.length > 0 && !allValid;
 
-  // Group files
-  const specs = result.files.filter(f => f.filename.includes("spec") || f.filename.includes("test"));
-  const pages = result.files.filter(f => f.filename.includes("pages/") || f.filename.includes("Page"));
-  const configs = result.files.filter(f => !specs.includes(f) && !pages.includes(f));
+  // One classification drives both the badge and the grouping, so a file can
+  // only ever land in a single bucket. Previously the two filters overlapped
+  // and every page object was rendered twice.
+  const byKind = (kinds: Kind[]) => result.files.filter(f => kinds.includes(classify(f.filename)));
 
   const groups = [
-    { label: "Test Specs", files: specs, color: "text-emerald-400" },
-    { label: "Page Objects", files: pages, color: "text-progress-400" },
-    { label: "Config & CI/CD", files: configs, color: "text-iris-400" },
+    { label: "Test Specs", files: byKind(["spec"]) },
+    { label: "Page Objects", files: byKind(["pom"]) },
+    { label: "Config & CI/CD", files: byKind(["ci", "config", "docs"]) },
   ].filter(g => g.files.length > 0);
 
   return (
     <div className="w-full max-w-3xl mx-auto space-y-6">
       {/* Summary bar */}
-      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <CheckCircle size={18} className="text-emerald-400" />
-          <div>
-            <p className="text-sm font-semibold text-white">{result.summary}</p>
-            <p className="text-xs text-grey-500 mt-0.5">
-              {result.files.length} files · {result.test_count} test cases · {result.framework}
+      <div className="rounded-xl border border-grey-700 bg-white/[0.04] p-4 flex items-center justify-between gap-4">
+        <div className="flex items-start gap-3 min-w-0">
+          {someInvalid
+            ? <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
+            : <CheckCircle size={18} className="text-brand-400 shrink-0 mt-0.5" />}
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white">
+              {pluralize(result.test_count, "test")} across {pluralize(result.files.length, "file")}
             </p>
-            {validation.length > 0 && (
-              <span
-                className={`inline-flex items-center gap-1 mt-2 text-xs px-2 py-0.5 rounded-full border ${
-                  allValid
-                    ? "text-emerald-300 bg-emerald-400/10 border-emerald-400/20"
-                    : "text-amber-300 bg-amber-400/10 border-amber-400/20"
-                }`}
-              >
-                <CheckCircle size={11} />
-                {allValid
-                  ? "All files passed a syntax check"
-                  : `${validCount}/${validation.length} passed a syntax check`}
-              </span>
-            )}
+            <p className="text-xs mt-1">
+              <span className="text-grey-500">{frameworkLabel(result.framework)}</span>
+              {validation.length > 0 && (
+                <span className={someInvalid ? "text-amber-300" : "text-grey-500"}>
+                  {" · "}
+                  {allValid ? "syntax check passed" : `${validCount}/${validation.length} passed syntax check`}
+                </span>
+              )}
+            </p>
             {validation.length > 0 && (
               <p className="mt-1.5 text-[11px] text-grey-500">
                 Syntax-checked only — not executed. Run them against your app to confirm they pass.
@@ -141,7 +162,7 @@ export default function ResultsStep({ result, onReset }: Props) {
         <button
           onClick={handleDownload}
           disabled={downloading}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-all disabled:opacity-60 shrink-0"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg btn-primary text-sm font-semibold disabled:opacity-60 shrink-0"
         >
           <FolderDown size={15} />
           {downloading ? "Zipping..." : "Download All"}
@@ -167,9 +188,9 @@ export default function ResultsStep({ result, onReset }: Props) {
       )}
 
       {/* File groups */}
-      {groups.map(({ label, files, color }) => (
+      {groups.map(({ label, files }) => (
         <div key={label}>
-          <div className={`text-xs font-semibold uppercase tracking-wider mb-3 ${color}`}>
+          <div className="text-xs font-semibold uppercase tracking-wider mb-3 text-grey-400">
             {label} ({files.length})
           </div>
           <div className="space-y-2">
@@ -180,7 +201,8 @@ export default function ResultsStep({ result, onReset }: Props) {
         </div>
       ))}
 
-      {/* Actions */}
+      {/* Actions — the sage download lives in the summary bar above; this row
+          is the secondary repeat, so both buttons stay neutral. */}
       <div className="flex gap-3 pt-2">
         <button
           onClick={onReset}
@@ -190,10 +212,11 @@ export default function ResultsStep({ result, onReset }: Props) {
         </button>
         <button
           onClick={handleDownload}
-          className="flex-1 py-3 rounded-xl bg-progress-600 hover:bg-progress-500 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2"
+          disabled={downloading}
+          className="flex-1 py-3 rounded-xl border border-grey-700 bg-white/5 hover:bg-white/10 text-grey-300 hover:text-white text-sm font-medium transition-all disabled:opacity-60 flex items-center justify-center gap-2"
         >
           <Download size={15} />
-          Download ZIP
+          {downloading ? "Zipping..." : "Download ZIP"}
         </button>
       </div>
     </div>

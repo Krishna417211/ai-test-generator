@@ -28,14 +28,16 @@ export default function ProviderStatus({ currentProvider }: Props) {
   return (
     <div className="rounded-xl border border-grey-700 bg-white/5 p-4">
       <div className="flex items-center gap-2 mb-3">
-        <Zap size={14} className="text-progress-400" />
+        <Zap size={14} className="text-grey-400" />
         <span className="text-xs font-semibold text-grey-400 uppercase tracking-wider">LLM Providers</span>
       </div>
 
+      {/* The server already sends a full sentence ("Streaming from groq..."),
+          so prefixing "Using" here read as "Using Streaming from groq...". */}
       {currentProvider && (
-        <div className="mb-3 px-3 py-2 rounded-lg bg-progress-500/20 border border-progress-500/30 text-xs text-progress-300 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-progress-400 animate-pulse" />
-          Using {currentProvider}
+        <div className="mb-3 px-3 py-2 rounded-lg bg-white/[0.06] border border-grey-600 text-xs text-grey-300 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-brand-400 animate-pulse shrink-0" />
+          <span className="truncate">{currentProvider}</span>
         </div>
       )}
 

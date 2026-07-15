@@ -37,17 +37,17 @@ export default function StepIndicator({ currentStep }: Props) {
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
                   done
-                    ? "bg-progress-600 border-progress-600 text-white"
+                    ? "bg-brand-400 border-brand-400 text-ink-950"
                     : active
-                    ? "bg-transparent border-progress-500 text-progress-400"
-                    : "bg-transparent border-white/15 text-white/25"
+                    ? "bg-white/[0.06] border-grey-300 text-white"
+                    : "bg-transparent border-grey-700 text-grey-600"
                 }`}
               >
                 {done ? <Check size={13} /> : <span>{i + 1}</span>}
               </div>
               <span
                 className={`text-xs font-medium transition-colors ${
-                  active ? "text-white" : done ? "text-progress-400" : "text-white/25"
+                  active ? "text-white" : done ? "text-grey-400" : "text-grey-600"
                 }`}
               >
                 {step.label}
@@ -57,7 +57,7 @@ export default function StepIndicator({ currentStep }: Props) {
             {i < STEPS.length - 1 && (
               <div
                 className={`w-16 h-px mx-2 mb-5 transition-colors ${
-                  i < current ? "bg-progress-600" : "bg-white/10"
+                  i < current ? "bg-brand-400/50" : "bg-grey-700"
                 }`}
               />
             )}

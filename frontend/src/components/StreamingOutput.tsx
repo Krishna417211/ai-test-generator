@@ -18,14 +18,14 @@ export default function StreamingOutput({ output, provider, done }: Props) {
     <div className="w-full max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          {!done && <Loader2 size={14} className="animate-spin text-progress-400" />}
+          {!done && <Loader2 size={14} className="animate-spin text-grey-400" />}
           <span className="text-sm font-semibold text-white">
             {done ? "Generation complete" : "Generating tests..."}
           </span>
         </div>
         {provider && (
-          <div className="flex items-center gap-1.5 text-xs text-progress-300 bg-progress-500/15 px-3 py-1 rounded-full border border-progress-500/20">
-            <Zap size={11} />
+          <div className="flex items-center gap-1.5 text-xs text-grey-300 bg-white/[0.06] px-3 py-1 rounded-full border border-grey-600">
+            <Zap size={11} className="text-grey-400" />
             {provider}
           </div>
         )}
@@ -38,9 +38,9 @@ export default function StreamingOutput({ output, provider, done }: Props) {
           <div className="w-3 h-3 rounded-full bg-green-500/60" />
           <span className="ml-2 text-xs text-grey-500 font-mono">output</span>
         </div>
-        <pre className="p-4 text-xs text-green-300/80 font-mono leading-relaxed max-h-[500px] overflow-y-auto whitespace-pre-wrap">
-          {output || <span className="text-white/20">Waiting for output...</span>}
-          {!done && <span className="inline-block w-2 h-4 bg-green-400 ml-0.5 animate-pulse align-middle" />}
+        <pre className="p-4 text-xs text-brand-200/90 font-mono leading-relaxed max-h-[500px] overflow-y-auto whitespace-pre-wrap">
+          {output || <span className="text-grey-600">Waiting for output...</span>}
+          {!done && <span className="inline-block w-2 h-4 bg-brand-400 ml-0.5 animate-pulse align-middle" />}
           <div ref={bottomRef} />
         </pre>
       </div>

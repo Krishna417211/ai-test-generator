@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Github, Upload, ArrowRight, Lock, Loader2 } from "lucide-react";
 import { validateZip, getAuthConfig } from "../utils/api";
+import { formatBytes } from "../utils/format";
 
 interface Props {
   onAnalyze: (input: { type: "url"; url: string; token?: string } | { type: "zip"; file: File }) => void;
@@ -16,13 +17,19 @@ export default function GenerateInput({ onAnalyze, loading, error }: Props) {
   const [dragOver, setDragOver] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  // A failed analyze left its error on screen while the user typed a new URL or
+  // picked a new file. Editing the input dismisses it; the parent clears `error`
+  // before each attempt, so a repeat failure surfaces again.
+  const [dismissed, setDismissed] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Picks up the server's upload cap so validateZip can use it.
   useEffect(() => { getAuthConfig().catch(() => {}); }, []);
+  useEffect(() => { if (error) setDismissed(false); }, [error]);
 
   const selectFile = (f: File | undefined) => {
     if (!f) return;
+    setDismissed(true);
     const invalid = validateZip(f);
     setFileError(invalid);
     setFile(invalid ? null : f);
@@ -53,7 +60,7 @@ export default function GenerateInput({ onAnalyze, loading, error }: Props) {
           ].map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => setMode(id as "url" | "zip")}
+              onClick={() => { setMode(id as "url" | "zip"); setDismissed(true); setFileError(null); }}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 mode === id ? "bg-white/10 text-white shadow-inner-hi" : "text-white/65 hover:text-white/80"
               }`}
@@ -71,7 +78,7 @@ export default function GenerateInput({ onAnalyze, loading, error }: Props) {
                 <input
                   type="url"
                   value={url}
-                  onChange={(e) => setUrl(e.target.value)}
+                  onChange={(e) => { setUrl(e.target.value); setDismissed(true); }}
                   onKeyDown={(e) => e.key === "Enter" && submit()}
                   placeholder="https://github.com/owner/repo"
                   className="w-full pl-10 pr-4 py-3.5 rounded-xl bg-black/30 border border-grey-700 text-white placeholder:text-grey-400 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm"
@@ -107,13 +114,13 @@ export default function GenerateInput({ onAnalyze, loading, error }: Props) {
               </div>
               <div className="text-center">
                 <p className="text-sm text-white/75">{file ? file.name : "Drop your repo ZIP here"}</p>
-                <p className="text-xs text-grey-500 mt-1">{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : "or click to browse"}</p>
+                <p className="text-xs text-grey-500 mt-1">{file ? formatBytes(file.size) : "or click to browse"}</p>
               </div>
               <input ref={fileRef} type="file" accept=".zip" className="hidden" onChange={(e) => selectFile(e.target.files?.[0])} />
             </div>
           )}
 
-          {(fileError || error) && (
+          {(fileError || (error && !dismissed)) && (
             <div className="mt-4 px-4 py-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-sm text-rose-300">{fileError || error}</div>
           )}
 

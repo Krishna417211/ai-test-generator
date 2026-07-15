@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ShieldCheck, Loader2, Globe, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { scanUrl } from "../utils/api";
+import { pluralize } from "../utils/format";
 import type { ScanResult, SecurityFinding, Severity } from "../types";
 
 const SEV_STYLE: Record<Severity, { label: string; dot: string; text: string; ring: string }> = {
@@ -77,11 +78,11 @@ export default function ScanPanel() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-grey-300 leading-relaxed">
-        Enter your deployed URL and we'll audit it for common production security issues —
-        HTTPS/TLS, security headers, cookie flags, CORS, and accidentally-exposed files —
-        with a concrete fix for each. Passive & non-intrusive: it inspects configuration,
-        it doesn't attack your site.
+      {/* The page subtitle already lists what gets checked; repeating it here
+          just made the reader parse the same sentence twice. Keep only what
+          they can't know from it — that this is safe to point at production. */}
+      <p className="text-sm text-grey-400 leading-relaxed">
+        Passive and non-intrusive — it inspects configuration and never attacks your site.
       </p>
 
       <div className="relative">
@@ -148,7 +149,7 @@ export default function ScanPanel() {
             <div className="space-y-2">
               <div className="flex items-center gap-1.5 text-xs text-grey-500">
                 <AlertTriangle size={12} />
-                {result.findings.length} finding(s) · tap any to see details & the fix
+                {pluralize(result.findings.length, "finding")} · tap any to see details & the fix
               </div>
               {result.findings.map((f, i) => (
                 <FindingCard key={i} f={f} />

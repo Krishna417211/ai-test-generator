@@ -3,6 +3,7 @@ import { Activity, Cpu, Clock, Database, Zap, RefreshCw } from "lucide-react";
 import Page from "../components/Page";
 import PageHeader from "../components/PageHeader";
 import { getProviderStatus, getMetrics } from "../utils/api";
+import { pluralize } from "../utils/format";
 
 const PROVIDER_META: Record<string, { label: string; emoji: string }> = {
   gemini: { label: "Google Gemini", emoji: "✨" },
@@ -72,7 +73,7 @@ export default function Status() {
 
           {/* Metric tiles */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {stat(Zap, "LLM calls served", metrics ? String(metrics.total_llm_calls) : "—", "bg-brand-500/15 text-brand-300")}
+            {stat(Zap, metrics && metrics.total_llm_calls === 1 ? "LLM call served" : "LLM calls served", metrics ? String(metrics.total_llm_calls) : "—", "bg-brand-500/15 text-brand-300")}
             {stat(Clock, "Uptime", metrics ? fmtUptime(metrics.uptime_seconds) : "—", "bg-cyanx-400/15 text-cyanx-300")}
             {stat(Database, "Jobs stored", metrics ? String(metrics.jobs_stored) : "—", "bg-iris-500/15 text-iris-400")}
             {stat(Cpu, "Providers", String(providers.length), "bg-emerald-500/15 text-emerald-400")}
@@ -99,7 +100,7 @@ export default function Status() {
                   </div>
                   <div className="flex justify-between mt-2 text-xs text-grey-400">
                     <span>{p.available_keys}/{p.total_keys} keys available</span>
-                    <span>{p.total_calls} calls</span>
+                    <span>{pluralize(p.total_calls, "call")}</span>
                   </div>
                 </div>
               );

@@ -19,6 +19,13 @@ logger = logging.getLogger(__name__)
 # Max individual file size to fetch (skip huge files like bundled JS)
 MAX_FILE_SIZE_BYTES = 500_000  # 500 KB
 
+# GitHub 301s a renamed/transferred repo to its canonical /repositories/{id} URL,
+# and raw.githubusercontent.com redirects too. httpx does not follow redirects by
+# default, so every one of those became an unhandled HTTPStatusError surfacing to
+# the user as "Failed to fetch". httpx drops the Authorization header on a
+# cross-origin redirect, so a private-repo token cannot leak to another host.
+FOLLOW_REDIRECTS = True
+
 
 @dataclass
 class RepoFile:
@@ -52,7 +59,11 @@ def parse_github_url(url: str) -> RepoInfo:
         raise ValueError(f"Cannot parse GitHub URL: {url}")
 
     owner, repo, branch = match.group(1), match.group(2), match.group(3)
-    repo = repo.replace(".git", "")
+    # Strip only a trailing ".git" clone suffix. replace() matched anywhere in the
+    # name, so "krishna.github.io" became "krishnahub.io" — every GitHub Pages
+    # repo was unresolvable.
+    if repo.endswith(".git"):
+        repo = repo[: -len(".git")]
     return RepoInfo(owner=owner, repo=repo, branch=branch or "main")
 
 
@@ -88,7 +99,7 @@ class GitHubService:
             f"/git/trees/{repo_info.branch}?recursive=1"
         )
 
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=FOLLOW_REDIRECTS) as client:
             r = await client.get(url, headers=self._headers)
 
         if r.status_code == 404:
@@ -157,7 +168,7 @@ class GitHubService:
             f"https://raw.githubusercontent.com/"
             f"{repo_info.owner}/{repo_info.repo}/{repo_info.branch}/{path}"
         )
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=FOLLOW_REDIRECTS) as client:
             r = await client.get(url)
 
         if r.status_code == 404:
@@ -177,7 +188,7 @@ class GitHubService:
             f"{self.BASE_API}/repos/{repo_info.owner}/{repo_info.repo}"
             f"/contents/{path}?ref={repo_info.branch}"
         )
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=FOLLOW_REDIRECTS) as client:
             r = await client.get(url, headers=self._headers)
 
         if r.status_code == 404:
@@ -201,7 +212,7 @@ class GitHubService:
 
     async def _resolve_default_branch(self, repo_info: RepoInfo) -> str:
         url = f"{self.BASE_API}/repos/{repo_info.owner}/{repo_info.repo}"
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=FOLLOW_REDIRECTS) as client:
             r = await client.get(url, headers=self._headers)
         if r.status_code == 200:
             return r.json().get("default_branch", "main")

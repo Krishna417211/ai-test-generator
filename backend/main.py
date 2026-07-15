@@ -30,7 +30,7 @@ from fastapi.responses import StreamingResponse, RedirectResponse
 from config import settings
 from logging_config import configure_logging, request_id_var
 from ratelimit import rate_limit, analyze_limiter, generate_limiter
-from agents.filter_agent import FilterAgent
+from agents.filter_agent import FilterAgent, NoTestableUIError
 from agents.writer_agent import WriterAgent
 from models.schemas import (
     GenerateRequest, GenerateResponse, GeneratedFile,
@@ -212,7 +212,10 @@ async def analyze_repo(payload: GenerateRequest, ctx: dict = Depends(require_use
 
     # Run Filter Agent
     agent = FilterAgent()
-    result = await agent.run(raw_files, user_description=payload.test_flows)
+    try:
+        result = await agent.run(raw_files, user_description=payload.test_flows)
+    except NoTestableUIError as e:
+        raise HTTPException(422, str(e))
 
     # Build response
     previews = [
@@ -309,7 +312,10 @@ async def upload_zip(
     logger.info(f"ZIP upload: {len(raw_files)} files extracted")
 
     agent = FilterAgent()
-    result = await agent.run(raw_files, user_description=test_flows)
+    try:
+        result = await agent.run(raw_files, user_description=test_flows)
+    except NoTestableUIError as e:
+        raise HTTPException(422, str(e))
 
     import uuid
     job_id = str(uuid.uuid4())
@@ -650,13 +656,26 @@ async def publish_zip(
     validation: list[dict] = []
     all_valid = True
 
+    # None means "don't attempt a suite" — either the user didn't ask for CI, or
+    # there's no UI to drive. Pushing the project itself never depends on this.
+    filter_result = None
     if add_cicd:
         # Generate a validated E2E test suite + CI workflow and fold it into the
         # push. WriterAgent's self-heal loop is the "validate locally until green"
         # step — it re-prompts the LLM to fix any file that fails static validation.
         filter_agent = FilterAgent()
-        filter_result = await filter_agent.run(raw_files, user_description=test_flows)
+        try:
+            filter_result = await filter_agent.run(raw_files, user_description=test_flows)
+        except NoTestableUIError as e:
+            # Same reasoning as the provider-outage branch below: land the code
+            # and say what's missing. The CI workflow is dropped with it — it
+            # runs `npx playwright test`, which goes red on a repo with no specs.
+            logger.info(f"Skipping CI generation — nothing to test: {e}")
+            warnings.append(
+                f"{e} Your project was pushed without an E2E suite or CI/CD pipeline."
+            )
 
+    if filter_result is not None:
         writer = WriterAgent()
         try:
             result = await writer.run(

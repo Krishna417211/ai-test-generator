@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { Sparkles } from "lucide-react";
 import type { ProjectAnalysis, GenerateResponse } from "../types";
 import { analyzeRepo, uploadZip, generateTests, streamGeneration, QuotaExceededError } from "../utils/api";
+import { formatTokens } from "../utils/format";
 import UpgradeModal from "../components/UpgradeModal";
 import Page from "../components/Page";
 import PageHeader from "../components/PageHeader";
@@ -48,6 +49,9 @@ export default function Generate() {
   const handleGenerate = useCallback(
     async (config: { framework: string; language: string; testFlows: string; baseUrl: string; includeCi: boolean }) => {
       if (!jobId) return;
+      // Clear the previous failure before retrying, or a success would render
+      // underneath a stale error from the last attempt.
+      setError(null);
       setStep("generating"); setStreamOutput(""); setCurrentProvider("");
       const stop = streamGeneration(
         jobId, config.framework, config.language, config.testFlows, config.baseUrl,
@@ -57,6 +61,9 @@ export default function Generate() {
           stop();
           try {
             const r = await generateTests(jobId, config.framework, config.language, config.testFlows, config.baseUrl, config.includeCi);
+            // Nothing is streaming any more — leaving this set kept a live
+            // "Streaming from groq..." pill on screen next to the finished run.
+            setCurrentProvider("");
             setResult(r); setStep("done"); celebrate();
           } catch (err: any) {
             setStep("configure");
@@ -85,7 +92,7 @@ export default function Generate() {
           <div className="flex-1 min-w-0">
             <div className="flex justify-center mb-10"><StepIndicator currentStep={step} /></div>
             {step === "preview" && analysis && <PreviewStep analysis={analysis} onContinue={() => setStep("configure")} />}
-            {step === "configure" && analysis && <ConfigureStep detectedFramework={analysis.framework} onGenerate={handleGenerate} loading={false} />}
+            {step === "configure" && analysis && <ConfigureStep detectedFramework={analysis.framework} onGenerate={handleGenerate} loading={false} error={error} />}
             {step === "generating" && <StreamingOutput output={streamOutput} provider={currentProvider} done={false} />}
             {step === "done" && result && <ResultsStep result={result} onReset={reset} />}
           </div>
@@ -95,7 +102,7 @@ export default function Generate() {
               {analysis && (
                 <div className="glass rounded-2xl p-4 text-xs space-y-2">
                   <div className="text-grey-400 font-semibold uppercase tracking-wider mb-3">Session</div>
-                  {[["Framework", analysis.framework], ["Files", String(analysis.file_count)], ["Routes", String(analysis.routes.length)], ["Tokens", `~${(analysis.total_tokens / 1000).toFixed(0)}k`]].map(([k, v]) => (
+                  {[["Framework", analysis.framework], ["Files", String(analysis.file_count)], ["Routes", String(analysis.routes.length)], ["Tokens", formatTokens(analysis.total_tokens)]].map(([k, v]) => (
                     <div key={k} className="flex justify-between"><span className="text-grey-400">{k}</span><span className="text-grey-300">{v}</span></div>
                   ))}
                 </div>
