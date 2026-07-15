@@ -10,6 +10,7 @@ Endpoints:
   POST /api/upload-zip  — ZIP file upload + analyze
   POST /api/publish-zip — Push a project ZIP to a new GitHub repo (optional CI/CD)
   POST /api/scan        — Passive security audit of a deployed URL
+  GET  /api/admin/*     — Admin console (allowlisted emails only; services/admin.py)
   GET  /health          — Basic health check
 """
 
@@ -29,14 +30,19 @@ from fastapi.responses import StreamingResponse, RedirectResponse
 
 from config import settings
 from logging_config import configure_logging, request_id_var
-from ratelimit import rate_limit, analyze_limiter, generate_limiter
+from ratelimit import rate_limit, analyze_limiter, generate_limiter, email_limiter, otp_limiter
 from agents.filter_agent import FilterAgent, NoTestableUIError
 from agents.writer_agent import WriterAgent
 from models.schemas import (
     GenerateRequest, GenerateResponse, GeneratedFile,
     ProjectAnalysis, FilePreview, StatusResponse, ProviderStatus,
     PublishResponse, ScanRequest, ScanResponse,
-    SignupRequest, LoginRequest, AuthResponse,
+    SignupRequest, LoginRequest, AuthResponse, LoginResponse,
+    EmailRequest, TokenRequest, ResetPasswordRequest, VerifyOtpRequest,
+    SimpleResponse, ChangePasswordRequest, DeleteAccountRequest,
+    UserSettings, UserSettingsResponse,
+    AdminUser, AdminUserList, AdminUserDetail, AdminSetPlanRequest,
+    AdminSuspendRequest, AdminSetUsageRequest, AdminOverview, AdminSystem,
 )
 from services.file_extractor import extract_zip, filter_for_push
 from services.github_service import GitHubService, parse_github_url, RepoNotFoundError, RepoAccessError
@@ -45,8 +51,11 @@ from services.security_scanner import SecurityScanner, ScanError
 from services import github_oauth
 from services import auth as auth_svc
 from services import billing
+from services import verification
 from services.auth import require_user
-from services.quota import require_quota, get_quota
+from services.admin import require_admin
+from services.mailer import EmailNotConfigured, EmailDeliveryError
+from services.quota import require_quota, get_quota, current_period
 from services.llm_router import router as llm_router, AllProvidersExhausted
 from services.store import store
 
@@ -372,42 +381,296 @@ async def auth_config():
     return {
         "github_oauth_enabled": settings.github_oauth_enabled,
         "max_upload_mb": settings.max_repo_size_mb,
+        # The client can't infer these from a response shape alone, and needs
+        # them to know whether to offer "resend link" / a code box at all.
+        "email_verification_enabled": settings.require_email_verification and settings.email_enabled,
+        "login_otp_enabled": settings.login_otp_enabled and settings.email_enabled,
+        "password_reset_enabled": settings.email_enabled,
     }
 
 
-@app.post("/api/auth/signup", response_model=AuthResponse,
-          dependencies=[Depends(rate_limit(analyze_limiter))])
+async def _deliver(coro, *, what: str):
+    """Await an email-sending coroutine where failing to send must fail the
+    request, and hand back whatever it returned.
+
+    A login code that never arrives is a login that cannot complete, so these
+    must surface rather than be swallowed — the caller is left in a dead end
+    otherwise, staring at a code box no code is coming for.
+
+    The enumeration-safe endpoints (resend, forgot-password) deliberately do NOT
+    use this: there, a failure that's visible only for real accounts is itself
+    the leak, so they log and answer the same either way.
+    """
+    try:
+        return await coro
+    except EmailNotConfigured as e:
+        logger.error(f"{what} not sent — SMTP is not configured: {e}")
+        raise HTTPException(
+            503, "Email isn't set up on this server, so this step can't be "
+                 "completed. Please contact support."
+        )
+    except EmailDeliveryError as e:
+        logger.error(f"{what} not sent: {e}")
+        raise HTTPException(502, f"We couldn't send your {what.lower()}. Please try again.")
+
+
+async def _issue_login(user: dict) -> LoginResponse:
+    """Turn a *proven* identity into either a session or the next challenge.
+
+    Only ever called once a password has been checked or GitHub has vouched for
+    the account. The three exits are documented on LoginResponse.
+    """
+    # A suspended account is refused here as well as in require_user. Not for
+    # safety — require_user already rejects every request the token could make —
+    # but because issuing one anyway means a "successful" login followed by a
+    # 403 on the next page, which reads as the app being broken rather than as
+    # the deliberate lock it is. Say so at the door instead.
+    if user.get("suspended"):
+        raise HTTPException(
+            403,
+            "This account has been suspended. Contact support if you think "
+            "this is a mistake.",
+        )
+
+    email = user.get("email")
+
+    # Unverified: no session, and re-send the link rather than stranding them.
+    if settings.require_email_verification and email and not user.get("email_verified"):
+        await _deliver(
+            verification.send_verification_email(user["id"], email, user.get("name") or ""),
+            what="Verification email",
+        )
+        return LoginResponse(
+            status="verification_required",
+            email_hint=verification.mask_email(email),
+            message=("Please confirm your email address first — we've sent a fresh "
+                     "link to your inbox."),
+        )
+
+    # Second factor. Skipped when there's no address to send to, which in
+    # practice means a GitHub account with no public email: OAuth already
+    # proved inbox control, so there is nothing here for a code to add.
+    if settings.login_otp_enabled and email:
+        challenge = await _deliver(
+            verification.start_login_challenge(user["id"], email, user.get("name") or ""),
+            what="Login code",
+        )
+        return LoginResponse(
+            status="otp_required",
+            challenge_id=challenge.challenge_id,
+            email_hint=verification.mask_email(email),
+            expires_in=challenge.expires_in,
+            message=f"We sent a 6-digit code to {verification.mask_email(email)}.",
+        )
+
+    return LoginResponse(
+        status="ok",
+        token=auth_svc.create_login_session(user["id"]),
+        user=auth_svc.public_user(user),
+    )
+
+
+@app.post("/api/auth/signup", response_model=LoginResponse,
+          dependencies=[Depends(rate_limit(analyze_limiter)),
+                        Depends(rate_limit(email_limiter))])
 async def signup(payload: SignupRequest):
-    """Register a new email/password account and return a session token."""
+    """Register an email/password account and send a verification link.
+
+    Note what this does NOT return: a session token. Handing one out here would
+    make the verification step decorative — you'd be logged in without ever
+    proving the address is yours.
+    """
     email = auth_svc.validate_email(payload.email)
     auth_svc.validate_password(payload.password)
-    if store.get_user_by_email(email):
+    name = (payload.name or "").strip() or email.split("@")[0]
+
+    existing = store.get_user_by_email(email)
+    if existing and existing.get("email_verified"):
         raise HTTPException(409, "An account with this email already exists. Try logging in.")
 
-    user = {
-        "id": auth_svc.new_user_id(),
-        "email": email,
-        "password_hash": auth_svc.hash_password(payload.password),
-        "name": (payload.name or "").strip() or email.split("@")[0],
-        "created_at": time.time(),
-    }
-    store.create_user(user)
-    token = auth_svc.create_login_session(user["id"])
-    logger.info(f"New signup: {email}")
-    return AuthResponse(token=token, user=auth_svc.public_user(user))
+    if existing:
+        # An unverified row is not a real account — nobody has ever proved they
+        # own this address, so nothing here is anyone's to protect. Rejecting
+        # would be worse than useless: it would let anyone squat an address they
+        # don't own and permanently block its real owner from registering. So
+        # the latest signup wins, and only the inbox decides who gets in.
+        store.update_user(
+            existing["id"],
+            password_hash=auth_svc.hash_password(payload.password),
+            name=name,
+        )
+        user_id = existing["id"]
+        logger.info(f"Re-signup on an unverified account: {email}")
+    else:
+        user_id = auth_svc.new_user_id()
+        store.create_user({
+            "id": user_id,
+            "email": email,
+            "password_hash": auth_svc.hash_password(payload.password),
+            "name": name,
+            "created_at": time.time(),
+            "email_verified": False,
+        })
+        logger.info(f"New signup: {email}")
+
+    # If this send fails the account stays unverified and unusable, which is the
+    # safe direction — and signing up again resends rather than 409ing, so the
+    # user is never stuck.
+    await _deliver(
+        verification.send_verification_email(user_id, email, name),
+        what="Verification email",
+    )
+
+    return LoginResponse(
+        status="verification_required",
+        email_hint=verification.mask_email(email),
+        message=f"Almost there — confirm your address using the link we sent to {email}.",
+    )
 
 
-@app.post("/api/auth/login", response_model=AuthResponse,
+@app.post("/api/auth/login", response_model=LoginResponse,
           dependencies=[Depends(rate_limit(analyze_limiter))])
 async def login(payload: LoginRequest):
-    """Log in with email + password and return a session token."""
+    """Check email + password, then hand off to verification or the OTP step."""
     email = (payload.email or "").strip().lower()
     user = store.get_user_by_email(email)
     if not user or not auth_svc.verify_password(payload.password, user.get("password_hash")):
         # Same message for both cases — don't reveal whether the email exists.
         raise HTTPException(401, "Incorrect email or password.")
-    token = auth_svc.create_login_session(user["id"])
-    return AuthResponse(token=token, user=auth_svc.public_user(user))
+    return await _issue_login(user)
+
+
+@app.post("/api/auth/login/verify-otp", response_model=AuthResponse,
+          dependencies=[Depends(rate_limit(otp_limiter))])
+async def verify_login_otp(payload: VerifyOtpRequest):
+    """Second step of login: exchange a correct emailed code for a session.
+
+    Attempts are capped per-challenge inside verify_login_challenge; the limiter
+    above stops that cap being sidestepped by spreading guesses across many
+    challenges.
+    """
+    try:
+        user_id = verification.verify_login_challenge(payload.challenge_id, payload.code)
+    except verification.InvalidCode as e:
+        raise HTTPException(401, str(e))
+
+    user = store.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(401, "Account not found. Please log in again.")
+
+    logger.info(f"Login completed with OTP: {user_id}")
+    return AuthResponse(
+        token=auth_svc.create_login_session(user_id),
+        user=auth_svc.public_user(user),
+    )
+
+
+@app.post("/api/auth/verify-email", response_model=AuthResponse,
+          dependencies=[Depends(rate_limit(analyze_limiter))])
+async def verify_email(payload: TokenRequest):
+    """Redeem a verification link, and log them straight in.
+
+    Skipping the OTP here is not a hole: clicking a link from the inbox proves
+    exactly what a code emailed to that inbox would prove. Making them then ask
+    for a code, to the same address they just demonstrated control of, would add
+    a step without adding a check.
+    """
+    try:
+        user_id = verification.consume_verification_token(payload.token)
+    except verification.InvalidCode as e:
+        raise HTTPException(400, str(e))
+
+    user = store.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(400, "This verification link is invalid or has expired.")
+
+    store.update_user(user_id, email_verified=True)
+    user = store.get_user_by_id(user_id)          # re-read so the response says verified
+    logger.info(f"Email verified: {user_id}")
+    return AuthResponse(
+        token=auth_svc.create_login_session(user_id),
+        user=auth_svc.public_user(user),
+    )
+
+
+@app.post("/api/auth/resend-verification", response_model=SimpleResponse,
+          dependencies=[Depends(rate_limit(email_limiter))])
+async def resend_verification(payload: EmailRequest):
+    """Send another verification link.
+
+    Answers the same way whether or not the address has an account waiting, so
+    it can't be used to test which addresses are registered. Delivery problems
+    are logged rather than returned for the same reason — a 502 that only ever
+    happened for real accounts would be the leak this is avoiding.
+    """
+    email = (payload.email or "").strip().lower()
+    user = store.get_user_by_email(email)
+    if user and user.get("email") and not user.get("email_verified"):
+        try:
+            await verification.send_verification_email(
+                user["id"], user["email"], user.get("name") or ""
+            )
+        except (EmailNotConfigured, EmailDeliveryError) as e:
+            logger.error(f"Could not resend verification to {email}: {e}")
+    return SimpleResponse(
+        message="If that address is waiting to be verified, a new link is on its way."
+    )
+
+
+@app.post("/api/auth/forgot-password", response_model=SimpleResponse,
+          dependencies=[Depends(rate_limit(email_limiter))])
+async def forgot_password(payload: EmailRequest):
+    """Start a password reset. Enumeration-safe, exactly as above."""
+    email = (payload.email or "").strip().lower()
+    user = store.get_user_by_email(email)
+    # A GitHub-only account has no password to reset; sending a link that sets
+    # one would quietly add a second way into an account whose owner chose SSO.
+    if user and user.get("email") and user.get("password_hash"):
+        try:
+            await verification.send_password_reset_email(
+                user["id"], user["email"], user.get("name") or ""
+            )
+        except (EmailNotConfigured, EmailDeliveryError) as e:
+            logger.error(f"Could not send reset email to {email}: {e}")
+    return SimpleResponse(
+        message="If an account exists for that address, a reset link is on its way."
+    )
+
+
+@app.post("/api/auth/reset-password", response_model=AuthResponse,
+          dependencies=[Depends(rate_limit(analyze_limiter))])
+async def reset_password(payload: ResetPasswordRequest):
+    """Set a new password from a reset link, and sign every other session out."""
+    auth_svc.validate_password(payload.password)
+    try:
+        user_id = verification.consume_reset_token(payload.token)
+    except verification.InvalidCode as e:
+        raise HTTPException(400, str(e))
+
+    user = store.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(400, "This reset link is invalid or has expired.")
+
+    store.update_user(
+        user_id,
+        password_hash=auth_svc.hash_password(payload.password),
+        # Redeeming the link proved inbox control, which is all verification
+        # asks — so a reset also clears a pending verification.
+        email_verified=True,
+    )
+
+    # Before minting the new session, not after: whoever prompted this reset may
+    # be holding a live session on the account, and leaving it valid would make
+    # the reset cosmetic. Ordering matters — do this after and we'd revoke the
+    # session we just issued to the real owner.
+    revoked = store.delete_sessions_for_user(user_id)
+    logger.info(f"Password reset for {user_id}; revoked {revoked} existing session(s)")
+
+    user = store.get_user_by_id(user_id)
+    return AuthResponse(
+        token=auth_svc.create_login_session(user_id),
+        user=auth_svc.public_user(user),
+    )
 
 
 @app.get("/api/auth/github/login")
@@ -459,10 +722,17 @@ async def github_callback(code: str = "", state: str = "", error: str = ""):
     account = store.get_user_by_github(github_id)
     if not account and gh.get("email"):
         account = store.get_user_by_email(gh["email"])
+    # GitHub only exposes a verified address as the account's email, so arriving
+    # here *is* proof of inbox control — the same proof our own verification link
+    # asks for. Marking these accounts verified is therefore not a shortcut; the
+    # alternative would be emailing a link to an address GitHub already checked.
+    # It matters that this is explicit: create_user defaults to unverified, so
+    # leaving it off would lock every GitHub user out of their own account.
     if account:
         store.update_user(
             account["id"], github_id=github_id, github_login=gh["login"],
             avatar_url=gh.get("avatar_url") or account.get("avatar_url"),
+            email_verified=True,
         )
         user_id = account["id"]
     else:
@@ -472,8 +742,16 @@ async def github_callback(code: str = "", state: str = "", error: str = ""):
             "name": gh.get("name") or gh["login"],
             "github_id": github_id, "github_login": gh["login"],
             "avatar_url": gh.get("avatar_url"), "created_at": time.time(),
+            "email_verified": True,
         })
         logger.info(f"New GitHub signup: {gh['login']}")
+
+    # This path builds a session itself rather than going through _issue_login
+    # (OAuth has already proved the identity, so there's no password or OTP step
+    # to run), which means the suspension check there doesn't cover it. Repeat it
+    # rather than hand a suspended account a token every route would then refuse.
+    if store.get_user_by_id(user_id).get("suspended"):
+        return _fail("suspended")
 
     # Session carries the GitHub access token so Publish can push on their behalf.
     session_id = auth_svc.create_login_session(user_id, github_token=token)
@@ -520,6 +798,142 @@ async def profile(ctx: dict = Depends(require_user)):
     }
 
 
+# ─────────────────────────────────────────────
+# Dashboard: the post-login landing page
+# ─────────────────────────────────────────────
+
+# How much history the overview renders. The feed is a scan-and-recognise list,
+# not an archive — /api/profile holds the full history. Kept short deliberately:
+# at 20 the page ran twice the height of everything beside it, which is a lot of
+# scrolling for rows the user can already see in more detail elsewhere.
+DASHBOARD_FEED_LIMIT = 8
+DASHBOARD_SERIES_DAYS = 30
+
+
+@app.get("/api/dashboard")
+async def dashboard(ctx: dict = Depends(require_user)):
+    """Everything the dashboard renders, in one call.
+
+    One endpoint rather than four (feed/totals/series/quota) because the page has
+    no state in which it wants a subset — four calls would just be four round
+    trips and four spinners resolving out of order.
+
+    Scoped to the session's own user_id throughout; no id is accepted from the
+    client, so one account can never read another's activity.
+    """
+    user_id = ctx["user_id"]
+    quota = get_quota(user_id).as_dict()
+    row = store.get_user_by_id(user_id) or {}
+
+    return {
+        "user": ctx["user"],
+        "member_since": row.get("created_at"),
+        # Mirrors /api/profile: only report a renewal date for a plan that's
+        # actually still live (get_quota has already lapsed an expired one).
+        "plan": {
+            **quota,
+            "expires_at": row.get("plan_expires_at") if quota["plan"] != "free" else None,
+            "checkout_available": settings.billing_enabled,
+            "catalogue": billing.plans(),
+        },
+        "totals": store.activity_totals(user_id),
+        "activity": store.activity_feed(user_id, limit=DASHBOARD_FEED_LIMIT),
+        "series": store.activity_series(user_id, days=DASHBOARD_SERIES_DAYS),
+        "recent": {
+            "generations": store.list_generations(user_id, limit=5),
+            "scans": store.list_scans(user_id, limit=5),
+            "repos": store.list_published_repos(user_id, limit=5),
+        },
+    }
+
+
+# ─────────────────────────────────────────────
+# Settings: form defaults, credentials, account
+# ─────────────────────────────────────────────
+
+@app.get("/api/settings", response_model=UserSettingsResponse)
+async def get_user_settings(ctx: dict = Depends(require_user)):
+    return store.get_settings(ctx["user_id"])
+
+
+@app.put("/api/settings", response_model=UserSettingsResponse)
+async def put_user_settings(payload: UserSettings, ctx: dict = Depends(require_user)):
+    """Patch this user's form defaults. Omitted fields keep their current value."""
+    # mode="json" unwraps the enums to their values, so SQLite stores
+    # "playwright" rather than "TestFramework.PLAYWRIGHT" — which would come back
+    # out as a string the UI's <select> never matches.
+    patch = payload.model_dump(exclude_none=True, mode="json")
+    return store.save_settings(ctx["user_id"], **patch)
+
+
+@app.post("/api/auth/change-password", response_model=SimpleResponse,
+          dependencies=[Depends(rate_limit(analyze_limiter))])
+async def change_password(payload: ChangePasswordRequest, ctx: dict = Depends(require_user)):
+    """Change the password of the logged-in account, then sign other sessions out.
+
+    A GitHub-only account has no password to check against, so there's nothing
+    here that could authorise the change — it's refused rather than allowing a
+    session alone to set a first password (that's what the reset link is for).
+    """
+    user = store.get_user_by_id(ctx["user_id"])
+    if not user or not user.get("password_hash"):
+        raise HTTPException(
+            400, "This account signs in with GitHub, so it has no password to change."
+        )
+    if not auth_svc.verify_password(payload.current_password, user["password_hash"]):
+        raise HTTPException(401, "That's not your current password.")
+    auth_svc.validate_password(payload.new_password)
+
+    store.update_user(ctx["user_id"], password_hash=auth_svc.hash_password(payload.new_password))
+    # Same reasoning as the reset flow: a password change must evict anyone else
+    # holding a session. `keep` spares the caller's own — they just proved
+    # ownership, so logging them out here would be a bug, not a safeguard.
+    revoked = store.delete_sessions_for_user(ctx["user_id"], keep=ctx["session_id"])
+    logger.info(f"Password changed for {ctx['user_id']}; revoked {revoked} other session(s)")
+    return SimpleResponse(
+        message=(f"Password updated. {revoked} other session(s) were signed out."
+                 if revoked else "Password updated.")
+    )
+
+
+@app.post("/api/auth/logout-all", response_model=SimpleResponse)
+async def logout_everywhere(ctx: dict = Depends(require_user)):
+    """Revoke every session for this account, including the caller's own.
+
+    Unlike change-password, this one deliberately does NOT keep the current
+    session: "log out everywhere" that left you logged in wouldn't be it.
+    """
+    revoked = store.delete_sessions_for_user(ctx["user_id"])
+    logger.info(f"Logged {ctx['user_id']} out of {revoked} session(s)")
+    return SimpleResponse(message=f"Signed out of {revoked} session(s).")
+
+
+@app.delete("/api/account", response_model=SimpleResponse,
+            dependencies=[Depends(rate_limit(analyze_limiter))])
+async def delete_account(payload: DeleteAccountRequest, ctx: dict = Depends(require_user)):
+    """Erase this account and all of its activity. Irreversible.
+
+    Deliberately does NOT touch repos published to GitHub: those live in the
+    user's own account, we only ever recorded that we made them, and silently
+    deleting someone's code because they closed an account here would be
+    indefensible. The warning in the UI says so; /api/repo/... deletes them
+    one at a time, on purpose.
+    """
+    user = store.get_user_by_id(ctx["user_id"])
+    if not user:
+        raise HTTPException(404, "Account not found.")
+
+    # Echo back the account's own identifier — email, or the GitHub login for
+    # SSO accounts that have no address on file.
+    expected = user.get("email") or user.get("github_login") or ""
+    if payload.confirm.strip().lower() != expected.lower():
+        raise HTTPException(400, f"Type {expected} exactly to confirm deletion.")
+
+    freed = store.delete_account(ctx["user_id"])
+    logger.info(f"Account deleted: {ctx['user_id']} ({freed})")
+    return SimpleResponse(message="Your account and all of its history have been deleted.")
+
+
 @app.post("/api/auth/logout")
 async def auth_logout(request: Request):
     token = request.headers.get("Authorization", "")
@@ -527,6 +941,290 @@ async def auth_logout(request: Request):
     if token:
         store.delete_session(token)
     return {"ok": True}
+
+
+# ─────────────────────────────────────────────
+# Admin console
+# ─────────────────────────────────────────────
+#
+# Every route here carries Depends(require_admin), which chains off require_user
+# — so each one re-derives the role from the ADMIN_EMAILS allowlist on every
+# request. The client's `is_admin` flag decides whether a nav link renders and
+# nothing else. See services/admin.py for why the grant lives in config.
+#
+# These are the only routes in this file that read across users, so they're the
+# only ones where a missing dependency is an account-enumeration bug rather than
+# a bad request. Adding a route below without require_admin is that bug.
+
+ADMIN_PAGE_SIZE = 25
+ADMIN_SERIES_DAYS = 30
+
+
+def _admin_user_view(row: dict) -> AdminUser:
+    """A user row plus the counts the console lists them by."""
+    user_id = row["id"]
+    quota = get_quota(user_id)
+    totals = store.activity_totals(user_id)
+    return AdminUser(
+        id=user_id,
+        email=row.get("email"),
+        name=row.get("name") or (row.get("email") or "").split("@")[0],
+        github_login=row.get("github_login"),
+        avatar_url=row.get("avatar_url"),
+        created_at=row.get("created_at") or 0.0,
+        # quota.plan, not row["plan"] — the effective plan, with a lapsed
+        # subscription already read down to free.
+        plan=quota.plan,
+        plan_expires_at=row.get("plan_expires_at"),
+        email_verified=bool(row.get("email_verified")),
+        suspended=bool(row.get("suspended")),
+        suspended_at=row.get("suspended_at"),
+        suspended_reason=row.get("suspended_reason"),
+        is_admin=auth_svc.is_admin(row),
+        # activity_totals keys these "generations"/"scans" — not the
+        # "generate"/"scan" that ACTIVITY_TABLES and activity_series use.
+        generations=totals.get("generations", 0),
+        scans=totals.get("scans", 0),
+        usage_this_period=quota.used,
+    )
+
+
+def _admin_target(user_id: str, ctx: dict, *, action: str) -> dict:
+    """Load the user an admin is acting on, refusing self-targeted actions.
+
+    Suspending or deleting yourself is never what an admin meant to do, and both
+    are one misclick away in a list of similar-looking rows. Self-suspension is
+    also unrecoverable from the UI it would lock you out of: require_user rejects
+    the suspended account, so the console that could undo it is now shut to you,
+    and the fix is a hand-written UPDATE against the database.
+    """
+    if user_id == ctx["user_id"]:
+        raise HTTPException(400, f"You cannot {action} your own account from the admin console.")
+    row = store.get_user_by_id(user_id)
+    if not row:
+        raise HTTPException(404, "No such user.")
+    return row
+
+
+@app.get("/api/admin/users", response_model=AdminUserList)
+async def admin_list_users(
+    q: str = "",
+    limit: int = ADMIN_PAGE_SIZE,
+    offset: int = 0,
+    ctx: dict = Depends(require_admin),
+):
+    """Search/browse accounts. `total` counts everything matching `q`, not the
+    page, so the client can paginate without a second call."""
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
+    rows = store.list_users(query=q, limit=limit, offset=offset)
+    return AdminUserList(
+        users=[_admin_user_view(r) for r in rows],
+        total=store.count_users(query=q),
+        limit=limit,
+        offset=offset,
+    )
+
+
+@app.get("/api/admin/users/{user_id}", response_model=AdminUserDetail)
+async def admin_user_detail(user_id: str, ctx: dict = Depends(require_admin)):
+    """One account in full: plan, quota, history, and where they're signed in."""
+    row = store.get_user_by_id(user_id)
+    if not row:
+        raise HTTPException(404, "No such user.")
+    return AdminUserDetail(
+        user=_admin_user_view(row),
+        quota=get_quota(user_id).as_dict(),
+        totals=store.activity_totals(user_id),
+        active_sessions=store.count_sessions_for_user(user_id),
+        recent_generations=store.list_generations(user_id, limit=10),
+        recent_scans=store.list_scans(user_id, limit=10),
+        published_repos=store.list_published_repos(user_id, limit=10),
+    )
+
+
+@app.post("/api/admin/users/{user_id}/suspend", response_model=AdminUser)
+async def admin_suspend_user(
+    user_id: str,
+    payload: AdminSuspendRequest,
+    ctx: dict = Depends(require_admin),
+):
+    """Lock or unlock an account.
+
+    Suspending also revokes their live sessions. Without that the flag would only
+    be read on the *next* request the token happens to make, and require_user
+    would keep serving anyone already holding one — a suspension that doesn't
+    take effect until logout is not a suspension.
+    """
+    row = _admin_target(user_id, ctx, action="suspend")
+
+    # An admin can't be suspended: the allowlist, not the users table, decides
+    # who is one, so the flag wouldn't remove their access — it would only lock
+    # them out of the app while leaving the console reachable. Two admins fighting
+    # over that row is a worse outcome than refusing here.
+    if payload.suspended and auth_svc.is_admin(row):
+        raise HTTPException(
+            400,
+            "That account is an admin. Remove the address from ADMIN_EMAILS "
+            "and restart before suspending it.",
+        )
+
+    store.set_suspended(user_id, payload.suspended, reason=payload.reason or "")
+    revoked = store.delete_sessions_for_user(user_id) if payload.suspended else 0
+    logger.info(
+        f"Admin {ctx['user_id']} {'suspended' if payload.suspended else 'unsuspended'} "
+        f"{user_id} (sessions_revoked={revoked}, reason={payload.reason!r})"
+    )
+    return _admin_user_view(store.get_user_by_id(user_id))
+
+
+@app.post("/api/admin/users/{user_id}/plan", response_model=AdminUser)
+async def admin_set_plan(
+    user_id: str,
+    payload: AdminSetPlanRequest,
+    ctx: dict = Depends(require_admin),
+):
+    """Grant or revoke a plan by hand — comps, refunds, and support fixes.
+
+    The other caller of set_plan is the signed billing webhook. This one is an
+    admin's judgement instead of a payment, so it's logged with who did it: a
+    plan that changed without a corresponding webhook should be traceable to a
+    person.
+    """
+    row = store.get_user_by_id(user_id)
+    if not row:
+        raise HTTPException(404, "No such user.")
+
+    expires_at = (
+        time.time() + payload.expires_in_days * 86_400
+        if payload.expires_in_days is not None else None
+    )
+    # Free is the absence of an entitlement, so it must not carry an expiry —
+    # a row with plan='free' and a future plan_expires_at reads as "free until
+    # then, something else after", which get_plan does not mean and would show
+    # a renewal date on a free account.
+    if payload.plan == "free":
+        expires_at = None
+
+    store.set_plan(user_id, payload.plan, expires_at)
+    logger.info(
+        f"Admin {ctx['user_id']} set plan of {user_id} to {payload.plan} "
+        f"(expires_at={expires_at}, reason={payload.reason!r})"
+    )
+    return _admin_user_view(store.get_user_by_id(user_id))
+
+
+@app.post("/api/admin/users/{user_id}/usage", response_model=AdminUser)
+async def admin_set_usage(
+    user_id: str,
+    payload: AdminSetUsageRequest,
+    ctx: dict = Depends(require_admin),
+):
+    """Overwrite this month's usage counter — hand back credits for a run that
+    failed in a way the automatic refund (services/quota.QuotaLease) missed."""
+    row = store.get_user_by_id(user_id)
+    if not row:
+        raise HTTPException(404, "No such user.")
+    period = current_period()
+    store.set_usage(user_id, period, payload.count)
+    logger.info(
+        f"Admin {ctx['user_id']} set usage of {user_id} to {payload.count} for {period}"
+    )
+    return _admin_user_view(store.get_user_by_id(user_id))
+
+
+@app.post("/api/admin/users/{user_id}/logout-all", response_model=SimpleResponse)
+async def admin_logout_user(user_id: str, ctx: dict = Depends(require_admin)):
+    """Revoke every session a user holds, without suspending them — the polite
+    version, for a lost laptop or a shared login."""
+    row = store.get_user_by_id(user_id)
+    if not row:
+        raise HTTPException(404, "No such user.")
+    revoked = store.delete_sessions_for_user(user_id)
+    logger.info(f"Admin {ctx['user_id']} revoked {revoked} session(s) for {user_id}")
+    return SimpleResponse(message=f"Signed out of {revoked} session(s).")
+
+
+@app.delete("/api/admin/users/{user_id}", response_model=SimpleResponse)
+async def admin_delete_user(
+    user_id: str,
+    confirm: str = "",
+    ctx: dict = Depends(require_admin),
+):
+    """Erase an account and all of its history. Irreversible.
+
+    `confirm` must be the target's own email, mirroring the self-serve delete at
+    /api/account: the destructive step should feel the same whether you're doing
+    it to yourself or to someone else, and it makes deleting the wrong row take
+    more than one wrong click.
+    """
+    row = _admin_target(user_id, ctx, action="delete")
+
+    if auth_svc.is_admin(row):
+        raise HTTPException(
+            400,
+            "That account is an admin. Remove the address from ADMIN_EMAILS "
+            "and restart before deleting it.",
+        )
+
+    expected = row.get("email") or row.get("github_login") or user_id
+    if confirm.strip().lower() != expected.lower():
+        raise HTTPException(400, f"Type {expected} exactly to confirm deletion.")
+
+    freed = store.delete_account(user_id)
+    logger.warning(f"Admin {ctx['user_id']} deleted account {user_id} ({freed})")
+    return SimpleResponse(message=f"Deleted {expected} and all of its history.")
+
+
+@app.get("/api/admin/overview", response_model=AdminOverview)
+async def admin_overview(ctx: dict = Depends(require_admin)):
+    """Platform analytics: totals, a 30-day series, and what's failing."""
+    return AdminOverview(
+        totals=store.platform_totals(),
+        series=store.platform_series(days=ADMIN_SERIES_DAYS),
+        frameworks=store.platform_breakdown("framework"),
+        languages=store.platform_breakdown("language"),
+        recent_failures=store.recent_failures(limit=10),
+    )
+
+
+@app.get("/api/admin/system", response_model=AdminSystem)
+async def admin_system(ctx: dict = Depends(require_admin)):
+    """Provider health, per-key cooldowns, and the feature switches in force.
+
+    `config` carries booleans derived from settings, never the settings
+    themselves — an admin needs to know whether SMTP is configured, not what the
+    password is. Nothing secret is reachable from this response; see
+    llm_router.get_key_health for the same rule applied to API keys.
+    """
+    status = llm_router.get_status()
+    return AdminSystem(
+        app_env=settings.app_env,
+        uptime_seconds=round(time.time() - _START_TIME, 1),
+        jobs_stored=store.count(),
+        providers=[
+            ProviderStatus(
+                name=name,
+                total_keys=info["total_keys"],
+                available_keys=info["available_keys"],
+                total_calls=info["total_calls"],
+                healthy=info["healthy"],
+            )
+            for name, info in status.items()
+        ],
+        keys=llm_router.get_key_health(),
+        call_log=llm_router.get_call_log(limit=30),
+        config={
+            "github_oauth_enabled": settings.github_oauth_enabled,
+            "smtp_configured": settings.smtp_configured,
+            "email_enabled": settings.email_enabled,
+            "require_email_verification": settings.require_email_verification,
+            "login_otp_enabled": settings.login_otp_enabled,
+            "billing_enabled": settings.billing_enabled,
+            "free_generations_per_month": settings.free_generations_per_month,
+            "admin_count": len(settings.admin_email_list),
+        },
+    )
 
 
 # ─────────────────────────────────────────────
@@ -784,8 +1482,15 @@ async def publish_zip(
 
     logger.info(f"Published {pub.files_pushed} files to {pub.full_name} (cicd={cicd_added})")
 
-    # Remember what we created — /api/repo deletion is limited to these.
-    store.record_published_repo(pub.full_name, ctx["user_id"], pub.repo_url)
+    # Remember what we created — /api/repo deletion is limited to these, and the
+    # dashboard reads the same row back as publish activity.
+    store.record_published_repo(
+        pub.full_name, ctx["user_id"], pub.repo_url,
+        test_count=test_count,
+        files_pushed=pub.files_pushed,
+        cicd_added=cicd_added,
+        private=private,
+    )
 
     return PublishResponse(
         success=True,
@@ -895,6 +1600,7 @@ async def scan_url(payload: ScanRequest, ctx: dict = Depends(require_user)):
     headers/TLS/cookies and checks for accidentally-exposed files — no attacks.
     """
     scanner = SecurityScanner()
+    started = time.monotonic()
     try:
         result = await scanner.scan(payload.url)
     except ScanError as e:
@@ -902,6 +1608,7 @@ async def scan_url(payload: ScanRequest, ctx: dict = Depends(require_user)):
     except Exception as e:
         logger.error(f"Scan failed: {e}")
         raise HTTPException(500, "Scan failed unexpectedly. Please try again.")
+    elapsed_ms = int((time.monotonic() - started) * 1000)
 
     summary = ""
     if payload.ai_summary and result.findings:
@@ -922,6 +1629,8 @@ async def scan_url(payload: ScanRequest, ctx: dict = Depends(require_user)):
             grade=result.grade,
             score=result.score,
             findings=len(result.findings),
+            duration_ms=elapsed_ms,
+            counts=result.counts,
         )
     except Exception as e:
         logger.warning(f"Could not record scan history: {e}")
@@ -941,6 +1650,35 @@ async def scan_url(payload: ScanRequest, ctx: dict = Depends(require_user)):
 # ─────────────────────────────────────────────
 # Phase 2: Generate tests (from session)
 # ─────────────────────────────────────────────
+
+def _record_generation(session: dict, user_id: str, *, framework: str, language: str,
+                       test_count: int = 0, file_count: int = 0,
+                       status: str = "success", duration_ms: int | None = None,
+                       error: str = "") -> None:
+    """Log a generation attempt to the user's history. Never raises.
+
+    History for the dashboard. `jobs` holds the detail but is pruned at 24h, and
+    `usage` is only a per-month counter — neither can answer "what have I
+    generated?". Bookkeeping must never sink the request either way: on success
+    the user's tests are already made and paid for, and on failure they're
+    already getting an error that says more than this would.
+    """
+    try:
+        req = session.get("request", {})
+        store.record_generation(
+            user_id=user_id,
+            source=req.get("repo_url") or req.get("zip_name") or "ZIP upload",
+            framework=framework,
+            language=language,
+            test_count=test_count,
+            file_count=file_count,
+            status=status,
+            duration_ms=duration_ms,
+            error=error[:500],
+        )
+    except Exception as e:
+        logger.warning(f"Could not record generation history: {e}")
+
 
 @app.post("/api/generate/{job_id}", response_model=GenerateResponse,
           dependencies=[Depends(rate_limit(generate_limiter))])
@@ -964,6 +1702,10 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
 
     filter_result = session["filter_result"]
     agent = WriterAgent()
+    started = time.monotonic()
+
+    def elapsed_ms() -> int:
+        return int((time.monotonic() - started) * 1000)
 
     try:
         result = await agent.run(
@@ -981,30 +1723,35 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
         # Pro users identically, so it must not be dressed up as an upsell.
         lease.refund()
         logger.error(f"Test generation unavailable: {e}")
+        # Recorded as failed, not dropped: from the dashboard's side a run that
+        # vanished and a run that never happened look identical, and the user
+        # who watched this spin for a minute deserves to see it happened.
+        _record_generation(
+            session, ctx["user_id"], framework=payload.framework.value,
+            language=payload.language.value, status="failed",
+            duration_ms=elapsed_ms(), error=PROVIDER_OUTAGE_MESSAGE,
+        )
         raise HTTPException(503, PROVIDER_OUTAGE_MESSAGE)
     except Exception as e:
         lease.refund()
         logger.error(f"Test generation failed: {e}")
+        _record_generation(
+            session, ctx["user_id"], framework=payload.framework.value,
+            language=payload.language.value, status="failed",
+            duration_ms=elapsed_ms(), error=str(e),
+        )
         raise HTTPException(500, "Test generation failed. Please try again.")
 
     lease.commit()
 
-    # History for the user's profile. `jobs` holds the detail but is pruned at
-    # 24h, and `usage` is only a per-month counter — neither can answer "what
-    # have I generated?". Never let bookkeeping sink a successful generation:
-    # the user's tests are already made and paid for.
-    try:
-        req = session.get("request", {})
-        store.record_generation(
-            user_id=ctx["user_id"],
-            source=req.get("repo_url") or req.get("zip_name") or "ZIP upload",
-            framework=result.framework,
-            language=payload.language or req.get("language", ""),
-            test_count=result.test_count,
-            file_count=len(result.files),
-        )
-    except Exception as e:
-        logger.warning(f"Could not record generation history: {e}")
+    _record_generation(
+        session, ctx["user_id"],
+        framework=result.framework,
+        language=payload.language.value,
+        test_count=result.test_count,
+        file_count=len(result.files),
+        duration_ms=elapsed_ms(),
+    )
 
     response = GenerateResponse(
         success=True,

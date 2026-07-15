@@ -57,6 +57,68 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class EmailRequest(BaseModel):
+    """Shared by resend-verification and forgot-password: an address is all
+    either one needs, and both answer identically whether or not it exists."""
+    email: str
+
+
+class TokenRequest(BaseModel):
+    """A one-time link token from an email (verify-email)."""
+    token: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str
+
+
+class VerifyOtpRequest(BaseModel):
+    challenge_id: str
+    code: str
+
+
+class ChangePasswordRequest(BaseModel):
+    """The current password is required even though the caller already holds a
+    session: a session proves the tab is logged in, not that the person at the
+    keyboard is the owner. Without it, an unattended screen is a password
+    change."""
+    current_password: str
+    new_password: str
+
+
+class DeleteAccountRequest(BaseModel):
+    """`confirm` must echo the account's own email back — the same shape as the
+    repo-deletion guard, and the reason is the same: make an irreversible,
+    unprompted click impossible."""
+    confirm: str
+
+
+class UserSettings(BaseModel):
+    """Form defaults for Generate/Publish. Every field optional: PUT /api/settings
+    patches, so omitting one leaves it alone rather than resetting it."""
+    framework: Optional[TestFramework] = None
+    language: Optional[Language] = None
+    base_url: Optional[str] = None
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if v and not v.startswith(("http://", "https://")):
+            raise ValueError("Base URL must start with http:// or https://")
+        return v
+
+
+class UserSettingsResponse(BaseModel):
+    """Always fully populated — the store resolves unset fields to defaults."""
+    framework: str
+    language: str
+    base_url: str
+
+
 class UserPublic(BaseModel):
     id: str
     email: Optional[str] = None
@@ -64,12 +126,45 @@ class UserPublic(BaseModel):
     github_login: Optional[str] = None
     avatar_url: Optional[str] = None
     has_github: bool = False
+    email_verified: bool = True
     plan: str = "free"
+    # Whether to render the Admin nav item. Not a permission — see
+    # services/admin.py; the routes check the allowlist themselves.
+    is_admin: bool = False
 
 
 class AuthResponse(BaseModel):
     token: str
     user: UserPublic
+
+
+class LoginResponse(BaseModel):
+    """Login is no longer a single step, so the client has to be told which of
+    three places it landed in rather than just getting a token or an error.
+
+    `status`:
+      ok                    — authenticated; `token` and `user` are set.
+      otp_required          — password was right, a code is in their inbox;
+                              continue at /api/auth/login/verify-otp with
+                              `challenge_id`.
+      verification_required — the address was never confirmed; a fresh link has
+                              been sent. No token is issued.
+
+    `token`/`user` are populated only for "ok", so a client that ignores
+    `status` and reads `token` gets nothing usable rather than a half-session.
+    """
+    status: str
+    token: Optional[str] = None
+    user: Optional[UserPublic] = None
+    challenge_id: Optional[str] = None
+    email_hint: Optional[str] = None          # masked: a**@example.com
+    expires_in: Optional[int] = None          # seconds the OTP stays valid
+    message: Optional[str] = None
+
+
+class SimpleResponse(BaseModel):
+    ok: bool = True
+    message: str = ""
 
 
 # ── Responses ────────────────────────────────
@@ -152,3 +247,103 @@ class ProviderStatus(BaseModel):
 class StatusResponse(BaseModel):
     providers: list[ProviderStatus]
     call_log: list[dict]
+
+
+# ── Admin console ────────────────────────────
+#
+# Every model below is served only behind services.admin.require_admin. They
+# carry fields UserPublic deliberately withholds (suspension state, live session
+# count, usage) — that's the point of the console, but it also means none of
+# these may ever be returned from a non-admin route.
+
+class AdminUser(BaseModel):
+    id: str
+    email: Optional[str] = None
+    name: Optional[str] = None
+    github_login: Optional[str] = None
+    avatar_url: Optional[str] = None
+    created_at: float
+    plan: str = "free"                       # effective plan (a lapsed Pro reads free)
+    plan_expires_at: Optional[float] = None
+    email_verified: bool = False
+    suspended: bool = False
+    suspended_at: Optional[float] = None
+    suspended_reason: Optional[str] = None
+    is_admin: bool = False
+    generations: int = 0
+    scans: int = 0
+    usage_this_period: int = 0
+
+
+class AdminUserList(BaseModel):
+    users: list[AdminUser]
+    total: int                               # matching the query, not the page
+    limit: int
+    offset: int
+
+
+class AdminUserDetail(BaseModel):
+    user: AdminUser
+    quota: dict
+    totals: dict[str, int]
+    active_sessions: int
+    recent_generations: list[dict]
+    recent_scans: list[dict]
+    published_repos: list[dict]
+
+
+class AdminSetPlanRequest(BaseModel):
+    plan: str                                # "free" | "pro"
+    # Days from now the grant lapses; omit for a plan that never expires.
+    # A comped Pro with no expiry is forever, so the UI defaults to setting one.
+    expires_in_days: Optional[int] = None
+    reason: Optional[str] = None
+
+    @field_validator("plan")
+    @classmethod
+    def validate_plan(cls, v):
+        v = (v or "").strip().lower()
+        if v not in {"free", "pro"}:
+            raise ValueError("Plan must be 'free' or 'pro'.")
+        return v
+
+    @field_validator("expires_in_days")
+    @classmethod
+    def validate_expiry(cls, v):
+        if v is not None and not (1 <= v <= 3650):
+            raise ValueError("Expiry must be between 1 and 3650 days.")
+        return v
+
+
+class AdminSuspendRequest(BaseModel):
+    suspended: bool
+    reason: Optional[str] = None
+
+
+class AdminSetUsageRequest(BaseModel):
+    count: int
+
+    @field_validator("count")
+    @classmethod
+    def validate_count(cls, v):
+        if v < 0 or v > 1_000_000:
+            raise ValueError("Usage count must be between 0 and 1,000,000.")
+        return v
+
+
+class AdminOverview(BaseModel):
+    totals: dict[str, int]
+    series: list[dict]                       # per-day, zero-filled
+    frameworks: list[dict]
+    languages: list[dict]
+    recent_failures: list[dict]
+
+
+class AdminSystem(BaseModel):
+    app_env: str
+    uptime_seconds: float
+    jobs_stored: int
+    providers: list[ProviderStatus]
+    keys: list[dict]                         # per-key health, incl. cooldowns
+    call_log: list[dict]
+    config: dict                             # feature switches — never secrets
