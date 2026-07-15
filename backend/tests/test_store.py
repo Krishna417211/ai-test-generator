@@ -117,8 +117,21 @@ class TestActivityHistory:
     def test_totals_on_a_user_with_no_history(self):
         s = _store()
         assert s.activity_totals("nobody") == {
-            "generations": 0, "tests_written": 0, "scans": 0, "repos_published": 0,
+            "generations": 0, "tests_written": 0, "generations_failed": 0,
+            "scans": 0, "repos_published": 0,
         }
+
+    def test_failed_generations_are_counted_but_not_double_counted(self):
+        """A failed run is still a generation that happened: it belongs in the
+        history and in `generations`, but it wrote no tests."""
+        s = _store()
+        s.record_generation("u1", "r/ok", "playwright_js", "typescript", 5, 2)
+        s.record_generation("u1", "r/bad", "playwright_js", "typescript", 0, 0,
+                            status="failed", error="providers exhausted")
+        totals = s.activity_totals("u1")
+        assert totals["generations"] == 2          # both attempts
+        assert totals["generations_failed"] == 1   # a subset, not an extra
+        assert totals["tests_written"] == 5        # the failure contributed none
 
     def test_history_survives_the_job_prune(self):
         """Regression: jobs are pruned at 24h. If history lived in `jobs`, a
@@ -141,3 +154,100 @@ class TestActivityHistory:
         s.record_published_repo("other/x", "u2", "https://github.com/other/x")
         assert s.activity_totals("u1")["repos_published"] == 2
         assert s.activity_totals("u2")["repos_published"] == 1
+
+
+class TestActivityFeed:
+    """The dashboard's unified timeline across the three activity tables."""
+
+    def test_feed_merges_all_three_features_newest_first(self):
+        s = _store()
+        s.record_generation("u1", "r/gen", "playwright_js", "typescript", 4, 1)
+        s.record_scan("u1", "https://scanned.example", "A", 95, 0)
+        s.record_published_repo("me/pub", "u1", "https://github.com/me/pub",
+                                test_count=3, files_pushed=20)
+        feed = s.activity_feed("u1")
+        assert len(feed) == 3
+        assert {i["kind"] for i in feed} == {"generate", "scan", "publish"}
+        stamps = [i["created_at"] for i in feed]
+        assert stamps == sorted(stamps, reverse=True), "feed must be newest-first"
+
+    def test_feed_shape_depends_on_kind(self):
+        s = _store()
+        s.record_generation("u1", "r/gen", "playwright_js", "typescript", 4, 1)
+        s.record_scan("u1", "https://scanned.example", "A", 95, 2)
+        by_kind = {i["kind"]: i for i in s.activity_feed("u1")}
+        assert by_kind["generate"]["source"] == "r/gen"
+        assert by_kind["scan"]["grade"] == "A"
+        assert by_kind["scan"]["findings"] == 2
+
+    def test_feed_never_leaks_another_users_activity(self):
+        s = _store()
+        s.record_generation("u1", "mine", "playwright_js", "typescript", 1, 1)
+        s.record_generation("u2", "theirs", "playwright_js", "typescript", 1, 1)
+        assert [i["source"] for i in s.activity_feed("u1")] == ["mine"]
+
+    def test_feed_is_capped(self):
+        s = _store()
+        for i in range(12):
+            s.record_generation("u1", f"r{i}", "playwright_js", "typescript", 1, 1)
+        assert len(s.activity_feed("u1", limit=5)) == 5
+
+    def test_series_is_zero_filled_across_the_window(self):
+        """A quiet day must be a 0, not a missing row — the chart draws a
+        continuous axis off this."""
+        s = _store()
+        s.record_generation("u1", "r/today", "playwright_js", "typescript", 2, 1)
+        series = s.activity_series("u1", days=14)
+        assert len(series) == 14
+        assert [d["date"] for d in series] == sorted(d["date"] for d in series)
+        assert sum(d["generate"] for d in series) == 1
+        assert all(d["publish"] == 0 and d["scan"] == 0 for d in series)
+
+
+class TestUserSettings:
+    def test_unset_settings_fall_back_to_defaults(self):
+        s = _store()
+        assert s.get_settings("nobody") == JobStore.DEFAULT_SETTINGS
+
+    def test_partial_save_leaves_other_fields_at_their_default(self):
+        s = _store()
+        got = s.save_settings("u1", framework="cypress")
+        assert got["framework"] == "cypress"
+        assert got["language"] == JobStore.DEFAULT_SETTINGS["language"]
+
+    def test_save_upserts_rather_than_duplicating(self):
+        s = _store()
+        s.save_settings("u1", framework="cypress")
+        s.save_settings("u1", framework="selenium", base_url="https://x.example")
+        assert s.get_settings("u1")["framework"] == "selenium"
+        assert s.get_settings("u1")["base_url"] == "https://x.example"
+
+    def test_unknown_keys_are_ignored(self):
+        s = _store()
+        s.save_settings("u1", framework="cypress", plan="pro")   # plan is not settable here
+        assert "plan" not in s.get_settings("u1")
+
+
+class TestAccountDeletion:
+    def test_delete_account_removes_the_user_and_their_activity(self):
+        s = _store()
+        s.create_user({"id": "u1", "email": "a@b.c", "created_at": 0})
+        s.record_generation("u1", "r", "playwright_js", "typescript", 1, 1)
+        s.record_scan("u1", "https://x.example", "A", 90, 0)
+        s.record_published_repo("me/r", "u1", "https://github.com/me/r")
+        s.save_settings("u1", framework="cypress")
+
+        s.delete_account("u1")
+
+        assert s.get_user_by_id("u1") is None
+        assert s.activity_feed("u1") == []
+        assert s.activity_totals("u1")["generations"] == 0
+
+    def test_delete_account_leaves_other_users_alone(self):
+        s = _store()
+        s.create_user({"id": "u1", "email": "a@b.c", "created_at": 0})
+        s.create_user({"id": "u2", "email": "d@e.f", "created_at": 0})
+        s.record_generation("u2", "theirs", "playwright_js", "typescript", 1, 1)
+        s.delete_account("u1")
+        assert s.get_user_by_id("u2") is not None
+        assert len(s.activity_feed("u2")) == 1

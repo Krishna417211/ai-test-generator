@@ -67,6 +67,16 @@ class Provider(str, Enum):
     CLAUDE   = "claude"
 
 
+# The env var each provider's keys are read from, numbered _1.._10. Named once
+# here because two things need it: loading the keys, and telling an admin which
+# variable to rotate when one goes bad (see get_key_health).
+_ENV_PREFIXES: dict[Provider, str] = {
+    Provider.GEMINI: "GEMINI_API_KEY_",
+    Provider.GROQ:   "GROQ_API_KEY_",
+    Provider.CLAUDE: "ANTHROPIC_API_KEY_",
+}
+
+
 def is_hard_quota(text: str) -> bool:
     """True when a provider is out of credit or has burned a daily quota.
 
@@ -168,13 +178,7 @@ class LLMRouter:
 
     def _load_keys(self):
         """Load all API keys from environment variables."""
-        key_patterns = {
-            Provider.GEMINI:   "GEMINI_API_KEY_",
-            Provider.GROQ:     "GROQ_API_KEY_",
-            Provider.CLAUDE:   "ANTHROPIC_API_KEY_",
-        }
-
-        for provider, prefix in key_patterns.items():
+        for provider, prefix in _ENV_PREFIXES.items():
             keys = []
             for i in range(1, 11):  # support up to 10 keys per provider
                 val = os.getenv(f"{prefix}{i}")
@@ -344,6 +348,34 @@ class LLMRouter:
                 "healthy": available > 0,
             }
         return status
+
+    def get_key_health(self) -> list[dict]:
+        """Per-key health for the admin console.
+
+        Identifies each key by the environment variable it came from, never by
+        its value — not even a masked suffix. `GEMINI_API_KEY_2 is hard-blocked`
+        already tells an operator exactly which line of .env to rotate, so
+        putting any part of the secret on an HTTP response would buy nothing and
+        risk it landing in a log, a screenshot, or a bug report.
+        """
+        now = time.time()
+        health = []
+        for provider, state in self._providers.items():
+            for k in state.keys:
+                health.append({
+                    "provider": provider.value,
+                    "env_var": f"{_ENV_PREFIXES[provider]}{k.index}",
+                    "index": k.index,
+                    "available": k.is_available and not k.hard_blocked,
+                    # Distinct from a 429 cooldown: waiting does not fix these,
+                    # so the console must not imply they'll heal on their own.
+                    "hard_blocked": k.hard_blocked,
+                    "cooldown_seconds_left": max(0, round(k.exhausted_until - now)),
+                    "call_count": k.call_count,
+                    "error_count": k.error_count,
+                    "last_used": k.last_used or None,
+                })
+        return health
 
     def get_call_log(self, limit: int = 50) -> list[dict]:
         return self._call_log[-limit:]

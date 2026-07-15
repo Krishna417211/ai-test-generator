@@ -72,6 +72,28 @@ SQLite-backed session store (stdlib only). Jobs survive restarts and are shared
 across workers; old jobs are pruned by TTL. `FilterResult` is serialized to/from
 JSON transparently.
 
+### `services/admin.py` — the admin role
+`require_admin` gates every `/api/admin/*` route: user management, plan and quota
+overrides, platform analytics, and provider/key health.
+
+The grant lives in `ADMIN_EMAILS` (config), **not** in a `users.role` column, and
+that is the design rather than an omission. With no row that confers privilege
+there is nothing to write to escalate, no promote-user endpoint to abuse, and no
+path from a stolen session to a second admin. The trade is that changing the
+admin list is a config change plus a restart — the right friction for the one
+role that can read every account.
+
+Two rules the module exists to enforce:
+
+* **The address must be verified.** With `REQUIRE_EMAIL_VERIFICATION=false` a
+  stranger can sign up as an admin's address and still be issued a session, so
+  the allowlist alone is not proof of who holds the address (`auth.is_admin`).
+* **Non-admins get 404, not 403.** A 403 confirms the console exists to someone
+  who already has a session; to everyone else it should look absent.
+
+The client's `user.is_admin` decides whether the nav item renders and nothing
+else — every route re-derives the role server-side.
+
 ### `config.py` / `logging_config.py`
 Typed settings via `pydantic-settings`; structured JSON logging with request IDs.
 

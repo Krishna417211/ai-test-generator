@@ -193,3 +193,228 @@ class TestScan:
         _install(monkeypatch, handler)
         with pytest.raises(ScanError):
             asyncio.run(SecurityScanner().scan("https://down.example"))
+
+
+# ── false positives ──────────────────────────
+#
+# Every test below pins a case the scanner used to get wrong. They matter more
+# than the positive tests: a missed finding is a gap, but a *false* finding is
+# advice that is actively wrong, and enough of them teach the reader to
+# disregard the report entirely — including the true findings in it.
+
+def _page(monkeypatch, *, headers=None, body="<html>ok</html>", url="https://x.example"):
+    """Scan one page with everything else clean (no exposed files)."""
+    def handler(req):
+        if req.url.path == "/":
+            return httpx.Response(200, headers=headers or {}, text=body)
+        return httpx.Response(404)
+    _install(monkeypatch, handler)
+    return asyncio.run(SecurityScanner().scan(url))
+
+
+def _titles(r):
+    return [f["title"] for f in r.findings]
+
+
+def _cookies(monkeypatch, cookies, url="https://x.example"):
+    """Scan a page that sets several cookies.
+
+    Repeated Set-Cookie headers have to go in as a list of pairs — httpx.Headers
+    is immutable-ish and has no .add(), and a dict would silently keep only the
+    last cookie, quietly turning a multi-cookie test into a one-cookie one.
+    """
+    headers = [("set-cookie", c) for c in cookies]
+    def handler(req):
+        if req.url.path == "/":
+            return httpx.Response(200, headers=headers, text="<html>ok</html>")
+        return httpx.Response(404)
+    _install(monkeypatch, handler)
+    return asyncio.run(SecurityScanner().scan(url))
+
+
+class TestClickjackingFalsePositive:
+    def test_csp_frame_ancestors_satisfies_clickjacking(self, monkeypatch):
+        """frame-ancestors supersedes X-Frame-Options; browsers ignore XFO when
+        a CSP sets it. Telling a site that took the modern advice that it has no
+        clickjacking protection is simply false."""
+        r = _page(monkeypatch, headers={
+            "content-security-policy": "default-src 'self'; frame-ancestors 'none'",
+        })
+        assert not any("Clickjacking" in t for t in _titles(r))
+
+    def test_xfo_still_flagged_when_neither_present(self, monkeypatch):
+        r = _page(monkeypatch, headers={"content-security-policy": "default-src 'self'"})
+        assert any("Clickjacking" in t for t in _titles(r))
+
+    def test_xfo_not_flagged_when_xfo_present(self, monkeypatch):
+        r = _page(monkeypatch, headers={"x-frame-options": "DENY"})
+        assert not any("Clickjacking" in t for t in _titles(r))
+
+
+class TestMixedContentFalsePositive:
+    def test_plain_anchor_link_is_not_mixed_content(self, monkeypatch):
+        """<a href="http://…"> is a link the user may click, not a subresource
+        the page loads. Browsers neither block nor warn about it."""
+        r = _page(monkeypatch, body='<html><a href="http://example.com">docs</a></html>')
+        assert not any("Mixed content" in t for t in _titles(r))
+
+    def test_canonical_link_is_not_mixed_content(self, monkeypatch):
+        r = _page(monkeypatch, body='<html><link rel="canonical" href="http://x.example/"></html>')
+        assert not any("Mixed content" in t for t in _titles(r))
+
+    @pytest.mark.parametrize("body", [
+        '<script src="http://cdn.x/x.js"></script>',
+        '<img src="http://cdn.x/a.png">',
+        '<iframe src="http://cdn.x/f"></iframe>',
+        '<link rel="stylesheet" href="http://cdn.x/a.css">',
+        '<object data="http://cdn.x/o.swf"></object>',
+    ])
+    def test_real_subresources_are_flagged(self, monkeypatch, body):
+        r = _page(monkeypatch, body=f"<html>{body}</html>")
+        assert any("Mixed content" in t for t in _titles(r)), body
+
+    def test_evidence_names_the_resource(self, monkeypatch):
+        r = _page(monkeypatch, body='<html><script src="http://cdn.x/x.js"></script></html>')
+        f = next(f for f in r.findings if "Mixed content" in f["title"])
+        assert "http://cdn.x/x.js" in f["evidence"]
+
+    def test_http_page_is_not_flagged_for_mixed_content(self, monkeypatch):
+        """Mixed content is only a concept on an HTTPS page."""
+        r = _page(monkeypatch, body='<html><img src="http://x/a.png"></html>',
+                  url="http://plain.example")
+        assert not any("Mixed content" in t for t in _titles(r))
+
+
+class TestPasswordFormFalsePositive:
+    def test_password_in_a_different_form_is_not_flagged(self, monkeypatch):
+        """The http:// action and the password field must be in the SAME form.
+        Checking them independently flagged an https login page that happened to
+        also carry a plain-http newsletter box."""
+        body = """
+        <html>
+          <form action="http://track.example/subscribe"><input type="email"></form>
+          <form action="https://x.example/login"><input type="password"></form>
+        </html>
+        """
+        r = _page(monkeypatch, body=body)
+        assert not any("Password form" in t for t in _titles(r))
+
+    def test_password_in_the_http_form_is_flagged(self, monkeypatch):
+        body = '<html><form action="http://x.example/login"><input type="password"></form></html>'
+        r = _page(monkeypatch, body=body)
+        assert any("Password form" in t for t in _titles(r))
+
+    def test_reported_once_even_with_several_bad_forms(self, monkeypatch):
+        body = (
+            '<html>'
+            '<form action="http://a.example/l"><input type="password"></form>'
+            '<form action="http://b.example/l"><input type="password"></form>'
+            '</html>'
+        )
+        r = _page(monkeypatch, body=body)
+        assert sum("Password form" in t for t in _titles(r)) == 1
+
+
+class TestCookieNoise:
+    def test_analytics_cookie_not_flagged_for_httponly(self, monkeypatch):
+        """_ga is read by JavaScript by design — HttpOnly would break it, so
+        demanding it is advice we'd want the reader to ignore."""
+        r = _page(monkeypatch, headers={"set-cookie": "_ga=GA1.2.3; Secure; SameSite=Lax"})
+        assert not any("HttpOnly" in t for t in _titles(r))
+
+    @pytest.mark.parametrize("name", ["session", "sessionid", "auth_token", "jwt", "sid", "PHPSESSID"])
+    def test_session_cookies_are_flagged_for_httponly(self, monkeypatch, name):
+        r = _page(monkeypatch, headers={"set-cookie": f"{name}=x; Secure; SameSite=Lax"})
+        assert any("HttpOnly" in t for t in _titles(r)), name
+
+    def test_cookies_are_grouped_into_one_finding_per_issue(self, monkeypatch):
+        """Previously one finding per cookie per flag, none of which deduplicated
+        because the title carried the cookie name."""
+        r = _cookies(monkeypatch, ["a=1", "b=2", "c=3", "d=4", "e=5"])
+        assert sum("Secure flag" in t for t in _titles(r)) == 1
+        assert sum("SameSite" in t for t in _titles(r)) == 1
+
+    def test_grouped_finding_names_the_cookies(self, monkeypatch):
+        r = _cookies(monkeypatch, ["alpha=1", "beta=2"])
+        f = next(f for f in r.findings if "Secure flag" in f["title"])
+        assert "alpha" in f["evidence"] and "beta" in f["evidence"]
+
+
+class TestConfigJsonFalsePositive:
+    def test_firebase_web_config_is_not_a_secret(self):
+        """apiKey in a Firebase web config is a project identifier that is meant
+        to ship to browsers — not a credential."""
+        assert not _looks_sensitive("json", '{"apiKey":"AIzaSyABC","authDomain":"x.firebaseapp.com"}')
+
+    def test_pwa_manifest_is_not_a_secret(self):
+        assert not _looks_sensitive("json", '{"name":"App","icons":[],"start_url":"/"}')
+
+    @pytest.mark.parametrize("blob", [
+        '{"client_secret":"abc"}',
+        '{"password":"hunter2"}',
+        '{"aws_secret_access_key":"x"}',
+        '{"private_key":"-----BEGIN"}',
+    ])
+    def test_real_secrets_still_detected(self, blob):
+        assert _looks_sensitive("json", blob)
+
+
+class TestScoring:
+    def test_missing_headers_alone_do_not_sink_the_grade(self, monkeypatch):
+        """Six missing headers was -48 under a flat sum, grading a
+        headers-only problem D — the same band as a site leaking its .env."""
+        r = _page(monkeypatch)   # no security headers at all, nothing else wrong
+        assert r.score >= 65
+        assert r.grade in ("A", "B", "C")
+
+    def test_category_deduction_is_capped(self, monkeypatch):
+        r = _cookies(monkeypatch, ["session=1", "auth=2", "jwt=3", "sid=4", "token=5"])
+        cookie_findings = [f for f in r.findings if f["category"] == "cookies"]
+        assert cookie_findings                      # they are still reported
+        assert r.score >= 100 - 35 - 20             # headers cap + cookies cap
+
+    def test_exposed_env_still_reaches_F_alone(self, monkeypatch):
+        """The cap must not rescue a site that is leaking its secrets."""
+        def handler(req):
+            if req.url.path == "/.env":
+                return httpx.Response(200, text="SECRET_KEY=abc\nDB_PASSWORD=xyz")
+            if req.url.path == "/":
+                return httpx.Response(200, headers=SECURE_HEADERS, text="<html>ok</html>")
+            return httpx.Response(404)
+        _install(monkeypatch, handler)
+        r = asyncio.run(SecurityScanner().scan("https://x.example"))
+        assert r.grade == "F"
+
+    def test_clean_site_is_still_100(self, monkeypatch):
+        r = _page(monkeypatch, headers=SECURE_HEADERS)
+        assert r.score == 100 and r.findings == []
+
+    def test_checks_run_counts_real_checks(self, monkeypatch):
+        """It used to report a number several checks returned 1 for regardless
+        of how many they actually ran."""
+        r = _page(monkeypatch, headers=SECURE_HEADERS)
+        from services.security_scanner import SENSITIVE_PATHS, SECURITY_HEADERS
+        expected = 2 + len(SECURITY_HEADERS) + 3 + len(SENSITIVE_PATHS) + 4 + 1 + 2
+        assert r.checks_run == expected
+
+
+class TestFixVideos:
+    def test_findings_carry_a_youtube_search(self, monkeypatch):
+        r = _page(monkeypatch)
+        assert r.findings
+        for f in r.findings:
+            assert f["video_url"].startswith("https://www.youtube.com/results?search_query=")
+
+    def test_link_is_a_search_never_a_video_id(self, monkeypatch):
+        """The whole point: we can't know real 11-char video ids, so we must
+        never emit a /watch?v= link. A search built from our own query cannot be
+        fabricated and cannot rot into someone else's video."""
+        r = _page(monkeypatch)
+        for f in r.findings:
+            assert "/watch?v=" not in f["video_url"]
+            assert "youtu.be/" not in f["video_url"]
+
+    def test_query_is_url_encoded(self):
+        url = security_scanner._youtube("fix mixed content https website tutorial")
+        assert " " not in url
+        assert "fix+mixed+content" in url or "fix%20mixed%20content" in url

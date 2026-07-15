@@ -106,6 +106,21 @@ def new_user_id() -> str:
     return "usr_" + uuid.uuid4().hex[:20]
 
 
+def is_admin(user: dict) -> bool:
+    """Whether this account holds the admin role.
+
+    Two conditions, and the second is not redundant. Membership of the
+    settings.admin_emails allowlist is the grant, but an *unverified* address
+    proves nothing about who holds it: with require_email_verification off, a
+    stranger can sign up as an admin's address and still be issued a session
+    (see main._issue_login), which would hand them the console. Demanding
+    email_verified here — independent of that setting — closes it, and costs a
+    real admin nothing, since both signup paths verify (main.verify_email, and
+    the GitHub callback, where GitHub has already checked the address).
+    """
+    return bool(user.get("email_verified")) and settings.is_admin_email(user.get("email"))
+
+
 def public_user(user: dict) -> dict:
     """Strip secrets before sending a user to the client."""
     # An expired paid plan reads as free — mirrors store.get_plan() so the UI
@@ -121,7 +136,13 @@ def public_user(user: dict) -> dict:
         "github_login": user.get("github_login"),
         "avatar_url": user.get("avatar_url"),
         "has_github": bool(user.get("github_login")),
+        "email_verified": bool(user.get("email_verified")),
         "plan": plan,
+        # Drives whether the client renders the Admin nav item. It is a hint for
+        # the UI only — every /api/admin route re-derives this server-side via
+        # require_admin, so forging it client-side buys nothing but a link that
+        # 403s.
+        "is_admin": is_admin(user),
     }
 
 
@@ -147,6 +168,10 @@ async def require_user(request: Request) -> dict:
     FastAPI dependency: resolve the current user from the session token, or 401.
     Returns a context dict: {"user": <public user>, "session": <session data>,
     "session_id": <token>, "user_id": ...}.
+
+    Also slides the session's expiry forward (see store.touch_session). The TTL
+    is an *idle* timeout: a window someone is actively using never expires under
+    them mid-task, while an abandoned session still dies on its own.
     """
     token = _extract_token(request)
     if not token:
@@ -160,6 +185,21 @@ async def require_user(request: Request) -> dict:
     user = store.get_user_by_id(session["user_id"])
     if not user:
         raise HTTPException(401, "Account not found. Please log in again.")
+
+    # A suspension has to bite here, on every authenticated request, not only at
+    # login: the accounts worth suspending are the ones already holding a live
+    # token, and checking only at the door would leave them working for the rest
+    # of the session TTL. 403, not 401 — the token is valid and re-logging in
+    # would change nothing, so the client must not send them to /login to retry.
+    if user.get("suspended"):
+        raise HTTPException(
+            403,
+            "This account has been suspended. Contact support if you think "
+            "this is a mistake.",
+        )
+
+    store.touch_session(token, settings.oauth_session_ttl_seconds)
+
     return {
         "user": public_user(user),
         "session": session,
