@@ -38,3 +38,8 @@ build/
 # Coverage / test artifacts
 .coverage
 .playwright-mcp/
+
+# Screenshots taken while working on the UI. App images live in
+# frontend/public (favicon.svg and friends) and are unaffected — this only
+# keeps stray captures out of git history, where binaries are permanent.
+/*.png
