@@ -15,7 +15,7 @@ set -euo pipefail
 
 DEVICE="${1:-/dev/nvme1n1}"
 MOUNT="/var/data"
-REPO_URL="${REPO_URL:-https://github.com/Krishna417211/testgen-ai.git}"
+REPO_URL="${REPO_URL:-https://github.com/Krishna417211/ai-test-generator.git}"
 CHECKOUT="/opt/testra"
 
 log() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }

@@ -98,18 +98,25 @@ Then create a role (`testra-github-deploy`) with this **trust policy**:
     "Condition": {
       "StringEquals": {
         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-        "token.actions.githubusercontent.com:sub": "repo:Krishna417211/testgen-ai:environment:staging"
+        "token.actions.githubusercontent.com:sub": "repo:Krishna417211/ai-test-generator:environment:staging"
       }
     }
   }]
 }
 ```
 
-> **The `sub` line is the one people get wrong.** Because the deploy job declares
-> `environment: staging`, GitHub's token says `…:environment:staging` — *not*
-> `…:ref:refs/heads/master`. Use the ref form and you get
-> `AccessDenied … sts:AssumeRoleWithWebIdentity`. If you remove `environment:`
-> from the job, this has to change to the ref form.
+> **The `sub` line is the one people get wrong**, in two ways.
+>
+> First: because the deploy job declares `environment: staging`, GitHub's token
+> says `…:environment:staging` — *not* `…:ref:refs/heads/master`. Use the ref
+> form and you get `AccessDenied … sts:AssumeRoleWithWebIdentity`. If you remove
+> `environment:` from the job, this has to change to the ref form.
+>
+> Second: it must be the repo's **current** name. This repo was renamed
+> (`testgen-ai` → `ai-test-generator`), and GitHub redirects the old name for
+> clone and push — so everything *looks* fine while the OIDC token carries the
+> new name and fails to match a policy pinned to the old one. If you rename the
+> repo again, update this policy or deploys stop.
 >
 > Never loosen it to `repo:*` or `*`. That condition is the only thing stopping
 > any GitHub repository on earth from assuming this role.
@@ -170,7 +177,7 @@ Then, once, on the box:
 ```bash
 aws ssm start-session --target <INSTANCE_ID>
 sudo dnf -y install git
-git clone https://github.com/Krishna417211/testgen-ai.git /tmp/testra
+git clone https://github.com/Krishna417211/ai-test-generator.git /tmp/testra
 sudo bash /tmp/testra/deploy/bootstrap.sh /dev/nvme1n1
 ```
 

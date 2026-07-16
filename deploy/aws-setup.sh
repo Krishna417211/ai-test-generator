@@ -26,7 +26,11 @@ PROFILE="${1:-}"
 # embarrassing to explain, so the account is asserted, not assumed.
 EXPECTED_ACCOUNT="920226265373"
 REGION="${AWS_REGION:-ap-south-1}"
-GITHUB_REPO="${GITHUB_REPO:-Krishna417211/testgen-ai}"
+# Must be the repo's CURRENT name. GitHub redirects old names for git, so a
+# stale value here pushes and clones fine — and then fails only at deploy time,
+# because the OIDC token's `sub` always carries the current name and won't match
+# a trust policy pinned to the old one. (This repo was renamed from testgen-ai.)
+GITHUB_REPO="${GITHUB_REPO:-Krishna417211/ai-test-generator}"
 GITHUB_ENVIRONMENT="${GITHUB_ENVIRONMENT:-staging}"
 
 DEPLOY_ROLE="testra-github-deploy"
