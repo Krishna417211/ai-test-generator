@@ -872,8 +872,24 @@ class JobStore:
     # in here checks permissions, so never expose one of these on a route that
     # doesn't carry that dependency.
 
-    def list_users(self, query: str = "", limit: int = 50, offset: int = 0) -> list[dict]:
-        """Users newest-first, optionally filtered by email/name/GitHub handle."""
+    # Sortable columns, mapped to SQL. An allowlist and not the caller's string:
+    # ORDER BY cannot be a bound parameter, so the value is concatenated into the
+    # statement — anything reaching that point unvetted is SQL injection. A key
+    # that isn't in here is not an error, it just falls back to the default.
+    _USER_SORTS = {
+        "created_at": "created_at",
+        "email": "email COLLATE NOCASE",
+        "name": "name COLLATE NOCASE",
+        "plan": "plan",
+        # SQLite has no bool; these sort 0/1, so DESC puts the flagged rows first,
+        # which is the reason anyone clicks these two columns.
+        "suspended": "suspended",
+        "email_verified": "email_verified",
+    }
+
+    def list_users(self, query: str = "", limit: int = 50, offset: int = 0,
+                   sort: str = "created_at", direction: str = "desc") -> list[dict]:
+        """Users filtered by email/name/GitHub handle, newest-first by default."""
         sql = f"SELECT {self._USER_COLS} FROM users"
         params: list = []
         if query.strip():
@@ -883,7 +899,12 @@ class JobStore:
             sql += (" WHERE (email LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\' "
                     "OR github_login LIKE ? ESCAPE '\\')")
             params += [like, like, like]
-        sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        col = self._USER_SORTS.get(sort, "created_at")
+        asc = str(direction).lower() == "asc"
+        # id as a tiebreaker: without it, rows equal on the sort column (every
+        # free account, say) can come back in a different order per query, so
+        # paging through them would skip and repeat rows.
+        sql += f" ORDER BY {col} {'ASC' if asc else 'DESC'}, id ASC LIMIT ? OFFSET ?"
         params += [max(1, min(limit, 200)), max(0, offset)]
         with self._lock, self._conn() as c:
             rows = c.execute(sql, params).fetchall()
@@ -928,9 +949,19 @@ class JobStore:
         return total
 
     def platform_totals(self) -> dict[str, int]:
-        """Instance-wide counts for the admin overview."""
-        day_ago = time.time() - 86_400
-        week_ago = time.time() - 7 * 86_400
+        """Instance-wide counts for the admin overview.
+
+        The `*_prev` keys are the same windows shifted one window back — the 7
+        days before the last 7, the 24h before the last 24h. They exist so the
+        client can show a trend without a second round-trip, and they're computed
+        here rather than in the UI because only SQL can see the rows that have
+        already scrolled out of the current window.
+        """
+        now = time.time()
+        day_ago = now - 86_400
+        two_days_ago = now - 2 * 86_400
+        week_ago = now - 7 * 86_400
+        two_weeks_ago = now - 14 * 86_400
         with self._lock, self._conn() as c:
             def scalar(sql: str, params: tuple = ()) -> int:
                 return c.execute(sql, params).fetchone()[0] or 0
@@ -938,6 +969,12 @@ class JobStore:
             totals = {
                 "users": scalar("SELECT COUNT(*) FROM users"),
                 "users_new_7d": scalar("SELECT COUNT(*) FROM users WHERE created_at >= ?", (week_ago,)),
+                # Half-open interval [two_weeks_ago, week_ago): a row exactly on
+                # the boundary belongs to the current window, never to both.
+                "users_new_7d_prev": scalar(
+                    "SELECT COUNT(*) FROM users WHERE created_at >= ? AND created_at < ?",
+                    (two_weeks_ago, week_ago),
+                ),
                 "users_suspended": scalar("SELECT COUNT(*) FROM users WHERE suspended = 1"),
                 # Effective plan, not the stored column — a lapsed Pro is a free
                 # user, and counting them as paying would overstate revenue.
@@ -948,6 +985,10 @@ class JobStore:
                 ),
                 "generations": scalar("SELECT COUNT(*) FROM generations"),
                 "generations_24h": scalar("SELECT COUNT(*) FROM generations WHERE created_at >= ?", (day_ago,)),
+                "generations_24h_prev": scalar(
+                    "SELECT COUNT(*) FROM generations WHERE created_at >= ? AND created_at < ?",
+                    (two_days_ago, day_ago),
+                ),
                 "generations_failed": scalar("SELECT COUNT(*) FROM generations WHERE status != 'success'"),
                 "scans": scalar("SELECT COUNT(*) FROM scans"),
                 "published_repos": scalar("SELECT COUNT(*) FROM published_repos"),

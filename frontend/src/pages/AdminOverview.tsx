@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
   Users, Sparkles, ShieldCheck, Github, Loader2, RefreshCw, AlertCircle,
-  UserPlus, Ban, CreditCard, ArrowUpRight,
+  UserPlus, Ban, CreditCard, ArrowUpRight, ArrowDownRight, Minus,
 } from "lucide-react";
 import Page from "../components/Page";
 import ActivityChart from "../components/ActivityChart";
@@ -10,16 +10,57 @@ import { fetchAdminOverview, type AdminOverview as OverviewData } from "../utils
 import { pluralize, frameworkLabel, languageLabel, formatWhen, shortSource } from "../utils/format";
 import { SERIES_COLOR } from "../utils/chartPalette";
 
-function StatTile({ icon: Icon, value, label, sub, tone }: {
+/** Period-over-period change, or null when it can't honestly be stated.
+ *
+ *  Returns null when the previous window was zero: every jump from nothing is
+ *  "+∞%", and rendering "+100%" for 0→1 would be a made-up number. A tile with
+ *  no trend says nothing, which beats saying something false.
+ */
+function trendPct(current: number, previous: number): number | null {
+  if (!previous) return null;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
+/** The trend chip: direction, magnitude, and the window it compares against.
+ *
+ *  Colour is not the only carrier — the arrow and the sign say the same thing,
+ *  so this reads correctly in greyscale and to anyone who can't separate the
+ *  red from the green (WCAG 1.4.1).
+ */
+function Trend({ pct, since }: { pct: number; since: string }) {
+  const flat = pct === 0;
+  const up = pct > 0;
+  const Icon = flat ? Minus : up ? ArrowUpRight : ArrowDownRight;
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 text-[11px] font-medium tabular-nums ${
+        flat ? "text-grey-500" : up ? "text-emerald-400" : "text-rose-400"
+      }`}
+      title={`${up ? "Up" : flat ? "Unchanged" : "Down"} ${Math.abs(pct)}% vs ${since}`}
+    >
+      <Icon size={11} aria-hidden />
+      {flat ? "0" : `${up ? "+" : "−"}${Math.abs(pct)}`}%
+    </span>
+  );
+}
+
+function StatTile({ icon: Icon, value, label, sub, tone, trend, trendSince }: {
   icon: any; value: number | string; label: string; sub?: string;
   tone?: "warn";
+  /** Percent change vs the previous window; null/undefined renders no chip. */
+  trend?: number | null;
+  /** Names the comparison window, so "+20%" can't be read as "since forever". */
+  trendSince?: string;
 }) {
   return (
     <div className="rounded-2xl border border-grey-700 bg-white/[0.03] p-5">
       <div className="w-9 h-9 rounded-xl bg-white/[0.06] border border-grey-700 flex items-center justify-center mb-3">
         <Icon size={16} className={tone === "warn" ? "text-amber-400" : "text-grey-300"} />
       </div>
-      <div className="font-display text-2xl font-bold text-white tabular-nums">{value}</div>
+      <div className="flex items-baseline gap-2 flex-wrap">
+        <span className="font-display text-2xl font-bold text-white tabular-nums">{value}</span>
+        {trend != null && trendSince && <Trend pct={trend} since={trendSince} />}
+      </div>
       <div className="text-xs text-grey-400 mt-0.5">{label}</div>
       {sub && <div className="text-[11px] text-grey-500 mt-1">{sub}</div>}
     </div>
@@ -141,6 +182,10 @@ export default function AdminOverview() {
           <StatTile
             icon={Users} value={totals.users} label="Accounts"
             sub={totals.users_new_7d > 0 ? `+${totals.users_new_7d} this week` : "No new signups this week"}
+            // The trend is on signups-per-week, not the all-time total: a
+            // cumulative count only ever rises, so its "trend" would be noise.
+            trend={trendPct(totals.users_new_7d, totals.users_new_7d_prev)}
+            trendSince="the previous 7 days"
           />
           <StatTile
             icon={CreditCard} value={totals.users_pro} label="On Pro"
@@ -149,6 +194,8 @@ export default function AdminOverview() {
           <StatTile
             icon={Sparkles} value={totals.generations} label="Suites generated"
             sub={`${totals.generations_24h} in the last 24h`}
+            trend={trendPct(totals.generations_24h, totals.generations_24h_prev)}
+            trendSince="the previous 24 hours"
           />
           <StatTile
             icon={ShieldCheck} value={totals.scans} label="Sites scanned"

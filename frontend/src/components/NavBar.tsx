@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { NavLink, Link, useNavigate } from "react-router-dom";
 import { TestTube2, LogOut, UserRound, LayoutDashboard, Settings, ChevronDown } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import QuotaBar from "./QuotaBar";
 
 export default function NavBar() {
   const { user, logout } = useAuth();
@@ -37,6 +38,7 @@ export default function NavBar() {
               keep in step. */}
 
           <div className="flex items-center gap-2">
+            <QuotaBar />
             {user ? (
               <div className="relative" ref={ref}>
                 <button onClick={() => setMenu(!menu)}
