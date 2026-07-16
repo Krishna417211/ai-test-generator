@@ -1,0 +1,18 @@
+# Docker does not read .gitignore — see backend/.dockerignore for why this
+# matters. Vite inlines env values into the bundle at build time, so a stray
+# .env here would be baked into JavaScript served to every visitor.
+.env
+.env.*
+!.env.example
+
+# Installed fresh in the image from package-lock.json; copying the host's copy
+# would drag in binaries built for the wrong platform.
+node_modules/
+
+# Built inside the image, not copied from whatever is lying around locally.
+dist/
+
+# Local tooling noise
+.vscode/
+.idea/
+*.log

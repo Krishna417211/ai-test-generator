@@ -1,0 +1,68 @@
+# Production stack for the single EC2 instance. Two containers: the API, and
+# Caddy serving the SPA + terminating TLS.
+#
+# This file is never run by hand — .github/workflows/ci.yml sets the image tags
+# and runs it over SSM. `docker compose -f deploy/docker-compose.prod.yml up`
+# with no environment will refuse to start rather than guess (see the :? below).
+#
+# The dev stack is docker-compose.yml at the repo root; it bind-mounts source
+# and runs reload servers. Don't point that one at a real box.
+
+name: testra
+
+services:
+  backend:
+    # Pinned by CI to a specific commit SHA, never :latest — a restart must
+    # bring back the exact build that was running, not whatever moved since.
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE must be set (CI sets it to the ECR tag)}
+    restart: unless-stopped
+
+    # Secrets live on the instance, not in this file, not in the image, and not
+    # in GitHub. Created once by hand at bootstrap; see docs/DEPLOY.md.
+    env_file:
+      - /var/data/testra.env
+
+    environment:
+      APP_ENV: production
+      # The whole point of the EBS volume. The image's filesystem is replaced on
+      # every deploy; /data is not. If this ever pointed back inside the
+      # container, every account and paid plan would vanish on the next release.
+      TESTGEN_DB: /data/testgen.db
+
+    volumes:
+      - /var/data/db:/data
+
+    # No ports: — the API is only reachable through Caddy, so the instance never
+    # exposes an unencrypted 8000 to the internet.
+    expose:
+      - "8000"
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  web:
+    image: ${WEB_IMAGE:?WEB_IMAGE must be set (CI sets it to the ECR tag)}
+    restart: unless-stopped
+
+    environment:
+      # A bare ":80" for staging on an IP; a hostname switches Caddy into
+      # automatic HTTPS. See frontend/Caddyfile.
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    volumes:
+      # Issued certificates and Caddy's ACME account key. On the volume because
+      # losing them on every deploy means re-requesting certs and eventually
+      # tripping Let's Encrypt rate limits.
+      - /var/data/caddy:/data
+      - /var/data/caddy-config:/config
+
+    depends_on:
+      - backend

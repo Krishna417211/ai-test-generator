@@ -1,0 +1,35 @@
+# Production image: build the SPA, then serve it from Caddy with /api proxied
+# to the backend container. The dev Dockerfile next to this one runs `vite dev`
+# and is not suitable for deployment.
+
+FROM node:20-alpine AS build
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+# `npm ci` not `npm install`: installs exactly the lockfile, and fails instead
+# of silently resolving new versions on a machine nobody is watching.
+RUN npm ci
+
+COPY . .
+
+# Vite inlines env values into the bundle at build time, so the API URL is fixed
+# when the image is built — this image belongs to one site URL and cannot be
+# repointed by changing the environment at run time.
+#
+# It must be the site's own origin (https://testra.example.com), because Caddy
+# serves the SPA and the API from the same place. Leaving it empty would not
+# mean "relative": src/utils/api.ts falls back to http://localhost:8000, which
+# would ship a bundle that calls the visitor's own machine.
+ARG VITE_API_URL
+RUN test -n "$VITE_API_URL" || { \
+      echo "ERROR: --build-arg VITE_API_URL is required (e.g. https://testra.example.com)"; \
+      exit 1; \
+    }
+ENV VITE_API_URL=$VITE_API_URL
+
+RUN npm run build
+
+FROM caddy:2-alpine
+COPY --from=build /app/dist /srv
+COPY Caddyfile /etc/caddy/Caddyfile
+EXPOSE 80 443
