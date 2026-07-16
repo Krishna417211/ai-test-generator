@@ -1103,13 +1103,21 @@ async def admin_list_users(
     q: str = "",
     limit: int = ADMIN_PAGE_SIZE,
     offset: int = 0,
+    sort: str = "created_at",
+    direction: str = "desc",
     ctx: dict = Depends(require_admin),
 ):
     """Search/browse accounts. `total` counts everything matching `q`, not the
-    page, so the client can paginate without a second call."""
+    page, so the client can paginate without a second call.
+
+    `sort`/`direction` are passed through rather than validated here: store
+    .list_users owns the allowlist, and duplicating it would give two places to
+    disagree about what's sortable.
+    """
     limit = max(1, min(limit, 100))
     offset = max(0, offset)
-    rows = store.list_users(query=q, limit=limit, offset=offset)
+    rows = store.list_users(query=q, limit=limit, offset=offset,
+                            sort=sort, direction=direction)
     return AdminUserList(
         users=[_admin_user_view(r) for r in rows],
         total=store.count_users(query=q),

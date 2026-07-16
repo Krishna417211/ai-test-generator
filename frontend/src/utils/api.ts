@@ -686,8 +686,19 @@ async function adminPost<T>(path: string, body: unknown, fallback: string): Prom
   return res.json();
 }
 
-export function fetchAdminUsers(q = "", limit = 25, offset = 0): Promise<AdminUserList> {
-  const params = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
+/** Columns the server will sort on. Mirrors store._USER_SORTS — anything else
+ *  is ignored server-side and falls back to newest-first, so a stale client
+ *  degrades to the default rather than erroring. */
+export type AdminUserSort =
+  | "created_at" | "email" | "name" | "plan" | "suspended" | "email_verified";
+
+export function fetchAdminUsers(
+  q = "", limit = 25, offset = 0,
+  sort: AdminUserSort = "created_at", direction: "asc" | "desc" = "desc",
+): Promise<AdminUserList> {
+  const params = new URLSearchParams({
+    q, limit: String(limit), offset: String(offset), sort, direction,
+  });
   return adminGet(`/api/admin/users?${params}`, "Could not load users");
 }
 

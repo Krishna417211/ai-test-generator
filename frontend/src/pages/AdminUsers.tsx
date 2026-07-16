@@ -2,13 +2,13 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Search, Loader2, RefreshCw, ShieldAlert, Ban, CheckCircle2, Trash2, LogOut,
-  X, ChevronLeft, ChevronRight, Github, Mail, MailX, Gauge,
+  X, ChevronLeft, ChevronRight, Github, Mail, MailX, Gauge, ArrowUp, ArrowDown,
 } from "lucide-react";
 import Page from "../components/Page";
 import {
   fetchAdminUsers, fetchAdminUser, adminSuspendUser, adminSetPlan, adminSetUsage,
   adminLogoutUser, adminDeleteUser,
-  type AdminUser, type AdminUserDetail,
+  type AdminUser, type AdminUserDetail, type AdminUserSort,
 } from "../utils/api";
 import { pluralize, formatDate, formatWhen, shortSource } from "../utils/format";
 
@@ -23,6 +23,73 @@ function useDebounced<T>(value: T, ms: number): T {
     return () => clearTimeout(t);
   }, [value, ms]);
   return v;
+}
+
+/** The sortable columns, and the default direction each one gets on first click.
+ *
+ *  Descending-first for the flags and dates, because the reason you click
+ *  "Joined" or "Status" is to see the newest or the suspended — putting those on
+ *  page 1 is the whole point. Text sorts A→Z, which is what a name column is for.
+ */
+const SORTS: { key: AdminUserSort; label: string; firstDir: "asc" | "desc" }[] = [
+  { key: "created_at", label: "Joined", firstDir: "desc" },
+  { key: "email", label: "Email", firstDir: "asc" },
+  { key: "name", label: "Name", firstDir: "asc" },
+  { key: "plan", label: "Plan", firstDir: "desc" },
+  { key: "suspended", label: "Status", firstDir: "desc" },
+  { key: "email_verified", label: "Verified", firstDir: "desc" },
+];
+
+/** Sort controls. Not a <th> row — the list below is a card per account, not a
+ *  table, so these are buttons with aria-pressed rather than faked headers. */
+function SortBar({ sort, direction, onSort }: {
+  sort: AdminUserSort;
+  direction: "asc" | "desc";
+  onSort: (key: AdminUserSort) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 flex-wrap px-1" role="group" aria-label="Sort accounts">
+      <span className="text-[10px] uppercase tracking-wider text-grey-500 pr-1.5">Sort</span>
+      {SORTS.map(({ key, label }) => {
+        const active = sort === key;
+        const Arrow = direction === "asc" ? ArrowUp : ArrowDown;
+        return (
+          <button
+            key={key}
+            onClick={() => onSort(key)}
+            aria-pressed={active}
+            title={active ? `Sorted by ${label} — click to reverse` : `Sort by ${label}`}
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+              active
+                ? "text-white bg-white/10"
+                : "text-grey-400 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            {label}
+            {/* Only the active column shows an arrow: one on every column would
+                imply they're all sorted, and give no cue which is in effect. */}
+            {active && <Arrow size={11} aria-hidden />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Placeholder rows shaped like real ones, so the list doesn't jump when data
+ *  lands. Shown only on the first load — a refetch keeps the current rows
+ *  dimmed instead, which is steadier than blanking a list you're reading. */
+function RowSkeleton() {
+  return (
+    <div className="border-b border-grey-800 last:border-b-0 px-4 py-3 flex items-center gap-3">
+      <div className="w-8 h-8 rounded-lg bg-white/[0.06] animate-pulse shrink-0" />
+      <div className="flex-1 min-w-0 space-y-2">
+        <div className="h-3 w-44 max-w-full rounded bg-white/[0.06] animate-pulse" />
+        <div className="h-2.5 w-28 max-w-full rounded bg-white/[0.04] animate-pulse" />
+      </div>
+      <div className="h-4 w-10 rounded-full bg-white/[0.05] animate-pulse shrink-0" />
+    </div>
+  );
 }
 
 function Badge({ children, tone = "grey" }: {
@@ -352,15 +419,21 @@ export default function AdminUsers() {
   const [notice, setNotice] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sort, setSort] = useState<AdminUserSort>("created_at");
+  const [direction, setDirection] = useState<"asc" | "desc">("desc");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   // Guards against an out-of-order reply overwriting a newer one.
   const reqRef = useRef(0);
 
-  const load = useCallback(async (q: string, off: number) => {
+  const load = useCallback(async (
+    q: string, off: number, s: AdminUserSort, dir: "asc" | "desc",
+  ) => {
     const seq = ++reqRef.current;
     setLoading(true);
     try {
-      const res = await fetchAdminUsers(q, PAGE_SIZE, off);
+      const res = await fetchAdminUsers(q, PAGE_SIZE, off, s, dir);
       if (seq !== reqRef.current) return;
       setData({ users: res.users, total: res.total });
       setError(null);
@@ -371,7 +444,28 @@ export default function AdminUsers() {
     }
   }, []);
 
-  useEffect(() => { load(debounced, offset); }, [debounced, offset, load]);
+  useEffect(() => {
+    load(debounced, offset, sort, direction);
+  }, [debounced, offset, sort, direction, load]);
+
+  // Drop the selection whenever the visible set changes. A tick that survives
+  // onto another page is a checkbox you can no longer see attached to an account
+  // you've forgotten you picked — and the next click acts on it.
+  useEffect(() => { setSelected(new Set()); }, [debounced, offset, sort, direction]);
+
+  /** Clicking the active column reverses it; a new column starts at whichever
+   *  direction makes that column useful (see SORTS.firstDir). */
+  const onSort = (key: AdminUserSort) => {
+    if (key === sort) {
+      setDirection((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSort(key);
+      setDirection(SORTS.find((s) => s.key === key)?.firstDir ?? "desc");
+    }
+    // Page 1: row 30 of the old order has nothing to do with row 30 of the new.
+    setOffset(0);
+    setOpenId(null);
+  };
 
   // A new search starts at page 1 — keeping the offset would land on an empty
   // page whenever the new result set is shorter than the old one.
@@ -382,6 +476,61 @@ export default function AdminUsers() {
 
   const patchUser = (u: AdminUser) =>
     setData((d) => d && { ...d, users: d.users.map((x) => (x.id === u.id ? u : x)) });
+
+  const toggleSelect = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  // Admins are never selectable (the server refuses to suspend one anyway), so
+  // "select all" means every row that could actually be acted on — otherwise the
+  // header box would sit indeterminate forever on a page containing an admin.
+  const selectableIds = (data?.users ?? []).filter((u) => !u.is_admin).map((u) => u.id);
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selected.has(id));
+  const someSelected = selectableIds.some((id) => selected.has(id));
+
+  const toggleSelectAll = () =>
+    setSelected(allSelected ? new Set() : new Set(selectableIds));
+
+  /** Apply suspend/unsuspend across the selection.
+   *
+   *  Deliberately N calls to the per-user endpoint rather than a bulk route: that
+   *  endpoint already refuses admins, revokes the target's sessions, and returns
+   *  the updated row. A bulk endpoint would have to re-implement all three, and
+   *  any drift between them would be a privilege bug.
+   *
+   *  Sequential, not Promise.all: this is an admin acting on real accounts, and
+   *  firing 25 writes at once at a single-instance SQLite box is how you get a
+   *  half-applied batch and a locked database.
+   */
+  const bulkSuspend = async (suspend: boolean) => {
+    const targets = (data?.users ?? []).filter((u) => selected.has(u.id) && !u.is_admin);
+    if (!targets.length) return;
+    setBulkBusy(true);
+    setError(null);
+    let ok = 0;
+    const failed: string[] = [];
+    for (const u of targets) {
+      try {
+        patchUser(await adminSuspendUser(u.id, suspend, "Bulk action from the admin console"));
+        ok++;
+      } catch {
+        failed.push(u.email || u.id);
+      }
+    }
+    setBulkBusy(false);
+    setSelected(new Set());
+    // Report what actually happened, including partial failure — claiming "done"
+    // when 2 of 5 didn't apply is how an admin thinks an account is locked when
+    // it isn't.
+    // pluralize() already carries the count ("6 accounts"), so the total is not
+    // repeated ahead of it.
+    const verb = suspend ? "Suspended" : "Unsuspended";
+    setNotice(`${verb} ${ok} of ${pluralize(targets.length, "account")}.`);
+    if (failed.length) setError(`Couldn't update: ${failed.join(", ")}.`);
+  };
 
   const removeUser = (id: string, msg: string) => {
     setData((d) => d && { ...d, users: d.users.filter((x) => x.id !== id), total: d.total - 1 });
@@ -404,7 +553,7 @@ export default function AdminUsers() {
             </p>
           </div>
           <button
-            onClick={() => load(debounced, offset)}
+            onClick={() => load(debounced, offset, sort, direction)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg btn-ghost text-xs text-grey-300"
           >
             <RefreshCw size={12} /> Refresh
@@ -444,10 +593,70 @@ export default function AdminUsers() {
           </div>
         )}
 
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <SortBar sort={sort} direction={direction} onSort={onSort} />
+          {data && data.users.length > 0 && (
+            <label className="flex items-center gap-2 px-1 text-[11px] text-grey-400 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={(el) => {
+                  // Indeterminate is a DOM property, not an attribute — React
+                  // can't set it via JSX, so it has to be poked onto the node.
+                  if (el) el.indeterminate = someSelected && !allSelected;
+                }}
+                onChange={toggleSelectAll}
+                aria-label="Select all accounts on this page"
+                className="w-3.5 h-3.5 rounded border-grey-600 bg-ink-950 accent-brand-400"
+              />
+              Select page
+            </label>
+          )}
+        </div>
+
+        {/* Only suspend/unsuspend in bulk — never delete. Deleting one account
+            here demands typing its email precisely because it's irreversible;
+            a checkbox that erases twenty would walk straight through that. */}
+        {someSelected && (
+          <div
+            role="region"
+            aria-label="Bulk actions"
+            className="flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 rounded-xl border border-brand-400/30 bg-brand-400/[0.07]"
+          >
+            <span className="text-xs text-brand-100">
+              {pluralize([...selected].length, "account")} selected
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => bulkSuspend(true)}
+                disabled={bulkBusy}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-500/85 text-white hover:bg-rose-500 disabled:opacity-40 transition-colors"
+              >
+                {bulkBusy ? <Loader2 size={12} className="animate-spin" /> : <Ban size={12} />}
+                Suspend
+              </button>
+              <button
+                onClick={() => bulkSuspend(false)}
+                disabled={bulkBusy}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/15 border border-white/20 text-white disabled:opacity-40 transition-colors"
+              >
+                <CheckCircle2 size={12} /> Unsuspend
+              </button>
+              <button
+                onClick={() => setSelected(new Set())}
+                disabled={bulkBusy}
+                className="px-2.5 py-1.5 rounded-lg btn-ghost text-xs text-grey-300 disabled:opacity-40"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="rounded-2xl border border-grey-700 bg-white/[0.03] overflow-hidden">
           {!data ? (
-            <div className="flex items-center justify-center py-20 text-grey-400 gap-2 text-sm">
-              <Loader2 size={16} className="animate-spin" /> Loading users…
+            <div aria-busy="true" aria-label="Loading users">
+              {Array.from({ length: 6 }).map((_, i) => <RowSkeleton key={i} />)}
             </div>
           ) : data.users.length === 0 ? (
             <div className="px-4 py-16 text-center text-xs text-grey-500">
@@ -457,12 +666,30 @@ export default function AdminUsers() {
             <div className={loading ? "opacity-60 transition-opacity" : "transition-opacity"}>
               {data.users.map((u) => {
                 const open = openId === u.id;
+                const selectable = !u.is_admin;
                 return (
                   <div key={u.id} className="border-b border-grey-800 last:border-b-0">
+                   <div className="flex items-stretch">
+                    {/* Outside the button, not inside it: a checkbox nested in a
+                        button is invalid HTML, and clicking it would toggle the
+                        row open as well as tick the box. */}
+                    <label className={`flex items-center pl-4 pr-1 shrink-0 ${
+                      selectable ? "cursor-pointer" : "cursor-not-allowed"}`}>
+                      <input
+                        type="checkbox"
+                        checked={selected.has(u.id)}
+                        disabled={!selectable}
+                        onChange={() => toggleSelect(u.id)}
+                        aria-label={selectable
+                          ? `Select ${u.email || u.name || u.id}`
+                          : `${u.email || u.name || u.id} is an admin and can't be selected`}
+                        className="w-3.5 h-3.5 rounded border-grey-600 bg-ink-950 accent-brand-400 disabled:opacity-25"
+                      />
+                    </label>
                     <button
                       onClick={() => setOpenId(open ? null : u.id)}
                       aria-expanded={open}
-                      className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-white/[0.03] transition-colors"
+                      className="flex-1 min-w-0 text-left pl-1 pr-4 py-3 flex items-center gap-3 hover:bg-white/[0.03] transition-colors"
                     >
                       {u.avatar_url ? (
                         <img src={u.avatar_url} alt="" className="w-8 h-8 rounded-lg shrink-0" />
@@ -504,6 +731,7 @@ export default function AdminUsers() {
                         </div>
                       </div>
                     </button>
+                   </div>
 
                     {open && (
                       <UserPanel

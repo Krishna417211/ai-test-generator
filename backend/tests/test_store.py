@@ -251,3 +251,82 @@ class TestAccountDeletion:
         s.delete_account("u1")
         assert s.get_user_by_id("u2") is not None
         assert len(s.activity_feed("u2")) == 1
+
+
+class TestUserSorting:
+    """list_users' ORDER BY, which is string-concatenated and so must be
+    allowlisted — the injection case below is the reason this class exists."""
+
+    def _seed(self) -> JobStore:
+        import time
+        s = _store()
+        now = time.time()
+        rows = [
+            ("usr_c", "carol@x.com", "Carol", False),
+            ("usr_a", "alice@x.com", "Alice", True),
+            ("usr_b", "bob@x.com", "Bob", False),
+        ]
+        for i, (uid, email, name, susp) in enumerate(rows):
+            s.create_user({"id": uid, "email": email, "name": name,
+                           "created_at": now + i, "email_verified": True,
+                           "suspended": susp})
+        return s
+
+    def test_defaults_to_newest_first(self):
+        s = self._seed()
+        assert [u["email"] for u in s.list_users()] == [
+            "bob@x.com", "alice@x.com", "carol@x.com"]
+
+    def test_sorts_by_email_both_ways(self):
+        s = self._seed()
+        assert [u["email"] for u in s.list_users(sort="email", direction="asc")] == [
+            "alice@x.com", "bob@x.com", "carol@x.com"]
+        assert [u["email"] for u in s.list_users(sort="email", direction="desc")] == [
+            "carol@x.com", "bob@x.com", "alice@x.com"]
+
+    def test_suspended_desc_surfaces_locked_accounts(self):
+        s = self._seed()
+        first = s.list_users(sort="suspended", direction="desc")[0]
+        assert first["email"] == "alice@x.com"
+
+    def test_unknown_sort_key_falls_back_and_does_not_execute(self):
+        """An unlisted column is ignored, not interpolated. If the key reached
+        SQL this would drop the table (or raise); it must do neither."""
+        s = self._seed()
+        rows = s.list_users(sort="created_at; DROP TABLE users --", direction="asc")
+        assert [u["email"] for u in rows] == ["carol@x.com", "alice@x.com", "bob@x.com"]
+        assert s.count_users() == 3
+
+    def test_evil_direction_is_not_interpolated(self):
+        s = self._seed()
+        rows = s.list_users(sort="email", direction="asc; DROP TABLE users --")
+        # Anything that isn't exactly "asc" means DESC; the table survives.
+        assert [u["email"] for u in rows][0] == "carol@x.com"
+        assert s.count_users() == 3
+
+    def test_ties_break_on_id_so_paging_is_stable(self):
+        """Every row here has the same plan. Without the id tiebreaker the two
+        pages could overlap or skip, which is invisible until it bites."""
+        s = self._seed()
+        page1 = s.list_users(sort="plan", direction="desc", limit=2, offset=0)
+        page2 = s.list_users(sort="plan", direction="desc", limit=2, offset=2)
+        seen = [u["id"] for u in page1] + [u["id"] for u in page2]
+        assert len(seen) == len(set(seen)) == 3
+
+
+class TestPlatformTrends:
+    def test_previous_windows_exclude_the_current_one(self):
+        """The *_prev counters must not double-count rows already in the live
+        window — the boundary is half-open."""
+        import time
+        s = _store()
+        now = time.time()
+        # 2 signups inside the last 7d, 1 in the 7d before that, 1 ancient.
+        for i, age_days in enumerate([1, 3, 10, 90]):
+            s.create_user({"id": f"u{i}", "email": f"u{i}@x.com",
+                           "created_at": now - age_days * 86_400,
+                           "email_verified": True})
+        t = s.platform_totals()
+        assert t["users"] == 4
+        assert t["users_new_7d"] == 2
+        assert t["users_new_7d_prev"] == 1
