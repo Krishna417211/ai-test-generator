@@ -1266,12 +1266,7 @@ async def billing_webhook(request: Request):
     body is trusted at all.
     """
     raw = await request.body()
-    signature = (
-        request.headers.get("X-Razorpay-Signature")
-        or request.headers.get("Stripe-Signature")
-        or ""
-    )
-    if not billing.verify_webhook(raw, signature):
+    if not billing.verify_webhook(raw, request.headers.get("Stripe-Signature") or ""):
         logger.warning("Rejected a billing webhook with a bad/missing signature")
         raise HTTPException(400, "Invalid signature")
 
@@ -1280,22 +1275,48 @@ async def billing_webhook(request: Request):
     except json.JSONDecodeError:
         raise HTTPException(400, "Malformed webhook body")
 
-    # A good signature only proves Razorpay sent this — payment.failed and
-    # subscription.cancelled are signed too. The event name decides.
+    # A good signature only proves Stripe sent this — invoice.payment_failed and
+    # customer.subscription.deleted are signed too. The event type decides.
     if not billing.is_granting_event(event):
-        logger.info(f"Ignoring non-granting billing event: {event.get('event')}")
+        logger.info(f"Ignoring non-granting billing event: {event.get('type')}")
         return {"ok": True, "granted": False}
 
     user_id, plan_id = billing.extract_grant(event)
+    customer_id = billing.extract_customer(event)
+
+    # A renewal invoice names no user — only the customer that first checked out.
+    if not user_id and customer_id:
+        payer = store.get_user_by_stripe_customer(customer_id)
+        user_id = payer["id"] if payer else None
+
+    # Everything below answers 200. Stripe retries any non-2xx for days, and none
+    # of these resolve on a retry: an untagged payment (someone used the bare
+    # Payment Link) and a departed user are both permanent. They're logged with
+    # the event id instead, which is what reconciling the payment by hand needs.
     if not user_id or not plan_id:
-        raise HTTPException(400, "Webhook is missing client_reference_id or plan_id")
+        logger.warning(
+            f"Billing webhook {event.get('id')} ({event.get('type')}) could not be "
+            f"attributed: user_id={user_id} plan_id={plan_id} customer={customer_id}. "
+            "No grant was made; reconcile this payment in the Stripe dashboard."
+        )
+        return {"ok": True, "granted": False}
+
     if not store.get_user_by_id(user_id):
-        logger.warning(f"Billing webhook for unknown user {user_id}")
-        raise HTTPException(404, "Unknown user")
+        logger.warning(
+            f"Billing webhook {event.get('id')} names unknown user {user_id}; "
+            "no grant was made."
+        )
+        return {"ok": True, "granted": False}
+
+    # Record the payer before granting: this mapping is the only thing that lets
+    # the *next* invoice.paid find this user, so a subscription that renews must
+    # not depend on the tag being present a second time.
+    if customer_id:
+        store.link_stripe_customer(user_id, customer_id)
 
     store.set_plan(user_id, "pro", time.time() + billing.grant_seconds(plan_id))
     logger.info(f"Granted Pro ({plan_id}) to {user_id} via billing webhook")
-    return {"ok": True}
+    return {"ok": True, "granted": True}
 
 
 # ─────────────────────────────────────────────

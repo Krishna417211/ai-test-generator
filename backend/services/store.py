@@ -56,6 +56,12 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("suspended", "suspended INTEGER NOT NULL DEFAULT 0"),
         ("suspended_at", "suspended_at REAL"),
         ("suspended_reason", "suspended_reason TEXT"),
+        # Stripe's customer id (cus_...). Only a checkout session echoes back the
+        # client_reference_id we tagged it with; the invoice.paid that arrives on
+        # every later renewal carries the customer and nothing else. Without this
+        # mapping a renewal cannot be attributed and every subscriber would lapse
+        # at the end of their first period.
+        ("stripe_customer_id", "stripe_customer_id TEXT"),
     ),
     "generations": (
         # Defaults to 'success' because that's what every existing row is: until
@@ -224,6 +230,13 @@ class JobStore:
                 """
             )
             self._migrate(c)
+            # After _migrate, not beside the users table above: stripe_customer_id
+            # arrives by ALTER, so on a deployed database the column does not exist
+            # until _migrate has run.
+            c.execute(
+                "CREATE INDEX IF NOT EXISTS idx_users_stripe_customer "
+                "ON users(stripe_customer_id)"
+            )
         logger.info(f"JobStore ready at {self.db_path}")
 
     def _migrate(self, c: sqlite3.Connection) -> None:
@@ -718,7 +731,7 @@ class JobStore:
     _USER_KEYS = [
         "id", "email", "password_hash", "name", "github_id", "github_login",
         "avatar_url", "created_at", "plan", "plan_expires_at", "email_verified",
-        "suspended", "suspended_at", "suspended_reason",
+        "suspended", "suspended_at", "suspended_reason", "stripe_customer_id",
     ]
     _USER_COLS = ", ".join(_USER_KEYS)
 
@@ -747,6 +760,7 @@ class JobStore:
                     int(bool(user.get("email_verified", False))),
                     int(bool(user.get("suspended", False))),
                     user.get("suspended_at"), user.get("suspended_reason"),
+                    user.get("stripe_customer_id"),
                 ),
             )
 
@@ -775,6 +789,38 @@ class JobStore:
                 f"SELECT {self._USER_COLS} FROM users WHERE github_id = ?", (str(github_id),)
             ).fetchone()
         return self._row_to_user(row)
+
+    def get_user_by_stripe_customer(self, customer_id: str) -> dict | None:
+        """Who a Stripe customer id belongs to. This is how a renewal invoice —
+        which carries no client_reference_id — finds its user."""
+        if not customer_id:
+            return None
+        with self._lock, self._conn() as c:
+            row = c.execute(
+                f"SELECT {self._USER_COLS} FROM users WHERE stripe_customer_id = ?",
+                (customer_id,),
+            ).fetchone()
+        return self._row_to_user(row)
+
+    def link_stripe_customer(self, user_id: str, customer_id: str) -> None:
+        """Remember which Stripe customer is this user, so later renewals resolve.
+
+        Clears the id from any other user first: Stripe reuses one customer per
+        payer, and if two accounts ever claimed the same one, a renewal lookup
+        would be ambiguous and could grant Pro to the wrong account.
+        """
+        if not user_id or not customer_id:
+            return
+        with self._lock, self._conn() as c:
+            c.execute(
+                "UPDATE users SET stripe_customer_id = NULL "
+                "WHERE stripe_customer_id = ? AND id != ?",
+                (customer_id, user_id),
+            )
+            c.execute(
+                "UPDATE users SET stripe_customer_id = ? WHERE id = ?",
+                (customer_id, user_id),
+            )
 
     def update_user(self, user_id: str, **fields) -> None:
         allowed = {"email", "password_hash", "name", "github_id", "github_login",

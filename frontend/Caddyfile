@@ -1,0 +1,47 @@
+# Caddy serves the built SPA and proxies the API to the backend container, so
+# the browser only ever talks to one origin. That is the whole reason CORS and
+# cookie/SameSite questions don't arise in this deployment.
+#
+# SITE_ADDRESS decides whether this is HTTP or HTTPS, and nothing else changes:
+#   :80                  → plain HTTP (staging on a bare IP)
+#   testra.example.com   → Caddy gets a Let's Encrypt cert automatically
+#
+# Let's Encrypt will not issue for an *.amazonaws.com hostname, so the EC2
+# public DNS name cannot get a cert. HTTPS needs a domain you control.
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	# Generation streams tokens over SSE. Caddy disables buffering for
+	# text/event-stream on its own, but this route is the product's whole
+	# selling point, so it says so explicitly rather than relying on sniffing.
+	handle /api/stream/* {
+		reverse_proxy backend:8000 {
+			flush_interval -1
+		}
+	}
+
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	# Health check and the interactive API docs live on the backend too.
+	handle /health {
+		reverse_proxy backend:8000
+	}
+
+	handle /docs* {
+		reverse_proxy backend:8000
+	}
+
+	handle /openapi.json {
+		reverse_proxy backend:8000
+	}
+
+	# Everything else is the SPA. try_files sends unknown paths to index.html so
+	# a hard refresh on a client-side route (/dashboard, /admin) doesn't 404.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
