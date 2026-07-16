@@ -89,12 +89,14 @@ class Settings(BaseSettings):
     pro_price_monthly_usd: int = 20
     pro_price_yearly_usd: int = 100
 
-    # Hosted checkout links from a payment provider (e.g. Razorpay Payment Pages
-    # or Stripe Payment Links). Leave empty until one is set up — the upgrade
-    # modal then shows a "contact us" path instead of a dead button.
-    # A provider is required, not optional: entitlements are granted by a signed
-    # webhook hitting /api/billing/webhook. A bare UPI/GPay deep link cannot tell
-    # this server who paid, so it can never unlock anything.
+    # Stripe Payment Links, one per plan. Leave empty until they're set up — the
+    # upgrade modal then shows a "contact us" path instead of a dead button.
+    # Prices above are display-only; Stripe charges what the link says.
+    #
+    # A hosted link plus a signed webhook is the whole design: entitlements are
+    # granted only by /api/billing/webhook, the one caller that can prove money
+    # moved. billing_webhook_secret is Stripe's whsec_... signing secret — with
+    # it empty, every webhook is rejected and no plan can be granted.
     billing_checkout_url_monthly: str = ""
     billing_checkout_url_yearly: str = ""
     billing_webhook_secret: str = ""
