@@ -4,15 +4,16 @@ import { Loader2, AlertTriangle } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import Page from "../components/Page";
 
-/** Reasons the callback needs to say something other than "GitHub login failed".
+/** Reasons the callback needs to say something other than "sign-in failed".
  *
- *  A suspension isn't a failure of the OAuth round-trip — GitHub vouched for
- *  them fine — so reporting it as one sends people to retry a login that will
- *  never work. Anything not listed here keeps the generic wording, which is
- *  right for the genuine OAuth faults (bad state, exchange failed). */
+ *  A suspension isn't a failure of the OAuth round-trip — the provider vouched
+ *  for them fine — so reporting it as one sends people to retry a login that
+ *  will never work. Anything not listed here keeps the generic wording, which
+ *  is right for the genuine OAuth faults (bad state, exchange failed). */
 const OAUTH_ERRORS: Record<string, string> = {
   suspended: "This account has been suspended. Contact support if you think this is a mistake.",
-  access_denied: "You cancelled the GitHub sign-in.",
+  access_denied: "You cancelled the sign-in.",
+  email_unverified: "Your account has no verified email address, so we can't sign you in this way.",
 };
 
 export default function AuthCallback() {
@@ -27,7 +28,7 @@ export default function AuthCallback() {
     ran.current = true;
     const token = params.get("token");
     const loginError = params.get("login_error");
-    if (loginError) { setError(OAUTH_ERRORS[loginError] || `GitHub login failed (${loginError}).`); return; }
+    if (loginError) { setError(OAUTH_ERRORS[loginError] || `Sign-in failed (${loginError}).`); return; }
     if (!token) { setError("No login token received."); return; }
     adoptToken(token)
       .then(() => navigate("/dashboard", { replace: true }))
@@ -46,7 +47,7 @@ export default function AuthCallback() {
         ) : (
           <>
             <Loader2 size={28} className="text-brand-300 mx-auto mb-3 animate-spin" />
-            <p className="text-grey-300 text-sm">Signing you in with GitHub…</p>
+            <p className="text-grey-300 text-sm">Signing you in…</p>
           </>
         )}
       </div>

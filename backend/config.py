@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     github_client_id: str = ""
     github_client_secret: str = ""
 
+    # Google OAuth ("Continue with Google" → identity only, no repo access).
+    # Create an OAuth client (type: Web application) at
+    # https://console.cloud.google.com/apis/credentials and add
+    # <frontend>/api/auth/google/callback as an Authorized redirect URI. Google
+    # requires that URI to be https on a real hostname — a bare IP won't be
+    # accepted — so this only works once the site has a domain and HTTPS.
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
     # Where the browser is sent back to after login (your frontend origin).
     frontend_url: str = "http://localhost:5173"
     # Public base URL of THIS backend, used to build the OAuth callback URL.
@@ -167,8 +176,16 @@ class Settings(BaseSettings):
         return bool(self.billing_checkout_url_monthly or self.billing_checkout_url_yearly)
 
     @property
+    def google_oauth_enabled(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret)
+
+    @property
     def oauth_callback_url(self) -> str:
         return f"{self.backend_url.rstrip('/')}/api/auth/github/callback"
+
+    @property
+    def google_callback_url(self) -> str:
+        return f"{self.backend_url.rstrip('/')}/api/auth/google/callback"
 
 
 settings = Settings()

@@ -299,8 +299,13 @@ export function githubLoginUrl(): string {
   return `${API_BASE}/api/auth/github/login`;
 }
 
+export function googleLoginUrl(): string {
+  return `${API_BASE}/api/auth/google/login`;
+}
+
 export interface AuthConfig {
   github_oauth_enabled: boolean;
+  google_oauth_enabled: boolean;
   max_upload_mb: number;
   email_verification_enabled: boolean;
   login_otp_enabled: boolean;
@@ -310,6 +315,7 @@ export interface AuthConfig {
 export async function getAuthConfig(): Promise<AuthConfig> {
   const fallback: AuthConfig = {
     github_oauth_enabled: false,
+    google_oauth_enabled: false,
     max_upload_mb: maxUploadMb,
     // Assume the email flows are on when we can't ask: the UI only uses these
     // to decide what to offer, and hiding a real "forgot password" link is

@@ -48,7 +48,7 @@ from services.file_extractor import extract_zip, filter_for_push
 from services.github_service import GitHubService, parse_github_url, RepoNotFoundError, RepoAccessError
 from services.git_publisher import GitPublisher, GitPublishError
 from services.security_scanner import SecurityScanner, ScanError
-from services import github_oauth
+from services import github_oauth, google_oauth
 from services import auth as auth_svc
 from services import billing
 from services import verification
@@ -380,6 +380,7 @@ async def auth_config():
     cap so it can reject oversized archives without sending them."""
     return {
         "github_oauth_enabled": settings.github_oauth_enabled,
+        "google_oauth_enabled": settings.google_oauth_enabled,
         "max_upload_mb": settings.max_repo_size_mb,
         # The client can't infer these from a response shape alone, and needs
         # them to know whether to offer "resend link" / a code box at all.
@@ -755,6 +756,97 @@ async def github_callback(code: str = "", state: str = "", error: str = ""):
 
     # Session carries the GitHub access token so Publish can push on their behalf.
     session_id = auth_svc.create_login_session(user_id, github_token=token)
+    return RedirectResponse(f"{frontend}/auth/callback?token={session_id}", status_code=307)
+
+
+@app.get("/api/auth/google/login")
+async def google_login():
+    """Start the Google OAuth flow — redirect to Google's consent screen."""
+    if not settings.google_oauth_enabled:
+        raise HTTPException(503, "Google login is not configured on this server.")
+    state = secrets.token_urlsafe(24)
+    store.create_session(_STATE_PREFIX + state, {"kind": "oauth_state"}, _OAUTH_STATE_TTL)
+    url = google_oauth.authorize_url(
+        client_id=settings.google_client_id,
+        redirect_uri=settings.google_callback_url,
+        state=state,
+    )
+    return RedirectResponse(url, status_code=307)
+
+
+@app.get("/api/auth/google/callback")
+async def google_callback(code: str = "", state: str = "", error: str = ""):
+    """Google redirects here after the user approves (or denies).
+
+    Structurally the twin of github_callback. The one real difference: Google is
+    an identity provider only, so the session carries no provider token, and we
+    key accounts on the OpenID `sub`.
+    """
+    frontend = settings.frontend_url.rstrip("/")
+
+    def _fail(reason: str):
+        return RedirectResponse(f"{frontend}/auth/callback?login_error={reason}", status_code=307)
+
+    if error or not code:
+        return _fail(error or "access_denied")
+    # One-time state check (CSRF protection).
+    if not state or store.get_session(_STATE_PREFIX + state) is None:
+        return _fail("invalid_state")
+    store.delete_session(_STATE_PREFIX + state)
+
+    try:
+        token = await google_oauth.exchange_code(
+            code=code,
+            client_id=settings.google_client_id,
+            client_secret=settings.google_client_secret,
+            redirect_uri=settings.google_callback_url,
+        )
+        gu = await google_oauth.get_user(token)
+    except google_oauth.OAuthError as e:
+        logger.warning(f"Google OAuth callback failed: {e}")
+        return _fail("exchange_failed")
+
+    # Google must hand back a verified address. Without one we have no reliable
+    # identity to key on, and marking an unverified address verified would be the
+    # very shortcut our own signup refuses to take.
+    google_id = str(gu.get("id") or "")
+    email = gu.get("email")
+    if not google_id or not email or not gu.get("email_verified"):
+        return _fail("email_unverified")
+
+    # Find or create the account: by google_id first, then by email so a user who
+    # first signed up with email/password and now clicks "Continue with Google"
+    # is linked to their existing account rather than getting a duplicate.
+    account = store.get_user_by_google(google_id)
+    if not account:
+        account = store.get_user_by_email(email)
+    if account:
+        store.update_user(
+            account["id"], google_id=google_id,
+            avatar_url=gu.get("avatar_url") or account.get("avatar_url"),
+            # Arriving here proves control of a Google-verified inbox — the same
+            # proof our verification link asks for — so an account that linked
+            # this way is verified even if it never clicked our email.
+            email_verified=True,
+        )
+        user_id = account["id"]
+    else:
+        user_id = auth_svc.new_user_id()
+        store.create_user({
+            "id": user_id, "email": email,
+            "name": gu.get("name") or email.split("@")[0],
+            "google_id": google_id, "avatar_url": gu.get("avatar_url"),
+            "created_at": time.time(), "email_verified": True,
+        })
+        logger.info(f"New Google signup: {email}")
+
+    # Like github_callback, this builds a session directly (OAuth already proved
+    # the identity — no password or OTP step), so the suspension check in
+    # _issue_login doesn't cover it and is repeated here.
+    if store.get_user_by_id(user_id).get("suspended"):
+        return _fail("suspended")
+
+    session_id = auth_svc.create_login_session(user_id)
     return RedirectResponse(f"{frontend}/auth/callback?token={session_id}", status_code=307)
 
 
@@ -1216,6 +1308,7 @@ async def admin_system(ctx: dict = Depends(require_admin)):
         call_log=llm_router.get_call_log(limit=30),
         config={
             "github_oauth_enabled": settings.github_oauth_enabled,
+            "google_oauth_enabled": settings.google_oauth_enabled,
             "smtp_configured": settings.smtp_configured,
             "email_enabled": settings.email_enabled,
             "require_email_verification": settings.require_email_verification,

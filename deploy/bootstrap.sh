@@ -138,6 +138,12 @@ SESSION_SECRET=
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 
+# Google OAuth client (type: Web application). Authorized redirect URI must be
+# <BACKEND_URL>/api/auth/google/callback — and Google only accepts an https URI
+# on a real hostname there, never a bare IP, so this needs a domain + HTTPS.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+
 # SMTP. In production an unconfigured relay is refused, not skipped — signup
 # verification and login OTP will fail closed without it.
 SMTP_HOST=

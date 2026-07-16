@@ -62,6 +62,10 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         # mapping a renewal cannot be attributed and every subscriber would lapse
         # at the end of their first period.
         ("stripe_customer_id", "stripe_customer_id TEXT"),
+        # Google's stable OpenID subject (`sub`). Mirrors github_id: it's how a
+        # returning "Continue with Google" user is matched back to their account
+        # even if they've since changed the email on it.
+        ("google_id", "google_id TEXT"),
     ),
     "generations": (
         # Defaults to 'success' because that's what every existing row is: until
@@ -236,6 +240,10 @@ class JobStore:
             c.execute(
                 "CREATE INDEX IF NOT EXISTS idx_users_stripe_customer "
                 "ON users(stripe_customer_id)"
+            )
+            # google_id arrives by ALTER too, so its index also waits for _migrate.
+            c.execute(
+                "CREATE INDEX IF NOT EXISTS idx_users_google ON users(google_id)"
             )
         logger.info(f"JobStore ready at {self.db_path}")
 
@@ -732,6 +740,7 @@ class JobStore:
         "id", "email", "password_hash", "name", "github_id", "github_login",
         "avatar_url", "created_at", "plan", "plan_expires_at", "email_verified",
         "suspended", "suspended_at", "suspended_reason", "stripe_customer_id",
+        "google_id",
     ]
     _USER_COLS = ", ".join(_USER_KEYS)
 
@@ -760,7 +769,7 @@ class JobStore:
                     int(bool(user.get("email_verified", False))),
                     int(bool(user.get("suspended", False))),
                     user.get("suspended_at"), user.get("suspended_reason"),
-                    user.get("stripe_customer_id"),
+                    user.get("stripe_customer_id"), user.get("google_id"),
                 ),
             )
 
@@ -787,6 +796,15 @@ class JobStore:
         with self._lock, self._conn() as c:
             row = c.execute(
                 f"SELECT {self._USER_COLS} FROM users WHERE github_id = ?", (str(github_id),)
+            ).fetchone()
+        return self._row_to_user(row)
+
+    def get_user_by_google(self, google_id: str) -> dict | None:
+        if not google_id:
+            return None
+        with self._lock, self._conn() as c:
+            row = c.execute(
+                f"SELECT {self._USER_COLS} FROM users WHERE google_id = ?", (str(google_id),)
             ).fetchone()
         return self._row_to_user(row)
 
@@ -824,7 +842,7 @@ class JobStore:
 
     def update_user(self, user_id: str, **fields) -> None:
         allowed = {"email", "password_hash", "name", "github_id", "github_login",
-                   "avatar_url", "email_verified"}
+                   "google_id", "avatar_url", "email_verified"}
         sets = {k: v for k, v in fields.items() if k in allowed}
         if not sets:
             return
