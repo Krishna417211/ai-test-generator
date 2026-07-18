@@ -8,6 +8,9 @@ interface Config {
   testFlows: string;
   baseUrl: string;
   includeCi: boolean;
+  /** Optional deployed URL the user owns. When set, generated selectors are
+   *  verified against the live DOM and self-healed if they miss. */
+  liveUrl: string;
 }
 
 interface Props {
@@ -48,6 +51,7 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading, 
   const [testFlows, setTestFlows] = useState("");
   const [baseUrl, setBaseUrl] = useState("http://localhost:3000");
   const [includeCi, setIncludeCi] = useState(true);
+  const [liveUrl, setLiveUrl] = useState("");
 
   const handleFrameworkChange = (fw: Framework) => {
     setFramework(fw);
@@ -137,6 +141,26 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading, 
         />
       </div>
 
+      {/* Live URL — optional. Its presence is what upgrades grounding from
+          "selectors exist in your source" to "selectors match your live site",
+          and turns on the self-heal loop for the ones that don't. */}
+      <div>
+        <label className="block text-sm font-semibold text-white mb-2">
+          Live site URL <span className="font-normal text-grey-500">— optional</span>
+        </label>
+        <input
+          type="url"
+          value={liveUrl}
+          onChange={(e) => setLiveUrl(e.target.value)}
+          placeholder="https://your-app.com"
+          className="w-full px-4 py-3 rounded-xl bg-black/20 border border-grey-700 text-white placeholder:text-grey-500 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm font-mono"
+        />
+        <p className="text-xs text-grey-500 mt-1">
+          If it&apos;s deployed and you own it, we&apos;ll verify every selector against the live
+          DOM and auto-fix the ones that don&apos;t match. Nothing is executed — we only read the page.
+        </p>
+      </div>
+
       {/* CI toggle — a real switch, so the whole row (not just the 40px track)
           is a hit target and screen readers get the on/off state. */}
       <button
@@ -170,7 +194,7 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading, 
       )}
 
       <button
-        onClick={() => onGenerate({ framework, language, testFlows, baseUrl, includeCi })}
+        onClick={() => onGenerate({ framework, language, testFlows, baseUrl, includeCi, liveUrl })}
         disabled={loading}
         className="w-full flex items-center justify-center gap-2 py-4 rounded-xl btn-primary disabled:opacity-40 font-semibold"
       >

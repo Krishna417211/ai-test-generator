@@ -20,6 +20,8 @@ from agents import scaffold
 from agents.filter_agent import FilterResult
 from services.llm_router import router, Tier
 from services.validator import validate_files
+from services import grounding as grounding_svc
+from services import fragility as fragility_svc
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +184,11 @@ class WriterResult:
     # missing pieces can't pass CI, so callers must not treat this as success.
     failed_files: list[str] = field(default_factory=list)
     grounding: Grounding = field(default_factory=Grounding)
+    # Richer, provenance-carrying grounding (services/grounding.py) and the
+    # break-risk report (services/fragility.py). Dicts, not dataclasses, because
+    # these travel straight to the API response and the TrustPanel.
+    selector_grounding: dict = field(default_factory=dict)
+    fragility: dict = field(default_factory=dict)
 
 
 # ─────────────────────────────────────────────
@@ -209,6 +216,7 @@ class WriterAgent:
         self_heal: bool = False,        # re-prompt the LLM to fix files that don't parse
         max_heal_attempts: int = 1,
         tier: Tier = Tier.FREE,         # model quality this caller's plan entitles them to
+        live_url: Optional[str] = None,  # a deployed URL the user owns → DOM grounding
     ) -> WriterResult:
 
         framework_key = self._normalize_framework(framework, language)
@@ -236,6 +244,19 @@ class WriterAgent:
                 tier=tier,
             )
 
+        # DOM grounding: if the user gave us a URL they own, fetch the live page
+        # once and index its real anchors. Best-effort — an unreachable or
+        # private URL degrades to source-only grounding rather than failing the
+        # whole generation. Nothing is ever executed; we only read the HTML.
+        dom_index = None
+        if live_url:
+            try:
+                html = await grounding_svc.fetch_dom(live_url)
+                dom_index = grounding_svc.build_dom_index(html)
+                logger.info(f"DOM grounding: indexed {len(dom_index.anchors)} anchors from {live_url}")
+            except Exception as e:
+                logger.warning(f"DOM grounding unavailable for {live_url}: {e} — using source only")
+
         # Self-heal: if any generated file fails static validation, ask the LLM
         # to fix it. (Off by default — costs extra LLM calls.)
         heal_attempts = 0
@@ -246,6 +267,24 @@ class WriterAgent:
                     break
                 logger.info(f"Self-heal: fixing {len(failing)} invalid file(s)")
                 generated_files = await self._heal(generated_files, failing, framework_key, tier)
+                heal_attempts += 1
+
+            # Grounding heal: a file can parse cleanly and still target a
+            # selector that does not exist. Feed the model the selectors that
+            # missed and the real anchors that DO exist, so it repairs them
+            # instead of the user discovering it on the first run.
+            for _ in range(max_heal_attempts):
+                report = grounding_svc.ground_suite(
+                    generated_files, filter_result.files, dom_index=dom_index
+                )
+                unverified = report.unverified()
+                if not unverified:
+                    break
+                logger.info(f"Grounding heal: repairing {len(unverified)} unverified selector(s)")
+                generated_files = await self._heal_selectors(
+                    generated_files, unverified, filter_result.files,
+                    dom_index, framework_key, tier,
+                )
                 heal_attempts += 1
 
         # Everything the model wrote moves under e2e/, and anything it wrote
@@ -315,6 +354,15 @@ class WriterAgent:
         checked = [v for v in validations if v.checked]
         valid_count = sum(1 for v in checked if v.ok)
 
+        # Richer grounding (provenance + optional live-DOM) and break-risk. These
+        # are computed on the final suite and drive the TrustPanel. The legacy
+        # Grounding counts stay sourced from _validate_selectors above so the
+        # existing "N/M verified" signal is unchanged.
+        ground_report = grounding_svc.ground_suite(
+            generated_files, filter_result.files, dom_index=dom_index
+        )
+        fragility_report = fragility_svc.analyze(generated_files)
+
         grounding = Grounding(
             selectors_total=sel_total,
             selectors_verified=sel_verified,
@@ -331,6 +379,8 @@ class WriterAgent:
             validation=validation,
             failed_files=self._failed_files,
             grounding=grounding,
+            selector_grounding=ground_report.as_dict(),
+            fragility=fragility_report.as_dict(),
             summary=(
                 f"Generated {test_count} tests across {len(generated_files)} files "
                 f"for {filter_result.framework} app using {framework_key}. "
@@ -483,6 +533,83 @@ they are valid, runnable code. Keep the valid files unchanged."""
         except Exception as e:
             logger.error(f"Self-heal failed: {e}")
             return files
+
+    async def _heal_selectors(
+        self,
+        files: list[GeneratedFile],
+        unverified: list,
+        source_files: dict[str, str],
+        dom_index,
+        framework_key: str,
+        tier: Tier = Tier.FREE,
+    ) -> list[GeneratedFile]:
+        """Re-prompt the model to replace selectors that don't exist in the app.
+
+        The prompt is grounded, not open-ended: it names the exact selectors that
+        missed and hands over the real anchors that DO exist (from source and,
+        when we have it, the live DOM), so the fix is a substitution the model
+        can make correctly rather than another guess.
+        """
+        src_index = grounding_svc.build_source_index(source_files)
+        real = self._available_anchor_hint(src_index, dom_index)
+        misses = "\n".join(
+            f"- {g.file}: `{g.selector}` — not found"
+            + (f" (missing {', '.join(f'{a.kind}={a.value}' for a in g.missing)})" if g.missing else "")
+            for g in unverified[:40]
+        )
+        current = json.dumps(
+            {"files": [
+                {"filename": f.filename, "description": f.description, "content": f.content}
+                for f in files
+            ]},
+            indent=2,
+        )
+        prompt = f"""Some selectors in this {framework_key} suite target elements that DO NOT
+exist in the application. Each must be replaced with one that does.
+
+Selectors that were not found:
+{misses}
+
+These are the selectors that ACTUALLY EXIST in the app — use only these:
+{real}
+
+Here is the current file set as JSON:
+{current}
+
+Return the COMPLETE file set in the SAME JSON structure
+({{"files":[{{"filename","description","content"}}]}}). Replace only the
+not-found selectors with real ones from the list above; prefer data-testid and
+role locators. Leave everything else unchanged."""
+        try:
+            raw = await router.complete(
+                prompt=prompt,
+                system_prompt=self._system_prompt(framework_key),
+                temperature=0.1,
+                context_hint="writer_agent_selector_heal",
+                json_mode=True,
+                tier=tier,
+            )
+            healed = self._parse_response(raw, framework_key)
+            return healed or files
+        except Exception as e:
+            logger.error(f"Selector self-heal failed: {e}")
+            return files
+
+    def _available_anchor_hint(self, src_index, dom_index, cap: int = 60) -> str:
+        """A compact, kind-grouped list of anchors the app really has."""
+        from collections import defaultdict
+        by_kind: dict[str, set] = defaultdict(set)
+        for idx in (src_index, dom_index):
+            if idx is None:
+                continue
+            for a in idx.anchors:
+                by_kind[a.kind].add(a.value)
+        lines = []
+        for kind in ("testid", "id", "role", "label", "name", "class", "text"):
+            vals = sorted(by_kind.get(kind, ()))[:cap]
+            if vals:
+                lines.append(f"  {kind}: {', '.join(vals)}")
+        return "\n".join(lines) or "  (no stable anchors found in the source)"
 
     async def stream_run(
         self,

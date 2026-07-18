@@ -1948,6 +1948,7 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
             pregenerated_raw=session.get("streamed_raw"),
             self_heal=payload.self_heal,
             tier=tier,
+            live_url=payload.live_url,
         )
     except AllProvidersExhausted as e:
         # Our shared API keys are dry — this is an outage on our side and hits
@@ -2001,6 +2002,8 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
         summary=result.summary,
         validation=result.validation,
         grounding=result.grounding.as_dict(),
+        selector_grounding=result.selector_grounding,
+        fragility=result.fragility,
         # This request's own calls, or — when it reused the SSE stream's output
         # and made none — the provenance recorded when that output was written.
         # Either way it names a model that genuinely produced these files, never
