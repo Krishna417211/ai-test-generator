@@ -172,7 +172,12 @@ export default function ResultsStep({ result, onReset }: Props) {
 
       {/* What we verified, and which model wrote it. Carries the "we didn't run
           these" disclaimer that used to sit in the summary bar above. */}
-      <TrustPanel grounding={result.grounding} provenance={result.provenance} />
+      <TrustPanel
+        grounding={result.grounding}
+        selectorGrounding={result.selector_grounding}
+        fragility={result.fragility}
+        provenance={result.provenance}
+      />
 
       {/* Selector warnings */}
       {result.selector_warnings.length > 0 && (

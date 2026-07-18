@@ -93,6 +93,51 @@ export interface Grounding {
   heal_attempts: number;
 }
 
+/** Where a verified selector was declared in the user's source. */
+export interface Provenanced {
+  file: string;
+  line: number;
+}
+
+export interface GroundedSelector {
+  selector: string;
+  file: string;
+  verified: boolean;
+  /** which ground truth verified it: "source" | "dom" | null */
+  source: string | null;
+  provenance: Provenanced[];
+  missing: { kind: string; value: string }[];
+}
+
+/** Rich, provenance-carrying grounding (backend services/grounding.py). */
+export interface SelectorGrounding {
+  total: number;
+  verified: number;
+  rate: number | null;
+  /** ["source"] or ["source","dom"] — was the live DOM checked too? */
+  checked_against: string[];
+  items: GroundedSelector[];
+}
+
+export interface SelectorRisk {
+  selector: string;
+  file: string;
+  score: number;        // 0 solid → 1 fragile
+  grade: string;        // solid | ok | risky | brittle
+  reasons: string[];
+  suggestion: string | null;
+}
+
+/** Break-risk report for the suite (backend services/fragility.py). */
+export interface Fragility {
+  total: number;
+  brittle: number;
+  risky: number;
+  mean_score: number;
+  grade: string;        // A–F, or "—"
+  worst: SelectorRisk[];
+}
+
 export interface GenerateResponse {
   success: boolean;
   files: GeneratedFile[];
@@ -102,6 +147,8 @@ export interface GenerateResponse {
   summary: string;
   validation?: FileValidation[];
   grounding?: Grounding | null;
+  selector_grounding?: SelectorGrounding | null;
+  fragility?: Fragility | null;
   provenance?: Provenance | null;
   error?: string;
 }

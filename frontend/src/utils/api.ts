@@ -458,12 +458,20 @@ export async function uploadZip(
 }
 
 export async function generateTests(
-  jobId: string, framework: string, language: string, testFlows: string, baseUrl: string, includeCi: boolean
+  jobId: string, framework: string, language: string, testFlows: string, baseUrl: string,
+  includeCi: boolean, liveUrl?: string
 ): Promise<any> {
   const res = await fetch(`${API_BASE}/api/generate/${jobId}`, {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ framework, language, test_flows: testFlows, base_url: baseUrl, include_ci: includeCi }),
+    body: JSON.stringify({
+      framework, language, test_flows: testFlows, base_url: baseUrl, include_ci: includeCi,
+      // When present, the backend also verifies selectors against the live DOM
+      // and self-heals the ones that miss. self_heal is turned on with it so the
+      // grounding repair loop actually runs.
+      live_url: liveUrl || undefined,
+      self_heal: liveUrl ? true : undefined,
+    }),
   });
   if (!res.ok) await parseError(res, "Generation failed");
   return res.json();

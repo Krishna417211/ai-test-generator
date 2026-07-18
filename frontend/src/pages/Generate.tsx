@@ -63,7 +63,7 @@ export default function Generate() {
     }, []);
 
   const handleGenerate = useCallback(
-    async (config: { framework: string; language: string; testFlows: string; baseUrl: string; includeCi: boolean }) => {
+    async (config: { framework: string; language: string; testFlows: string; baseUrl: string; includeCi: boolean; liveUrl: string }) => {
       if (!jobId) return;
       // Clear the previous failure before retrying, or a success would render
       // underneath a stale error from the last attempt.
@@ -89,7 +89,7 @@ export default function Generate() {
           setSteps((s) => applyStep(s, { id: "agent2", state: "done", detail: "Suite written" }));
           setSteps((s) => applyStep(s, { id: "scaffold", state: "running" }));
           try {
-            const r = await generateTests(jobId, config.framework, config.language, config.testFlows, config.baseUrl, config.includeCi);
+            const r = await generateTests(jobId, config.framework, config.language, config.testFlows, config.baseUrl, config.includeCi, config.liveUrl);
             // Nothing is streaming any more — leaving this set kept a live
             // "Streaming from groq..." pill on screen next to the finished run.
             setCurrentProvider("");

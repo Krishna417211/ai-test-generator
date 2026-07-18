@@ -26,6 +26,8 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from services.importance_model import learned_score
+
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────
@@ -360,13 +362,17 @@ class FileExtractor:
         # Step 1: Filter out junk
         filtered = self._filter_files(raw_files)
 
-        # Step 2: Score each file
+        # Step 2: Score each file. The path-only heuristic is the prior; when a
+        # trained importance model exists (services/importance_model.py), it
+        # refines the score using the file's body too. With no model on disk,
+        # learned_score returns the heuristic unchanged — so this is a no-op
+        # until a model is trained.
         scored = [
             ScoredFile(
                 path=path,
                 content=content,
                 size=len(content),
-                importance=score_file(path),
+                importance=learned_score(path, content, fallback=score_file(path)),
             )
             for path, content in filtered.items()
         ]

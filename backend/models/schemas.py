@@ -31,6 +31,9 @@ class GenerateRequest(BaseModel):
     base_url: str = "http://localhost:3000"
     include_ci: bool = True
     self_heal: bool = False                  # re-prompt LLM to fix invalid generated files
+    # A deployed URL the user owns. When present, selectors are also verified
+    # against the live DOM (services/grounding.py) and healed if they miss.
+    live_url: Optional[str] = None
 
     @field_validator("repo_url")
     @classmethod
@@ -253,6 +256,11 @@ class GenerateResponse(BaseModel):
     summary: str
     validation: list[dict] = []              # per-file syntax-validity results
     grounding: Optional[Grounding] = None
+    # Richer grounding with per-selector provenance (file:line) and, when a live
+    # URL was given, live-DOM verification. See services/grounding.py.
+    selector_grounding: Optional[dict] = None
+    # Break-risk report: which selectors are likely to be flaky. services/fragility.py.
+    fragility: Optional[dict] = None
     provenance: Optional[Provenance] = None
     error: Optional[str] = None
 

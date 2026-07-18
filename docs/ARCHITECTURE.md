@@ -84,7 +84,64 @@ generates each file in its own call (so a large suite can't truncate), then
 validates every generated selector against the source and flags hallucinations.
 
 The model writes page objects and specs — nothing else. Everything that makes
-them *runnable* comes from `agents/scaffold.py`.
+them *runnable* comes from `agents/scaffold.py`, and everything that makes them
+*trustworthy* comes from the grounding/fragility pipeline below.
+
+### The trust pipeline — grounding, self-heal, fragility
+
+The failure mode this product exists to prevent is a suite that looks perfect
+and breaks on the first run because the model invented a selector. Four
+components attack that, and none of them execute the generated code (there is no
+sandbox — see `services/validator.py`); they reason about the code and the app
+statically.
+
+#### `services/grounding.py` — does every selector resolve to something real?
+Extracts the anchors that genuinely exist (ids, test-ids, classes, form names,
+ARIA roles, accessible labels, link/button text) from two ground truths and
+checks each generated selector against them:
+
+* **source grounding** — the repo's markup, carrying *provenance*: the file and
+  line each anchor was declared on, so the UI can cite `LoginForm.tsx:42` instead
+  of asking for trust. Works for any repo.
+* **DOM grounding** — the deployed page's live HTML, fetched through the security
+  scanner's SSRF-guarded, non-executing path (`validate_target` + `_redirect_guard`).
+  Only when the user supplies a URL they own; it is the stronger evidence because
+  it is what the browser will actually see.
+
+Both are built identically (extract anchor set → membership test), so a selector
+verified against source and one verified against the live DOM are judged by the
+same rules. No CSS engine is needed: the selectors we emit reduce to a handful of
+anchor kinds, and membership *is* the question "would `querySelector` find this".
+
+The **self-heal loop** in the writer agent consumes the unverified set: it
+re-prompts the model with the exact selectors that missed and the real anchors
+that exist, so the fix is a grounded substitution, not another guess.
+
+#### `services/fragility.py` — which selectors will break *later*?
+A selector can be correct today and brittle tomorrow (`div:nth-child(3) > button`).
+A weighted feature model (a linear scorer over named, inspectable features —
+positional depth, hashed classes, absolute XPath, versus stable contracts like
+`data-testid`/role) predicts break-risk 0→1 and grades the suite A–F. The weights
+are *data* (`FEATURE_WEIGHTS`), not code, so the benchmark harness can re-fit them.
+
+#### `services/importance_model.py` — a learned file-importance scorer
+`file_extractor.score_file` ranks files with frozen path heuristics. This is a
+from-scratch logistic regression (no numpy/sklearn — the math is in the module)
+that refines the score using the file's body, learning per-codebase which files
+are worth testing. It degrades safely: with no trained `importance_model.json` on
+disk, callers fall back to the heuristic, so it is a no-op until trained. Labels
+bootstrap from weak supervision and are meant to be re-fit on real grounding
+outcomes.
+
+#### `services/benchmark.py` — the numbers, over many repos
+Runs grounding + fragility across a set of (repo, suite) cases and reports the
+verified-selector rate (pooled and per-repo) and fragility-grade distribution as
+a markdown leaderboard. Because we never execute, the honest headline metric is
+"selectors provably resolve", not an invented pass rate. `python -m services.benchmark cases.json`.
+
+All of this surfaces in the frontend `TrustPanel`: the live-DOM badge, the
+per-selector provenance, and the durability grade — each a real measurement,
+never dressed up as a prediction that the suite passes.
 
 ### `agents/scaffold.py` — the runnable skeleton
 The dependency manifest, framework config, CI pipelines and README: boilerplate

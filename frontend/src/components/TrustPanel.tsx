@@ -1,5 +1,5 @@
-import { ShieldCheck, Brain, Info } from "lucide-react";
-import type { Grounding, Provenance } from "../types";
+import { ShieldCheck, Brain, Info, Globe, MapPin, Activity } from "lucide-react";
+import type { Grounding, Provenance, SelectorGrounding, Fragility } from "../types";
 
 /**
  * "How much can I trust this, and what wrote it?" — answered the same way for
@@ -20,12 +20,21 @@ import type { Grounding, Provenance } from "../types";
 
 interface Props {
   grounding?: Grounding | null;
+  /** Rich grounding: per-selector provenance + optional live-DOM verification. */
+  selectorGrounding?: SelectorGrounding | null;
+  /** Break-risk report — which selectors are likely to be flaky. */
+  fragility?: Fragility | null;
   provenance?: Provenance | null;
   /** Scan has no grounding — its checks are deterministic — but it does need to
    *  say whether a model wrote the plan or it fell back to the plain summary. */
   summarySource?: "ai" | "fallback";
   className?: string;
 }
+
+const FRAG_TONE: Record<string, string> = {
+  A: "text-brand-300", B: "text-brand-300", C: "text-grey-200",
+  D: "text-amber-300", F: "text-amber-300",
+};
 
 /** A measured fraction, or an explicit "nothing to measure".
  *
@@ -113,7 +122,74 @@ function ModelLine({ provenance }: { provenance: Provenance }) {
   );
 }
 
-export default function TrustPanel({ grounding, provenance, summarySource, className = "" }: Props) {
+/** Live-DOM verification badge — only when we actually fetched the deployed
+ *  page and matched selectors against it. This is the strongest evidence we
+ *  have (it is what the browser sees), so it earns its own line. */
+function DomBadge({ sg }: { sg: SelectorGrounding }) {
+  const domItems = sg.items.filter((i) => i.verified && i.source === "dom");
+  if (!sg.checked_against.includes("dom") || domItems.length === 0) return null;
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-xs text-grey-400 flex items-center gap-1.5">
+        <Globe size={11} className="text-brand-300" />
+        Matched on your live site
+      </span>
+      <span className="text-xs font-mono text-brand-300">{domItems.length} verified</span>
+    </div>
+  );
+}
+
+/** A few verified selectors, each pointing at the source line it came from —
+ *  the "this isn't guessed" proof. Capped so it stays a sample, not a dump. */
+function Provenances({ sg }: { sg: SelectorGrounding }) {
+  const withProv = sg.items.filter((i) => i.verified && i.provenance.length > 0).slice(0, 3);
+  if (withProv.length === 0) return null;
+  return (
+    <div className="space-y-1 pt-1">
+      <span className="text-[11px] text-grey-500 flex items-center gap-1.5">
+        <MapPin size={10} className="text-grey-600" /> Traced to your source
+      </span>
+      {withProv.map((it) => (
+        <div key={it.selector} className="flex items-baseline justify-between gap-3 pl-4">
+          <code className="text-[11px] font-mono text-grey-300 truncate max-w-[55%]">{it.selector}</code>
+          <span className="text-[11px] font-mono text-grey-500 truncate">
+            {it.provenance[0].file.split("/").pop()}:{it.provenance[0].line}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Fragility grade + the single most useful fix. Not framed as a pass/fail —
+ *  it's "how likely to break later", a risk estimate named as one. */
+function FragilityLine({ fragility }: { fragility: Fragility }) {
+  if (fragility.total === 0) return null;
+  const tone = FRAG_TONE[fragility.grade] ?? "text-grey-300";
+  const worst = fragility.worst.find((w) => w.suggestion);
+  return (
+    <div className="space-y-1.5 pt-3 border-t border-grey-700/60">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-xs text-grey-400 flex items-center gap-1.5">
+          <Activity size={11} className="text-grey-500" /> Selector durability
+        </span>
+        <span className={`text-xs font-mono ${tone}`}>
+          {fragility.grade}
+          {fragility.brittle > 0 && (
+            <span className="text-grey-600"> · {fragility.brittle} fragile</span>
+          )}
+        </span>
+      </div>
+      {worst?.suggestion && (
+        <p className="text-[11px] text-grey-500 leading-relaxed pl-4">{worst.suggestion}</p>
+      )}
+    </div>
+  );
+}
+
+export default function TrustPanel({
+  grounding, selectorGrounding, fragility, provenance, summarySource, className = "",
+}: Props) {
   // Nothing measured and nothing generated — render nothing rather than an
   // empty box implying we checked something.
   if (!grounding && !provenance && !summarySource) return null;
@@ -147,8 +223,12 @@ export default function TrustPanel({ grounding, provenance, summarySource, class
               <span className="text-xs font-mono text-grey-400">{grounding.heal_attempts}</span>
             </div>
           )}
+          {selectorGrounding && <DomBadge sg={selectorGrounding} />}
+          {selectorGrounding && <Provenances sg={selectorGrounding} />}
         </div>
       )}
+
+      {fragility && <FragilityLine fragility={fragility} />}
 
       {/* Scan's own trust signal. Its findings are deterministic — a header is
           present or it isn't — so there's no rate to quote here, only whether
@@ -175,8 +255,9 @@ export default function TrustPanel({ grounding, provenance, summarySource, class
         <p className="pt-1 text-[11px] text-grey-500 leading-relaxed flex gap-1.5">
           <Info size={11} className="shrink-0 mt-0.5 text-grey-600" />
           <span>
-            We check that the code parses and that its selectors exist in your repo — we don&apos;t
-            run the tests against your app. Run them to confirm they pass.
+            {selectorGrounding?.checked_against.includes("dom")
+              ? "We matched every selector against your live page's DOM and your source — but we don't execute the tests. Run them to confirm they pass."
+              : "We check that the code parses and that its selectors exist in your repo — we don't run the tests against your app. Run them to confirm they pass."}
           </span>
         </p>
       )}
