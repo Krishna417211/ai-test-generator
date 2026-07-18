@@ -15,11 +15,17 @@ The LLM's job here is to:
 import json
 import logging
 from dataclasses import dataclass
+from typing import Optional
 
 from services.file_extractor import ExtractionResult, FileExtractor
-from services.llm_router import router
+from services.llm_router import router, Tier
+from services.progress import NullProgress, Progress
 
 logger = logging.getLogger(__name__)
+
+
+def pluralize(n: int, word: str) -> str:
+    return word if n == 1 else f"{word}s"
 
 SYSTEM_PROMPT = """You are an expert frontend engineer and QA architect.
 Your job is to analyze a web project's file structure and identify
@@ -80,13 +86,22 @@ class FilterAgent:
         self,
         raw_files: dict[str, str],
         user_description: str = "",
+        progress: Optional[Progress] = None,
+        tier: Tier = Tier.FREE,
     ) -> FilterResult:
         """
         Phase 1a: Local extraction (fast, deterministic)
         Phase 1b: LLM analysis for project understanding
+
+        `progress`, when given, reports the two phases as they happen — they are
+        the bulk of the wait on /api/analyze and the client cannot see the
+        boundary between them from the outside. Optional so the agent stays
+        callable off a request (tests, and publish's CI path).
         """
+        say = progress or NullProgress()
 
         # ── Phase 1a: Smart local extraction ──
+        await say.start("extract")
         extraction: ExtractionResult = self.extractor.extract(raw_files)
         logger.info(
             f"Extraction complete: {extraction.file_count} files, "
@@ -101,13 +116,27 @@ class FilterAgent:
             )
             raise NoTestableUIError(extraction.framework, len(raw_files))
 
+        await say.done(
+            "extract",
+            f"{extraction.file_count} of {len(raw_files)} files kept · {extraction.framework}",
+        )
+
         # ── Phase 1b: LLM project analysis ──
+        await say.start("agent1")
         file_tree_summary = self._build_file_tree_summary(extraction.files)
         analysis = await self._analyze_with_llm(
             file_tree_summary=file_tree_summary,
             framework=extraction.framework,
             user_description=user_description,
             warnings=extraction.warnings,
+            tier=tier,
+        )
+        routes = analysis.get("routes", [])
+        pages = analysis.get("key_pages", [])
+        await say.done(
+            "agent1",
+            f"{len(pages)} {pluralize(len(pages), 'page')}, "
+            f"{len(routes)} {pluralize(len(routes), 'route')} found",
         )
 
         return FilterResult(
@@ -129,6 +158,7 @@ class FilterAgent:
         framework: str,
         user_description: str,
         warnings: list[str],
+        tier: Tier = Tier.FREE,
     ) -> dict:
         """
         Ask the LLM to analyze the project and return structured JSON.
@@ -192,6 +222,7 @@ Include up to 15 key_pages and 10 key_components. Be specific about selectors an
                 temperature=0.1,
                 context_hint="filter_agent",
                 json_mode=True,
+                tier=tier,
             )
             # Strip any markdown fencing the LLM might add
             raw = raw.strip()

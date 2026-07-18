@@ -255,6 +255,19 @@ def detect_framework(files: dict[str, str]) -> str:
     if has_ext(".jsx", ".tsx"):
         return "React (Vite/CRA)"
 
+    # ── 7. Plain static site (no build step, no framework) ──
+    # Hand-written .html served as files — GitHub Pages, S3, nginx. Nothing above
+    # matched, so there is no SPA manifest, no backend, and no template syntax.
+    #
+    # This has to be named rather than left to the React guess below. The
+    # detected stack is interpolated verbatim into both agents' prompts, and a
+    # writer told "React" writes React: SPA navigation to /login, waits on
+    # networkidle, a client-side router that isn't there. The pages of a static
+    # site are real files (login.html), so every one of those routes 404s and the
+    # whole suite fails against an app that works.
+    if has_ext(".html", ".htm"):
+        return "Static HTML/JS (multi-page)"
+
     return "Unknown (Node.js)" if pkg_content else "Unknown (likely React)"
 
 

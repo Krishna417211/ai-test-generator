@@ -3,6 +3,8 @@ import {
   Github, Upload, Lock, Loader2, Rocket, CheckCircle2, ExternalLink, AlertTriangle, Trash2,
 } from "lucide-react";
 import { publishZip, getAuthConfig, githubLoginUrl, validateZip, deleteRepo } from "../utils/api";
+import FlowPipeline, { applyStep, type StepStates } from "./FlowPipeline";
+import TrustPanel from "./TrustPanel";
 import { pluralize } from "../utils/format";
 import type { PublishResult } from "../types";
 import { useAuth } from "../context/AuthContext";
@@ -28,6 +30,7 @@ export default function PublishPanel() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletedRepo, setDeletedRepo] = useState<string | null>(null);
+  const [steps, setSteps] = useState<StepStates>({});
 
   useEffect(() => { getAuthConfig().then((c) => setOauthEnabled(c.github_oauth_enabled)).catch(() => {}); }, []);
 
@@ -70,14 +73,18 @@ export default function PublishPanel() {
     if (!canPublish || !file) return;
     setPublishing(true); setPubError(null); setPubResult(null);
     setDeletedRepo(null); setConfirmingDelete(false); setDeleteError(null);
+    setSteps({});
     try {
       const result = await publishZip(file, {
         githubToken: !hasGithub ? ghToken.trim() : undefined,
         repoName: repoName.trim(), addCicd, private: isPrivate,
-      });
+      }, (e) => setSteps((s) => applyStep(s, e)));
       setPubResult(result);
       celebrate();
     } catch (e: any) {
+      // Publish is the one flow where a failure can land after real work — the
+      // pipeline is left up so "pushed 40 files, then failed to record" reads
+      // differently from "never got off the ground".
       setPubError(e.message || "Publish failed");
     } finally { setPublishing(false); }
   };
@@ -164,6 +171,11 @@ export default function PublishPanel() {
             </div>
           )}
 
+          {/* Renders itself away when no suite was generated (CI not requested,
+              or the AI was down and we pushed the code anyway) — there is
+              nothing measured then, and an empty panel would imply otherwise. */}
+          <TrustPanel grounding={pubResult.grounding} provenance={pubResult.provenance} />
+
           <div className="pt-2 border-t border-grey-700">
             {!confirmingDelete ? (
               <button onClick={() => setConfirmingDelete(true)}
@@ -211,6 +223,13 @@ export default function PublishPanel() {
           </p>
         )}
       </div>
+
+      {/* Below the button, where the eye already is after clicking it. Kept up
+          on failure so a partial push is legible; dropped on success, where the
+          result card says everything the pipeline would. */}
+      {(publishing || (pubError && Object.keys(steps).length > 0)) && (
+        <FlowPipeline flow="publish" states={steps} title="Publishing your project" />
+      )}
     </div>
   );
 }

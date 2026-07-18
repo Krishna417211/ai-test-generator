@@ -12,7 +12,9 @@ import pytest
 
 from services import security_scanner
 from services.security_scanner import (
-    SecurityScanner, ScanError, _validate_target, _looks_sensitive, _redirect_guard,
+    SecurityScanner, ScanError, OutOfScopeError, UnscannableResponseError,
+    validate_target, _looks_sensitive, _redirect_guard, _assert_in_scope,
+    _brand_label,
 )
 
 
@@ -27,7 +29,7 @@ class TestSSRFGuard:
     ])
     def test_blocks_internal(self, url):
         with pytest.raises(ScanError):
-            _validate_target(url)
+            validate_target(url)
 
     # Asserting only on ScanError let a bug hide in plain sight: "ftp://x" was
     # rewritten to "https://ftp://x", so this raised for the wrong reason — DNS
@@ -44,7 +46,7 @@ class TestSSRFGuard:
     )
     def test_rejects_non_http_scheme(self, url, scheme):
         with pytest.raises(ScanError) as exc:
-            _validate_target(url)
+            validate_target(url)
         msg = str(exc.value)
         assert "Only http:// and https:// URLs" in msg, (
             f"expected a scheme rejection, got: {msg!r}"
@@ -57,7 +59,7 @@ class TestSSRFGuard:
             security_scanner.socket, "getaddrinfo",
             lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))],
         )
-        assert _validate_target("example.com").startswith("https://")
+        assert validate_target("example.com").startswith("https://")
 
     @pytest.mark.parametrize(
         "url",
@@ -70,14 +72,14 @@ class TestSSRFGuard:
             security_scanner.socket, "getaddrinfo",
             lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))],
         )
-        assert _validate_target(url) == "https://" + url
+        assert validate_target(url) == "https://" + url
 
     def test_existing_http_scheme_is_preserved(self, monkeypatch):
         monkeypatch.setattr(
             security_scanner.socket, "getaddrinfo",
             lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))],
         )
-        assert _validate_target("http://example.com") == "http://example.com"
+        assert validate_target("http://example.com") == "http://example.com"
 
     def test_redirect_guard_blocks_internal_hop(self):
         # An open redirect pointing at cloud metadata must be rejected mid-scan.
@@ -115,8 +117,18 @@ class TestLooksSensitive:
 
 # ── full scan via mocked transport ───────────
 
+# The real class, captured once at import — before any test can patch it.
+#
+# This used to read `real = httpx.AsyncClient` inside _install, i.e. whatever the
+# attribute happened to be at call time. A second _install in the same test then
+# captured the FIRST fake and wrapped it, so the outer handler was never reached
+# and the scan silently replayed the previous test's responses. A test comparing
+# two scans got two identical results and looked like a product bug.
+_REAL_ASYNC_CLIENT = httpx.AsyncClient
+
+
 def _install(monkeypatch, handler):
-    real = httpx.AsyncClient
+    real = _REAL_ASYNC_CLIENT
     def fake(*a, **k):
         for key in ("timeout", "follow_redirects", "headers", "verify"):
             k.pop(key, None)
@@ -396,6 +408,232 @@ class TestScoring:
         from services.security_scanner import SENSITIVE_PATHS, SECURITY_HEADERS
         expected = 2 + len(SECURITY_HEADERS) + 3 + len(SENSITIVE_PATHS) + 4 + 1 + 2
         assert r.checks_run == expected
+
+
+class TestScopeGate:
+    """Third-party sites are refused before the network is touched."""
+
+    @pytest.mark.parametrize("host", [
+        "google.com", "www.google.com", "mail.google.com", "google.co.uk",
+        "github.com", "www.wikipedia.org", "aws.amazon.com", "api.stripe.com",
+        "facebook.com", "openai.com",
+    ])
+    def test_third_party_refused(self, host):
+        with pytest.raises(OutOfScopeError) as exc:
+            _assert_in_scope(host)
+        assert "your own" in str(exc.value).lower()
+
+    @pytest.mark.parametrize("host", [
+        "whitehouse.gov", "army.mil", "example.bank", "india.gov.in",
+    ])
+    def test_gov_mil_bank_refused(self, host):
+        with pytest.raises(OutOfScopeError):
+            _assert_in_scope(host)
+
+    @pytest.mark.parametrize("host", [
+        "my-app.com", "staging.my-app.io", "shop.acme.co.uk", "x.example",
+        "localhost.mycorp.dev",
+    ])
+    def test_ordinary_sites_pass(self, host):
+        _assert_in_scope(host)   # no raise
+
+    @pytest.mark.parametrize("host", [
+        "myapp.github.io", "myproject.gitlab.io", "myapp.vercel.app",
+        "myapp.netlify.app", "myapp.herokuapp.com", "myapp.pages.dev",
+        "myapp.web.app", "myapp.fly.dev", "myapp.onrender.com",
+    ])
+    def test_user_deployments_on_hosting_suffixes_are_in_scope(self, host):
+        """The whole point of the tool. `myapp.github.io` brand-matches "github"
+        but belongs to the user — refusing it would block the exact case Testra
+        exists to serve, while telling them to go scan something they own."""
+        _assert_in_scope(host)   # no raise
+
+    @pytest.mark.parametrize("host, brand", [
+        ("www.google.com", "google"), ("google.co.uk", "google"),
+        ("my-app.com", "my-app"), ("shop.acme.co.uk", "acme"),
+        ("api.stripe.com", "stripe"),
+    ])
+    def test_brand_label_ignores_public_suffix(self, host, brand):
+        assert _brand_label(host) == brand
+
+    def test_refusal_happens_before_dns(self, monkeypatch):
+        """No lookup for a host we won't scan either way."""
+        def boom(*a, **k):
+            raise AssertionError("DNS must not be consulted for an out-of-scope host")
+        monkeypatch.setattr(security_scanner.socket, "getaddrinfo", boom)
+        with pytest.raises(OutOfScopeError):
+            validate_target("https://www.google.com")
+
+
+class TestUnscannableResponse:
+    """A finding needs a page it is true of.
+
+    Measured before this existed: www.wikipedia.org answered our scanner with
+    403, and the scan reported "grade C, 6 findings — no CSP, no HSTS, no
+    X-Frame-Options...". Every one of those described the block page. It also
+    explains why so many unrelated sites produced an identical finding list: a
+    bare error page is missing the same six headers everywhere.
+    """
+
+    def _scan(self, monkeypatch, status=200, headers=None, body="<html>ok</html>"):
+        def handler(req):
+            if req.url.path == "/":
+                return httpx.Response(status, headers=headers or {}, text=body)
+            return httpx.Response(404)
+        _install(monkeypatch, handler)
+        return asyncio.run(SecurityScanner().scan("https://x.example"))
+
+    @pytest.mark.parametrize("status", [401, 403, 404, 500, 503])
+    def test_non_2xx_is_refused_not_graded(self, monkeypatch, status):
+        with pytest.raises(UnscannableResponseError) as exc:
+            self._scan(monkeypatch, status=status)
+        assert str(status) in str(exc.value)
+
+    def test_429_explains_the_rate_limit(self, monkeypatch):
+        with pytest.raises(UnscannableResponseError) as exc:
+            self._scan(monkeypatch, status=429)
+        assert "rate-limited" in str(exc.value)
+
+    def test_cloudflare_challenge_header_is_refused(self, monkeypatch):
+        with pytest.raises(UnscannableResponseError) as exc:
+            self._scan(monkeypatch, headers={"cf-mitigated": "challenge"})
+        assert "challenge" in str(exc.value).lower()
+
+    @pytest.mark.parametrize("body", [
+        "<html><title>Just a moment...</title></html>",
+        "<html>Enable JavaScript and cookies to continue</html>",
+        "<html>Request unsuccessful. Incapsula incident ID: 123</html>",
+        "<html>Pardon Our Interruption</html>",
+        "<html>DDoS protection by Cloudflare</html>",
+    ])
+    def test_bot_challenge_page_with_200_is_refused(self, monkeypatch, body):
+        """Challenge interstitials return 200 with the real page nowhere in it."""
+        with pytest.raises(UnscannableResponseError):
+            self._scan(monkeypatch, body=body)
+
+    @pytest.mark.parametrize("body", [
+        "<html><h1>Handling 403 Access Denied errors in nginx</h1><p>...</p></html>",
+        "<html><article>Why your S3 bucket returns Access Denied</article></html>",
+        '<html><script>const MSGS={403:"Access Denied"}</script></html>',
+    ])
+    def test_a_page_that_merely_mentions_a_block_phrase_still_scans(self, monkeypatch, body):
+        """Refusing the scan is the heaviest thing this check can do — it
+        withholds the whole report, not one finding. An article about Access
+        Denied errors is a real page and must be graded like one.
+
+        "access denied" was a marker for exactly one commit. It never caught a
+        real block page (those are 403s, already handled) and would have refused
+        every security blog that discusses them.
+        """
+        r = self._scan(monkeypatch, body=body)
+        assert r.grade   # scanned, not refused
+
+    def test_a_weak_marker_in_a_long_real_page_is_not_a_challenge(self, monkeypatch):
+        """'Just a moment' is a loading spinner on a thousand real sites. On a
+        full-sized page it is content, not a Cloudflare interstitial."""
+        body = "<html><body>Just a moment while we load your dashboard." + \
+               ("<p>real content</p>" * 800) + "</body></html>"
+        assert len(body) > 8000
+        r = self._scan(monkeypatch, body=body)
+        assert r.grade
+
+    def test_a_weak_marker_in_a_stub_page_is_still_caught(self, monkeypatch):
+        """The real Cloudflare interstitial: the phrase AND nothing else."""
+        with pytest.raises(UnscannableResponseError):
+            self._scan(monkeypatch, body="<html><title>Just a moment...</title></html>")
+
+    def test_a_real_page_still_scans(self, monkeypatch):
+        r = self._scan(monkeypatch, headers=SECURE_HEADERS)
+        assert r.grade == "A"
+
+    def test_204_and_201_are_gradeable(self, monkeypatch):
+        r = self._scan(monkeypatch, status=201, headers=SECURE_HEADERS)
+        assert r.grade == "A"
+
+
+class TestUserAgent:
+    def test_ua_is_browser_shaped_and_self_identifying(self):
+        """Browser-shaped because big sites serve a degraded header set to a bare
+        bot token — measured on google.com, the old UA saw no HSTS where a real
+        visitor is served one, so the scan reported a header as missing that is
+        actually there. Still carries our token: identifiable and blockable."""
+        ua = security_scanner.USER_AGENT
+        assert ua.startswith("Mozilla/5.0")
+        assert "Testra-SecurityScanner" in ua
+
+    def test_scan_sends_that_ua(self, monkeypatch):
+        seen = {}
+        def handler(req):
+            seen["ua"] = req.headers.get("user-agent")
+            return httpx.Response(200, headers=SECURE_HEADERS, text="<html>ok</html>")
+        # _install strips the headers kwarg, so pass the client its UA the way
+        # scan() does and assert on what actually left the socket.
+        def fake(*a, **k):
+            for key in ("timeout", "follow_redirects", "verify"):
+                k.pop(key, None)
+            return _REAL_ASYNC_CLIENT(
+                transport=httpx.MockTransport(handler), timeout=5,
+                follow_redirects=True, headers=k.pop("headers", None))
+        monkeypatch.setattr(security_scanner.httpx, "AsyncClient", fake)
+        monkeypatch.setattr(
+            security_scanner.socket, "getaddrinfo",
+            lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))],
+        )
+        asyncio.run(SecurityScanner().scan("https://x.example"))
+        assert seen["ua"] == security_scanner.USER_AGENT
+
+
+class TestHardeningGrade:
+    """Hardening findings describe layers a site could add; vulnerability
+    findings mean something is broken now. The grade must tell them apart."""
+
+    def test_hardening_only_site_floors_at_C(self, monkeypatch):
+        """Every header missing AND every cookie flag missing — still nothing an
+        attacker can use. Under the old flat caps this was 51, a D: one band off
+        failing, for a site with no vulnerability. Measured on google.com."""
+        r = _cookies(monkeypatch, ["a=1", "session=2"])   # no security headers either
+        assert {f["category"] for f in r.findings} <= security_scanner.HARDENING_CATEGORIES
+        assert r.score >= 70
+        assert r.grade == "C"
+
+    def test_hardening_findings_are_still_all_reported(self, monkeypatch):
+        """Capping the score must not quietly drop the advice."""
+        r = _cookies(monkeypatch, ["session=2"])
+        titles = _titles(r)
+        assert "No Content-Security-Policy" in titles
+        assert any("HttpOnly" in t for t in titles)
+        assert any("SameSite" in t for t in titles)
+
+    def test_exposed_env_still_reaches_F(self, monkeypatch):
+        """The hardening budget must not rescue a site that is actually broken."""
+        def handler(req):
+            if req.url.path == "/.env":
+                return httpx.Response(200, text="SECRET_KEY=abc\nDB_PASSWORD=xyz")
+            if req.url.path == "/":
+                return httpx.Response(200, text="<html>ok</html>")   # no headers
+            return httpx.Response(404)
+        _install(monkeypatch, handler)
+        r = asyncio.run(SecurityScanner().scan("https://x.example"))
+        assert r.grade == "F"
+
+    def test_real_vulnerability_outranks_hardening(self, monkeypatch):
+        """A wildcard-CORS-with-credentials site must score below a site whose
+        only faults are missing headers — it has an account-takeover vector."""
+        clean_ish = _page(monkeypatch)     # hardening only
+        def handler(req):
+            if req.url.path == "/":
+                return httpx.Response(200, headers={
+                    "access-control-allow-origin": "*",
+                    "access-control-allow-credentials": "true",
+                }, text="<html>ok</html>")
+            return httpx.Response(404)
+        _install(monkeypatch, handler)
+        vulnerable = asyncio.run(SecurityScanner().scan("https://x.example"))
+        assert vulnerable.score < clean_ish.score
+
+    def test_clean_site_is_still_100(self, monkeypatch):
+        r = _page(monkeypatch, headers=SECURE_HEADERS)
+        assert r.score == 100 and r.grade == "A"
 
 
 class TestFixVideos:

@@ -1,9 +1,14 @@
 import { ChevronRight, Layers, AlertTriangle, Route } from "lucide-react";
-import type { ProjectAnalysis } from "../types";
+import type { ProjectAnalysis, Provenance } from "../types";
 import { formatTokens, pluralize } from "../utils/format";
+import TrustPanel from "./TrustPanel";
 
 interface Props {
   analysis: ProjectAnalysis;
+  /** Which model read the repo. This screen is where you're asked to confirm we
+   *  understood the project before a credit is spent, so it's a fair place to
+   *  ask what produced it. No grounding here — nothing has been written yet. */
+  provenance?: Provenance | null;
   onContinue: () => void;
 }
 
@@ -13,9 +18,11 @@ const PRIORITY_COLORS = {
   low: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
 };
 
-export default function PreviewStep({ analysis, onContinue }: Props) {
+export default function PreviewStep({ analysis, provenance, onContinue }: Props) {
   return (
     <div className="w-full max-w-3xl mx-auto space-y-5">
+      <TrustPanel provenance={provenance} />
+
       {/* Summary card */}
       <div className="rounded-xl border border-grey-700 bg-white/5 p-5">
         <div className="flex items-start justify-between mb-3">

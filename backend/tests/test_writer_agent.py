@@ -15,18 +15,41 @@ class TestSelectorExtraction:
 
 
 class TestValidateSelectors:
+    # One real + one invented selector of each kind (id, test-id, class).
+    _SRC = {"a.html": '<div id="real" class="ok" data-testid="t1"></div>'}
+    _GEN = [GeneratedFile(
+        "x.ts",
+        'locator("#real"); locator("#fake"); getByTestId("t1"); '
+        'getByTestId("t2"); locator(".ok"); locator(".nope")',
+        "",
+    )]
+
     def test_flags_only_fakes(self):
         w = WriterAgent()
-        src = {"a.html": '<div id="real" class="ok" data-testid="t1"></div>'}
-        gf = [GeneratedFile(
-            "x.ts",
-            'locator("#real"); locator("#fake"); getByTestId("t1"); '
-            'getByTestId("t2"); locator(".ok"); locator(".nope")',
-            "",
-        )]
-        warns = "\n".join(w._validate_selectors(gf, src))
+        warns, _, _ = w._validate_selectors(list(self._GEN), self._SRC)
+        warns = "\n".join(warns)
         assert "fake" in warns and "t2" in warns and "nope" in warns
         assert "#real" not in warns and "`t1`" not in warns and "`.ok`" not in warns
+
+    def test_counts_every_selector_checked_not_just_the_failures(self):
+        """The counts are the denominator the UI quotes as grounding.
+
+        Deriving them from the warnings would only ever see the failures, so
+        they're taken where each selector is actually compared to the source.
+        """
+        w = WriterAgent()
+        _, total, verified = w._validate_selectors(list(self._GEN), self._SRC)
+        assert (total, verified) == (6, 3)   # 3 real, 3 invented
+
+    def test_no_selectors_reports_nothing_rather_than_a_perfect_score(self):
+        """A suite that referenced nothing has not earned 100%."""
+        w = WriterAgent()
+        gf = [GeneratedFile("x.ts", "test('noop', () => {});", "")]
+        _, total, verified = w._validate_selectors(gf, self._SRC)
+        assert (total, verified) == (0, 0)
+
+        from agents.writer_agent import Grounding
+        assert Grounding(selectors_total=0, selectors_verified=0).selector_rate is None
 
 
 class TestNormalizeFramework:

@@ -43,6 +43,29 @@ FastAPI app exposing `/api/analyze`, `/api/upload-zip`, `/api/generate/{job_id}`
 `/api/stream/{job_id}` (SSE), `/api/status`, `/api/logs`, `/health`, `/metrics`.
 Adds a per-request correlation ID (`X-Request-ID`) and CORS from config.
 
+### `services/progress.py` — step progress for the long POSTs
+`/api/analyze`, `/api/upload-zip`, `/api/scan` and `/api/publish-zip` stream
+NDJSON: one `{"type":"step"}` line per phase as it starts and finishes, then a
+single `result` or `error`. The client (`FlowPipeline`) lights up a flowchart
+from it, so the 10–60s wait shows which phase is running and what it found —
+`{"id":"extract","state":"done","detail":"18 of 240 files kept · React"}`.
+
+NDJSON over the endpoint's own body rather than SSE because all four are POSTs
+and two carry a multipart upload, while EventSource can only GET with no headers
+and no body. This way one request keeps its auth header and its file.
+
+The trade-off it forces: the status line is sent before the work runs, so a
+mid-flight failure can't *be* an HTTP status. Errors therefore split by when
+they're decidable — anything pre-flight (a malformed URL, a missing token, a
+spent quota) is raised **before** the first byte and stays a real 400/403/402;
+anything after is emitted in-band carrying its status, and the client re-raises
+the identical exception (`raiseApiError` in `utils/api.ts`) so a 402 opens the
+upgrade modal either way.
+
+Step ids are a cross-language contract with `frontend/src/flows.ts`. A drifted
+id is silent in the browser — the card simply never lights — so `Progress`
+rejects an unknown id rather than emitting an event nothing listens for.
+
 ### `services/file_extractor.py` — deterministic pre-filter
 Cheap, local, no-LLM work: filters a repo down to browser-facing UI files,
 scores them 1–10 by importance, fits them into a token budget (summarizing
@@ -56,9 +79,34 @@ analysis: summary, key pages, routes, and testing challenges.
 
 ### `agents/writer_agent.py` — Agent 2
 Builds a grounding list of **real selectors** (ids, data-testid/data-cy, names,
-classes) from the source and injects it into the prompt, generates the suite in
-JSON mode (POM classes + specs + config), appends CI YAML + README, then
+classes) from the source and injects it into the prompt, plans the file list,
+generates each file in its own call (so a large suite can't truncate), then
 validates every generated selector against the source and flags hallucinations.
+
+The model writes page objects and specs — nothing else. Everything that makes
+them *runnable* comes from `agents/scaffold.py`.
+
+### `agents/scaffold.py` — the runnable skeleton
+The dependency manifest, framework config, CI pipelines and README: boilerplate
+with one correct answer per framework, so it is templated rather than asked of
+an LLM.
+
+This is a separate module because the alternative failed silently for every
+user. The CI template used to run `npm ci` while nothing ever emitted a
+`package.json` — so the pipeline could not pass on any repo, and neither half
+knew about the other. The install step and the manifest it installs are now
+written by the same module.
+
+Two invariants it holds:
+
+* **The suite owns a directory (`e2e/`), not the repo root.** A React app already
+  has a `package.json` there; writing ours over it would destroy the manifest of
+  the app under test.
+* **`BASE_URL` wins, then a local `webServer`.** One variable points the same
+  suite at staging or prod; unset, the config boots the app so a fresh clone and
+  CI both work with no arguments. Base URLs are normalized to a trailing slash
+  and tests navigate with slashless relative paths — the only combination under
+  which a sub-path deployment (a GitHub Pages project site) stays addressable.
 
 ### `services/llm_router.py` — provider rotation engine
 Tries providers in priority order (Gemini → Groq → Claude), rotates
@@ -99,7 +147,8 @@ Typed settings via `pydantic-settings`; structured JSON logging with request IDs
 
 ## Request lifecycle
 1. **Analyze** — fetch repo (GitHub API/raw or ZIP) → `FileExtractor` → Agent 1 →
-   persist a job in SQLite → return `job_id` + analysis.
+   persist a job in SQLite → return `job_id` + analysis. Streams a step per phase
+   as it happens (`services/progress.py`).
 2. **Stream** (optional) — SSE streams Agent 2's output token-by-token; the raw
    output is cached on the job so generate can reuse it (no double LLM call).
 3. **Generate** — load the job, run Agent 2 (or reuse streamed output), validate

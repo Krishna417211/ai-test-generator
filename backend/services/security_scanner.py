@@ -17,7 +17,8 @@ Checks:
   • Accidentally exposed sensitive files
   • Mixed content / insecure form actions (light HTML inspection)
 
-An SSRF guard blocks scans of localhost / private / link-local addresses.
+An SSRF guard blocks scans of localhost / private / link-local addresses, and a
+scope gate blocks third-party sites the user plainly does not own.
 """
 
 import re
@@ -26,7 +27,10 @@ import asyncio
 import logging
 import ipaddress
 from dataclasses import dataclass, asdict
+from typing import Optional
 from urllib.parse import urlparse, urljoin, quote_plus
+
+from services.progress import NullProgress, Progress
 
 import httpx
 
@@ -34,6 +38,26 @@ logger = logging.getLogger(__name__)
 
 SEVERITY_WEIGHTS = {"critical": 35, "high": 20, "medium": 10, "low": 4, "info": 0}
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+
+# Browser-shaped, but still says who it is.
+#
+# The shape is not cosmetic and not evasion — it is a correctness fix. Large
+# sites vary their response by User-Agent, and a bare bot token gets a degraded
+# one. Measured against www.google.com, same client, same method, UA the only
+# variable:
+#
+#   Testra-SecurityScanner/1.0        -> no HSTS, no Permissions-Policy
+#   Mozilla/5.0 … Chrome/124 + token  -> HSTS: max-age=31536000, PP: unload=()
+#
+# So the old UA made the scanner report headers as MISSING that every real
+# visitor is actually served. The question this tool answers is "what protects
+# the people using this site?", and the honest instrument for that is the
+# request a person's browser makes. The token stays appended so we remain
+# identifiable in logs and blockable by anyone who would rather we went away.
+USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36 Testra-SecurityScanner/1.0 (+passive-scan)"
+)
 
 # The most a single category may cost, however many findings it produces.
 #
@@ -54,6 +78,29 @@ CATEGORY_CAPS = {
     "disclosure": 8,
     "exposure": 100,
 }
+
+# Hardening is not the same kind of thing as a vulnerability, and the grade has
+# to stop pretending it is.
+#
+# `headers`, `cookies` and `disclosure` are defence-in-depth: they describe
+# layers a site could add, not something an attacker can use today. `tls`,
+# `cors`, `content` and `exposure` are the opposite — each one means something
+# is actually broken right now (traffic in the clear, any origin reading
+# authenticated responses, credentials posted over HTTP, secrets on disk).
+#
+# Under the old flat caps a site whose ONLY faults were hardening ones could
+# still reach 51 — a D, one band off failing — while nothing about it was
+# exploitable. Real measurement, www.google.com: headers -35, cookies -14 = 51.
+# Calling that a near-fail is not a defensible reading of the evidence, and a
+# grade that says "nearly failing" about a site with no actual vulnerability
+# teaches people to disregard the grade.
+#
+# So hardening findings share one budget. They are all still reported, in full,
+# at their own severities — they just cannot, together, take a site below C on
+# their own. Anything genuinely broken deducts outside this budget and can still
+# sink the grade to F by itself.
+HARDENING_CATEGORIES = {"headers", "cookies", "disclosure"}
+HARDENING_BUDGET = 30
 
 
 def _youtube(query: str) -> str:
@@ -183,8 +230,119 @@ SECURITY_HEADERS = {
 }
 
 
+# ── Scope gate: sites the user evidently does not own ──
+#
+# Two honest reasons to refuse these, neither of which is "they are too secure
+# to scan":
+#
+#  1. Consent. This scan is passive on headers, but _check_exposed_files probes
+#     a dozen paths (/.env, /.git/config, /wp-config.php) against the target.
+#     Aimed at your own deployment that is an audit. Aimed at a stranger's, it
+#     is unsolicited recon, and Testra should not be the one pointing it.
+#  2. The report is worthless anyway. You cannot act on a finding about
+#     someone else's site — there is no fix you are able to ship.
+#
+# This list is deliberately NOT a security judgement and NOT load-bearing for
+# correctness. It cannot be complete (the internet is not enumerable), and the
+# false-positive bugs it looks like it addresses are fixed properly elsewhere in
+# this module — by USER_AGENT and _unscannable_response. It is a scope guard for
+# the obvious cases: the handful of domains people paste to kick the tyres.
+THIRD_PARTY_DOMAINS = {
+    "google", "youtube", "gmail", "facebook", "instagram", "whatsapp", "meta",
+    "amazon", "aws", "microsoft", "bing", "azure", "apple", "icloud", "netflix",
+    "twitter", "linkedin", "reddit", "tiktok", "snapchat", "pinterest", "twitch",
+    "discord", "telegram", "zoom", "slack", "dropbox", "adobe", "oracle", "ibm",
+    "salesforce", "sap", "uber", "airbnb", "spotify", "github", "gitlab",
+    "bitbucket", "stripe", "paypal", "cloudflare", "wikipedia", "wikimedia",
+    "mozilla", "openai", "anthropic", "yahoo", "baidu", "alibaba", "aliexpress",
+    "samsung", "intel", "nvidia", "cisco", "vmware", "dell", "sony", "walmart",
+    "ebay", "flipkart", "paytm", "phonepe", "irctc", "hdfcbank", "icicibank",
+    "axisbank",
+}
+# Bare English words are deliberately absent from that set ("x", "live",
+# "office", "target"): as a brand label each is a coin-flip, and blocking
+# someone's own target.dev to spare them a report about Target is a worse
+# outcome than the scan we failed to prevent. The gate is allowed to miss.
+
+# Hosting suffixes: everything under these belongs to a USER, not to the company
+# whose name is in the domain.
+#
+# This has to be checked before the brand match, and is the reason the gate is
+# not a plain substring test. `myapp.github.io` brand-matches "github" and
+# `myapp.vercel.app` matches "vercel" — but those are exactly the deployments
+# this tool exists to scan. Blocking a user's own GitHub Pages site and telling
+# them to "go scan a site you own" would be both wrong and insulting.
+HOSTING_SUFFIXES = (
+    ".github.io", ".gitlab.io", ".vercel.app", ".netlify.app", ".netlify.com",
+    ".herokuapp.com", ".pages.dev", ".workers.dev", ".web.app",
+    ".firebaseapp.com", ".onrender.com", ".fly.dev", ".surge.sh",
+    ".azurewebsites.net", ".cloudfront.net", ".amplifyapp.com", ".replit.app",
+    ".railway.app", ".streamlit.app", ".glitch.me", ".appspot.com",
+)
+
+# Whole categories where an unsolicited scan is worst-behaved: government,
+# military, and the banking gTLD (registry-restricted to verified banks).
+#
+# Matched as a LABEL anywhere but the first, not as a trailing suffix: most of
+# the world's government domains put it in the middle — india.gov.in, gov.uk,
+# defence.gov.au — and a plain `.endswith(".gov")` sees none of them.
+BLOCKED_LABELS = {"gov", "mil", "bank"}
+
+
 class ScanError(Exception):
     """Raised when the target URL is invalid or cannot be scanned safely."""
+
+
+class OutOfScopeError(ScanError):
+    """Raised when the target is a third-party site the user does not own."""
+
+
+class UnscannableResponseError(ScanError):
+    """Raised when the site answered, but not with a page we can honestly grade."""
+
+
+def _brand_label(host: str) -> str:
+    """The label most likely to identify the brand, ignoring the public suffix.
+
+    No PSL dependency here, so this is a heuristic on purpose: for 'google.com'
+    and 'google.co.uk' alike it returns 'google', by walking in from the right
+    past the short suffix-ish labels. It only ever feeds the scope gate, where a
+    miss costs a scan we would rather not have run and never a wrong finding.
+    """
+    parts = [p for p in host.lower().strip(".").split(".") if p]
+    if len(parts) < 2:
+        return ""
+    # Walk left past public-suffix-shaped labels: "co.uk", "com.au", "co.in".
+    i = len(parts) - 1
+    while i > 0 and len(parts[i]) <= 3 and parts[i] not in THIRD_PARTY_DOMAINS:
+        i -= 1
+    return parts[i]
+
+
+def _assert_in_scope(host: str) -> None:
+    """Refuse targets the user obviously does not own. See THIRD_PARTY_DOMAINS."""
+    host = host.lower().rstrip(".")
+    # User deployments first — see HOSTING_SUFFIXES. A site here is the user's
+    # own, whatever brand name the suffix happens to contain.
+    if any(host.endswith(s) for s in HOSTING_SUFFIXES):
+        return
+    labels = host.split(".")
+    if BLOCKED_LABELS & set(labels[1:]):
+        raise OutOfScopeError(
+            f"'{host}' is a government, military or banking domain, and Testra will "
+            "not scan those. Point it at a site you own and can fix."
+        )
+    if _brand_label(host) in THIRD_PARTY_DOMAINS:
+        # The brand label is matched but deliberately not echoed: .title() turns
+        # "github" into "Github" and "ibm" into "Ibm", and a refusal that
+        # misspells the company in the same breath reads like a bug. The host is
+        # already in the message and says the same thing correctly.
+        raise OutOfScopeError(
+            f"'{host}' is a third-party site, not one of yours — so Testra won't "
+            "scan it. There'd be nothing you could act on in the report anyway: "
+            "you can't ship a fix to someone else's site. Point this at your own "
+            "deployment, e.g. https://your-app.com."
+        )
 
 
 @dataclass
@@ -232,8 +390,16 @@ def _assert_public_host(host: str) -> None:
             )
 
 
-def _validate_target(url: str) -> str:
-    """Normalise + safety-check the URL. Rejects internal/private targets."""
+def precheck_target(url: str) -> str:
+    """Normalise the URL and apply every check that needs no network.
+
+    Split from validate_target so the route can settle targeting before it opens
+    the NDJSON stream (see progress.py: an up-front-decidable failure must stay a
+    real 400, not an in-band error after a 200). Everything here is a string
+    decision — scheme, hostname, scope — so the route pays nothing for it and
+    resolves no DNS. The lookup stays in validate_target, on the scanner's side,
+    where it happens once, immediately before the request it guards.
+    """
     url = url.strip()
     if not url:
         raise ScanError("Please provide a URL to scan.")
@@ -254,8 +420,101 @@ def _validate_target(url: str) -> str:
     if not host:
         raise ScanError("Could not parse a hostname from that URL.")
 
-    _assert_public_host(host)
+    # Scope before DNS: refusing a third party is a decision about the target we
+    # can make from the name alone, and there's no reason to touch the network
+    # (or leak that we were asked) for a host we will not scan either way.
+    _assert_in_scope(host)
     return url
+
+
+def validate_target(url: str) -> str:
+    """precheck_target plus the DNS-dependent SSRF guard. Used by the scanner."""
+    url = precheck_target(url)
+    host = urlparse(url).hostname
+    if host:
+        _assert_public_host(host)
+    return url
+
+
+# ── Is this response actually the site? ──
+#
+# The bug this exists to kill: the scanner graded whatever came back, without
+# ever asking whether it was the page. Measured, www.wikipedia.org answered our
+# scanner with 403 — and the scan cheerfully reported "grade C, 6 findings: no
+# CSP, no HSTS, no X-Frame-Options…". Every one of those was a description of a
+# bot-block page. Wikipedia sends those headers on the real thing.
+#
+# That single hole explains both halves of the complaint that started this:
+# reports full of things that are not true of the site, and the SAME six
+# findings on site after site — because a WAF block page is a bare error page
+# everywhere, and bare error pages are missing the same six headers everywhere.
+#
+# A finding needs a page it is true of. Without one the only honest output is to
+# say we could not see the site — never a grade.
+# Phrases that are a vendor's block page and essentially nothing else. Long
+# enough, and specific enough, that a page containing one IS one.
+_CHALLENGE_MARKERS = (
+    "enable javascript and cookies to continue",
+    "checking your browser before accessing",
+    "attention required! | cloudflare",
+    "request unsuccessful. incapsula incident id",
+    "pardon our interruption",          # PerimeterX / HUMAN
+    "ddos protection by",
+)
+
+# Short, generic phrases that a real page can legitimately contain: a loading
+# spinner says "Just a moment", and an article about S3 permissions says "Access
+# Denied" several times. Matching those bare refused the whole scan of an
+# ordinary site — a worse failure than the false findings this check exists to
+# prevent, because it withholds the entire report rather than one wrong line.
+#
+# So they need corroboration: a block page is a stub, while a real page that
+# merely mentions the phrase is a real page, with a real page's worth of markup
+# around it. "access denied" is gone entirely rather than demoted — the WAFs
+# that serve it do so with a 403, which the status check above already catches,
+# so it was only ever able to fire on a false positive.
+_CHALLENGE_MARKERS_WEAK = ("just a moment", "verify you are human")
+_CHALLENGE_STUB_BYTES = 8_000
+
+
+def _unscannable_response(resp: "httpx.Response") -> Optional[str]:
+    """Why this response can't be graded, or None if it looks like the real page."""
+    code = resp.status_code
+    if code == 429:
+        return (
+            "the site rate-limited the scan (HTTP 429). Its headers here are the "
+            "rate-limiter's, not your app's. Wait a minute and try again."
+        )
+    if not (200 <= code < 300):
+        return (
+            f"the site answered HTTP {code} instead of serving a page. Grading that "
+            "would describe an error page rather than your site — check the URL "
+            "points at a page that loads, and that it isn't blocking automated "
+            "requests."
+        )
+    # A 200 can still be a bot wall: challenge interstitials return 200 with the
+    # real page nowhere in sight.
+    if resp.headers.get("cf-mitigated", "").lower() == "challenge":
+        return (
+            "Cloudflare served a bot challenge instead of the page, so the headers "
+            "here are the challenge's rather than your site's. Allow-list the "
+            "scanner, or scan an origin URL that isn't behind the challenge."
+        )
+    body = resp.text
+    head = body[:8000].lower()
+    hit = next((m for m in _CHALLENGE_MARKERS if m in head), None)
+    if hit is None and len(body) < _CHALLENGE_STUB_BYTES:
+        # Only worth consulting the ambiguous phrases once the page is already
+        # stub-shaped. See _CHALLENGE_MARKERS_WEAK.
+        hit = next((m for m in _CHALLENGE_MARKERS_WEAK if m in head), None)
+    if hit:
+        return (
+            "a bot-protection challenge answered instead of the page "
+            f"(matched \"{hit}\"), so these headers are the challenge's, not "
+            "your site's. Allow-list the scanner or scan an origin URL that "
+            "isn't behind it."
+        )
+    return None
 
 
 async def _redirect_guard(response: "httpx.Response") -> None:
@@ -284,12 +543,15 @@ class SecurityScanner:
         self.timeout = timeout
         self.max_body_bytes = max_body_bytes
 
-    async def scan(self, url: str) -> ScanResult:
-        target = _validate_target(url)
+    async def scan(self, url: str, progress: Optional[Progress] = None) -> ScanResult:
+        say = progress or NullProgress()
+
+        await say.start("target")
+        target = validate_target(url)
         findings: list[Finding] = []
         checks = 0
 
-        headers = {"User-Agent": "Testra-SecurityScanner/1.0 (+passive-scan)"}
+        headers = {"User-Agent": USER_AGENT}
         async with httpx.AsyncClient(
             timeout=self.timeout, follow_redirects=True, max_redirects=5,
             headers=headers, verify=True,
@@ -301,6 +563,27 @@ class SecurityScanner:
                 raise ScanError(f"Could not reach the site: {e}")
 
             final_url = str(resp.url)
+            # Before anything is measured: is this the site, or a wall in front
+            # of it? Every check below reads headers and body, and on a block
+            # page all of them are true about the block page and false about the
+            # site. There is no partial credit to salvage here — the honest move
+            # is to stop and say we could not see it.
+            why = _unscannable_response(resp)
+            if why:
+                raise UnscannableResponseError(f"Couldn't scan {urlparse(final_url).netloc} — {why}")
+
+            # Only now is the target proven fair game: validate_target vets the
+            # URL, but the redirect guard vets every hop, and it runs on this
+            # request. Reporting "target" done before the fetch would call a
+            # host safe that a redirect could still have taken elsewhere.
+            hops = len(resp.history)
+            await say.done(
+                "target",
+                f"{urlparse(final_url).netloc} reachable"
+                + (f" · {hops} redirect{'s' if hops != 1 else ''} followed" if hops else ""),
+            )
+
+            await say.start("checks")
             h = {k.lower(): v for k, v in resp.headers.items()}
             body = resp.text[: self.max_body_bytes]
 
@@ -311,8 +594,16 @@ class SecurityScanner:
             checks += self._check_cors(h, findings)
             checks += self._check_content(final_url, body, findings)
             checks += await self._check_exposed_files(client, final_url, findings)
+            await say.done(
+                "checks",
+                f"{checks} checks run · {len(findings)} "
+                f"{'issue' if len(findings) == 1 else 'issues'} found",
+            )
 
-        return self._build_result(target, final_url, findings, checks)
+        await say.start("score")
+        result = self._build_result(target, final_url, findings, checks)
+        await say.done("score", f"Grade {result.grade} · {result.score}/100")
+        return result
 
     # ── individual checks ────────────────────
 
@@ -553,12 +844,19 @@ class SecurityScanner:
         score = 100
         counts = {s: 0 for s in SEVERITY_WEIGHTS}
         spent: dict[str, int] = {}
+        hardening_spent = 0
         for f in unique:
             counts[f.severity] = counts.get(f.severity, 0) + 1
             weight = SEVERITY_WEIGHTS.get(f.severity, 0)
             cap = CATEGORY_CAPS.get(f.category, 100)
             used = spent.get(f.category, 0)
             deduct = max(0, min(weight, cap - used))
+            # Hardening categories also draw on one shared budget, so a site
+            # with nothing exploitable can't be graded down as if it had.
+            if f.category in HARDENING_CATEGORIES:
+                deduct = min(deduct, HARDENING_BUDGET - hardening_spent)
+                deduct = max(0, deduct)
+                hardening_spent += deduct
             spent[f.category] = used + deduct
             score -= deduct
         score = max(0, min(100, score))

@@ -195,6 +195,55 @@ class GeneratedFile(BaseModel):
     size: int
 
 
+# ── How an output was produced, and what we verified about it ──
+#
+# These two shapes are shared by all three flows so "how much can I trust this,
+# and what wrote it?" is answered the same way everywhere.
+
+class ModelUsage(BaseModel):
+    provider: str
+    model: str
+    calls: int
+    total_tokens: Optional[int] = None       # None = provider didn't report usage
+    share: float
+
+
+class Provenance(BaseModel):
+    """Which model(s) actually produced this output.
+
+    Reports the model, never the key. Which numbered key served a call is an
+    operations detail (admin console → get_key_health); on a user-facing
+    response it would leak the key pool's shape for no user benefit.
+    """
+    calls: int
+    primary: dict                            # {"provider": ..., "model": ...}
+    mixed: bool                              # rotation split the work across models
+    models: list[ModelUsage] = []
+    # The model a paid plan would have used, or None when upgrading would change
+    # nothing. A fact about the model table — never a reaction to how this run
+    # scored, and never set when capacity ran out (that hits paid users too).
+    upgrade_model: Optional[str] = None
+
+
+class Grounding(BaseModel):
+    """What we verified about a generated suite. NOT an accuracy score.
+
+    We never execute the generated tests (that needs Docker + a live target —
+    see services/validator.py), so we cannot know whether they pass. These are
+    the two things we do check, reported under their own names:
+    selectors checked back against the user's real source, and code files a
+    parser actually read. `*_rate` is None when there was nothing to measure —
+    an empty suite has not earned a 100%.
+    """
+    selectors_total: int = 0
+    selectors_verified: int = 0
+    selector_rate: Optional[float] = None
+    files_checked: int = 0
+    files_valid: int = 0
+    file_rate: Optional[float] = None
+    heal_attempts: int = 0
+
+
 class GenerateResponse(BaseModel):
     success: bool
     files: list[GeneratedFile]
@@ -203,6 +252,8 @@ class GenerateResponse(BaseModel):
     selector_warnings: list[str]
     summary: str
     validation: list[dict] = []              # per-file syntax-validity results
+    grounding: Optional[Grounding] = None
+    provenance: Optional[Provenance] = None
     error: Optional[str] = None
 
 
@@ -217,6 +268,8 @@ class PublishResponse(BaseModel):
     test_count: int = 0
     all_valid: bool = True                   # did every generated test file pass validation
     validation: list[dict] = []              # per-file syntax-validity results
+    grounding: Optional[Grounding] = None
+    provenance: Optional[Provenance] = None
     warnings: list[str] = []
 
 
@@ -234,6 +287,14 @@ class ScanResponse(BaseModel):
     counts: dict
     checks_run: int
     findings: list[dict] = []
+    # Scan reports its trust differently from generate, because the flows differ
+    # in kind. The findings are deterministic — a header is present or it isn't,
+    # so there is no rate to quote and inventing one would be noise. The only
+    # part that varies is the prioritised plan, hence: did a model write it, or
+    # is this the deterministic fallback? A user acting on the plan deserves to
+    # know which they're reading.
+    summary_source: str = "fallback"         # "ai" | "fallback"
+    provenance: Optional[Provenance] = None
 
 
 class ProviderStatus(BaseModel):

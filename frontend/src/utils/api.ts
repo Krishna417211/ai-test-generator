@@ -1,3 +1,8 @@
+// Type-only, and it must stay that way: types/index.ts imports `User` from this
+// file, so a value import here would close the cycle. `import type` is erased at
+// build time, so the two files can describe each other's shapes without one.
+import type { Provenance } from "../types";
+
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 // ── Auth token management ────────────────────
@@ -134,11 +139,16 @@ export class QuotaExceededError extends Error {
   }
 }
 
-async function parseError(res: Response, fallback: string): Promise<never> {
-  const err = await res.json().catch(() => ({ detail: res.statusText }));
-  let detail = err?.detail;
+/** Turn a status + FastAPI `detail` into the right exception.
+ *
+ *  Split out of parseError because a streamed endpoint reports failures in its
+ *  body rather than its status (see backend/services/progress.py): once the
+ *  stream opens the status is already 200. Both paths land here so an in-band
+ *  error is indistinguishable from an HTTP one — a 402 still opens the upgrade
+ *  modal whether it arrived as a status or as a line of NDJSON. */
+function raiseApiError(status: number, detail: any, fallback: string): never {
   // 402 carries a structured quota payload, not a message string.
-  if (res.status === 402 && detail && typeof detail === "object") {
+  if (status === 402 && detail && typeof detail === "object") {
     throw new QuotaExceededError(detail);
   }
   // FastAPI/Pydantic returns `detail` as an array of {loc, msg, ...} for
@@ -152,6 +162,78 @@ async function parseError(res: Response, fallback: string): Promise<never> {
     detail = detail.msg || JSON.stringify(detail);
   }
   throw new Error(detail || fallback);
+}
+
+async function parseError(res: Response, fallback: string): Promise<never> {
+  const err = await res.json().catch(() => ({ detail: res.statusText }));
+  raiseApiError(res.status, err?.detail, fallback);
+}
+
+/** State of one step in a live pipeline, as reported by the server. */
+export type StepState = "running" | "done" | "skipped";
+export interface StepEvent {
+  id: string;
+  state: StepState;
+  detail?: string;
+}
+export type OnProgress = (event: StepEvent) => void;
+
+/** POST to an NDJSON endpoint, reporting step events as they arrive and
+ *  resolving with the final result.
+ *
+ *  Errors arrive two ways and both must behave like a normal failed request:
+ *  a pre-flight rejection is still a real status (`res.ok` is false, nothing has
+ *  streamed), and a mid-flight one is an `{"type":"error"}` line. */
+async function postNdjson(
+  path: string,
+  init: RequestInit,
+  onProgress: OnProgress | undefined,
+  fallback: string,
+): Promise<any> {
+  const res = await fetch(`${API_BASE}${path}`, init);
+  if (!res.ok) await parseError(res, fallback);
+  if (!res.body) throw new Error(fallback);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  // Held on an object rather than in two `let`s: these are only ever assigned
+  // from inside `handle`, and TypeScript's flow analysis doesn't follow a
+  // closure — it would narrow a local to `null` and reject the read below.
+  const out: { result?: any; failure?: { status: number; detail: any } } = {};
+
+  const handle = (line: string) => {
+    if (!line.trim()) return;
+    let msg: any;
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      return; // a partial line can't happen (we split on \n), so this is corrupt — skip it
+    }
+    if (msg.type === "step") onProgress?.({ id: msg.id, state: msg.state, detail: msg.detail });
+    else if (msg.type === "result") out.result = msg.data;
+    else if (msg.type === "error") out.failure = { status: msg.status, detail: msg.detail };
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    // The last element is whatever came after the final newline — an incomplete
+    // line, or "". Keep it buffered until its newline arrives.
+    buffer = lines.pop() ?? "";
+    for (const line of lines) handle(line);
+  }
+  handle(buffer);
+
+  if (out.failure) raiseApiError(out.failure.status, out.failure.detail, fallback);
+  if (out.result === undefined) {
+    // The stream ended without a result or an error — the connection dropped
+    // mid-flight. Not a server error we can name, but not a success either.
+    throw new Error("The connection dropped before the run finished. Please try again.");
+  }
+  return out.result;
 }
 
 export interface User {
@@ -334,15 +416,14 @@ export async function getAuthConfig(): Promise<AuthConfig> {
 // ── Test generation ──────────────────────────
 
 export async function analyzeRepo(
-  repoUrl: string, framework: string, language: string, testFlows: string, baseUrl: string, githubToken?: string
-): Promise<{ job_id: string; analysis: any }> {
-  const res = await fetch(`${API_BASE}/api/analyze`, {
+  repoUrl: string, framework: string, language: string, testFlows: string, baseUrl: string,
+  githubToken?: string, onProgress?: OnProgress
+): Promise<{ job_id: string; analysis: any; provenance?: Provenance | null }> {
+  return postNdjson("/api/analyze", {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ repo_url: repoUrl, framework, language, test_flows: testFlows, base_url: baseUrl, github_token: githubToken || undefined }),
-  });
-  if (!res.ok) await parseError(res, "Analysis failed");
-  return res.json();
+  }, onProgress, "Analysis failed");
 }
 
 // Server-enforced upload cap (MAX_REPO_SIZE_MB). Refreshed by getAuthConfig();
@@ -360,17 +441,20 @@ export function validateZip(file: File): string | null {
 }
 
 export async function uploadZip(
-  file: File, framework: string, language: string, testFlows: string, baseUrl: string
-): Promise<{ job_id: string; analysis: any }> {
+  file: File, framework: string, language: string, testFlows: string, baseUrl: string,
+  onProgress?: OnProgress
+): Promise<{ job_id: string; analysis: any; provenance?: Provenance | null }> {
   const form = new FormData();
   form.append("file", file);
   form.append("framework", framework);
   form.append("language", language);
   form.append("test_flows", testFlows);
   form.append("base_url", baseUrl);
-  const res = await fetch(`${API_BASE}/api/upload-zip`, { method: "POST", headers: authHeaders(), body: form });
-  if (!res.ok) await parseError(res, "Upload failed");
-  return res.json();
+  return postNdjson(
+    "/api/upload-zip",
+    { method: "POST", headers: authHeaders(), body: form },
+    onProgress, "Upload failed",
+  );
 }
 
 export async function generateTests(
@@ -408,14 +492,12 @@ export function streamGeneration(
 
 // ── Security scan ────────────────────────────
 
-export async function scanUrl(url: string): Promise<any> {
-  const res = await fetch(`${API_BASE}/api/scan`, {
+export async function scanUrl(url: string, onProgress?: OnProgress): Promise<any> {
+  return postNdjson("/api/scan", {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ url, ai_summary: true }),
-  });
-  if (!res.ok) await parseError(res, "Scan failed");
-  return res.json();
+  }, onProgress, "Scan failed");
 }
 
 // ── Publish ──────────────────────────────────
@@ -432,7 +514,9 @@ export interface PublishOptions {
   repoDescription?: string;
 }
 
-export async function publishZip(file: File, opts: PublishOptions): Promise<any> {
+export async function publishZip(
+  file: File, opts: PublishOptions, onProgress?: OnProgress
+): Promise<any> {
   const form = new FormData();
   form.append("file", file);
   form.append("github_token", opts.githubToken || "");
@@ -444,9 +528,11 @@ export async function publishZip(file: File, opts: PublishOptions): Promise<any>
   form.append("test_flows", opts.testFlows || "");
   form.append("base_url", opts.baseUrl || "http://localhost:3000");
   form.append("repo_description", opts.repoDescription || "");
-  const res = await fetch(`${API_BASE}/api/publish-zip`, { method: "POST", headers: authHeaders(), body: form });
-  if (!res.ok) await parseError(res, "Publish failed");
-  return res.json();
+  return postNdjson(
+    "/api/publish-zip",
+    { method: "POST", headers: authHeaders(), body: form },
+    onProgress, "Publish failed",
+  );
 }
 
 /** Delete a repo Testra created. Irreversible; `fullName` is echoed back as confirmation. */
