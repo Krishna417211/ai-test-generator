@@ -4,6 +4,7 @@ import type { GenerateResponse, GeneratedFile } from "../types";
 import { downloadAsZip, downloadSingleFile } from "../utils/download";
 import { frameworkLabel, pluralize } from "../utils/format";
 import CodeViewer from "./CodeViewer";
+import TrustPanel from "./TrustPanel";
 
 interface Props {
   result: GenerateResponse;
@@ -114,8 +115,13 @@ export default function ResultsStep({ result, onReset }: Props) {
     setDownloading(false);
   };
 
-  // Validation summary (per-file syntax checks from the backend)
-  const validation = result.validation ?? [];
+  // Validation summary (per-file syntax checks from the backend).
+  //
+  // Counts only files a parser actually read. The server marks config and docs
+  // `checked: false` — they pass by default — so including them turned "6/6
+  // passed" into a claim about a README and two YAMLs nobody parsed. Older
+  // responses have no `checked` field, hence the `!== false` default.
+  const validation = (result.validation ?? []).filter(v => v.checked !== false);
   const validCount = validation.filter(v => v.ok).length;
   const allValid = validation.length > 0 && validCount === validation.length;
   const someInvalid = validation.length > 0 && !allValid;
@@ -152,11 +158,6 @@ export default function ResultsStep({ result, onReset }: Props) {
                 </span>
               )}
             </p>
-            {validation.length > 0 && (
-              <p className="mt-1.5 text-[11px] text-grey-500">
-                Syntax-checked only — not executed. Run them against your app to confirm they pass.
-              </p>
-            )}
           </div>
         </div>
         <button
@@ -168,6 +169,10 @@ export default function ResultsStep({ result, onReset }: Props) {
           {downloading ? "Zipping..." : "Download All"}
         </button>
       </div>
+
+      {/* What we verified, and which model wrote it. Carries the "we didn't run
+          these" disclaimer that used to sit in the summary bar above. */}
+      <TrustPanel grounding={result.grounding} provenance={result.provenance} />
 
       {/* Selector warnings */}
       {result.selector_warnings.length > 0 && (

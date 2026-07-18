@@ -23,6 +23,7 @@ from fastapi import Depends, HTTPException
 
 from config import settings
 from services.auth import require_user
+from services.llm_router import Tier
 from services.store import store
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,23 @@ def next_period_start(now: float | None = None) -> float:
 def limit_for(plan: str) -> int | None:
     """Generations allowed per month, or None for unlimited."""
     return None if plan == PRO else settings.free_generations_per_month
+
+
+def tier_for(plan: str) -> Tier:
+    """Which model quality a plan buys.
+
+    Deliberately next to limit_for: these are the only two things a plan
+    changes, and they should be readable in one glance. This one is what makes
+    "upgrade for better results" a fact rather than a marketing line — Pro
+    routes to a genuinely stronger model (see llm_router.MODELS). If that ever
+    stops being true, this function collapses to a constant and every upgrade
+    prompt that mentions quality has to come out with it.
+    """
+    return Tier.PRO if plan == PRO else Tier.FREE
+
+
+def tier_for_user(user_id: str) -> Tier:
+    return tier_for(store.get_plan(user_id))
 
 
 @dataclass

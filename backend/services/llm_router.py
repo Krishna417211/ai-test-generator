@@ -46,6 +46,19 @@ _last_usage: contextvars.ContextVar = contextvars.ContextVar(
     "testgen_last_usage", default=None
 )
 
+# Every provider call made while serving the current request, in order. Scoped
+# per asyncio task for the same reason as _last_usage: concurrent users must not
+# read each other's calls.
+#
+# This accumulates rather than recording only the latest call because one user
+# -visible output is not one call — a generate is the filter agent, a file plan,
+# and one call per file, and rotation can serve them from different providers.
+# "Which model wrote my tests?" therefore only has an honest answer in aggregate,
+# which is what report() computes.
+_provenance: contextvars.ContextVar = contextvars.ContextVar(
+    "testgen_provenance", default=None
+)
+
 
 def _openai_usage(usage: Optional[dict]) -> Optional[dict]:
     """Normalise an OpenAI-style usage block (Groq) to {prompt, completion, total}."""
@@ -143,11 +156,69 @@ class ProviderState:
 # Provider implementations
 # ─────────────────────────────────────────────
 
-PROVIDER_PRIORITY = [
-    Provider.GEMINI,    # 1M context — best for large repos
-    Provider.GROQ,      # Fastest inference
-    Provider.CLAUDE,    # Reliable fallback
-]
+class Tier(str, Enum):
+    """Which model quality a request is entitled to.
+
+    This is the *only* thing that differs between plans inside the router, and
+    it exists so the upgrade prompt can tell the truth: a Pro generation really
+    is produced by a stronger model, not the same one behind a paywall. Keep it
+    that way — if Pro ever stops changing the model, the claim has to go too.
+    """
+    FREE = "free"
+    PRO  = "pro"
+
+
+@dataclass(frozen=True)
+class ModelSpec:
+    """One provider's model for one tier, plus what its API will accept.
+
+    The per-model flags are not decoration. Anthropic removed the sampling
+    parameters on Opus 4.7+, so sending `temperature` — which every call did
+    when Claude meant Haiku — returns a 400 rather than being ignored. A model
+    swap here is therefore never just an id string, and the request builders
+    read these flags instead of assuming one shape for the whole provider.
+    """
+    id: str
+    max_output_tokens: int
+    # Opus 4.7+ reject temperature/top_p/top_k outright (400). Haiku accepts them.
+    accepts_temperature: bool = True
+    # Adaptive thinking is off unless asked for on Opus 4.8, and it is most of
+    # what the Pro tier is actually buying: the model reasons about the repo
+    # before writing selectors instead of pattern-matching to a generic suite.
+    # `budget_tokens` is removed on 4.7+ — depth is set with `effort`, not tokens.
+    adaptive_thinking: bool = False
+    effort: Optional[str] = None          # low | medium | high | xhigh | max
+
+
+# The model each provider runs, per tier. Two rows differ between the tiers and
+# both are Anthropic's, because that is where a materially stronger model is
+# actually available to us: Gemini and Groq stay on their free-tier models and
+# serve as capacity, not as the quality story.
+MODELS: dict[tuple[Provider, Tier], ModelSpec] = {
+    (Provider.GEMINI, Tier.FREE): ModelSpec("gemini-2.0-flash", 8192),
+    (Provider.GEMINI, Tier.PRO):  ModelSpec("gemini-2.0-flash", 8192),
+    (Provider.GROQ,   Tier.FREE): ModelSpec("llama-3.3-70b-versatile", 4096),
+    (Provider.GROQ,   Tier.PRO):  ModelSpec("llama-3.3-70b-versatile", 4096),
+    (Provider.CLAUDE, Tier.FREE): ModelSpec("claude-haiku-4-5", 4096),
+    (Provider.CLAUDE, Tier.PRO):  ModelSpec(
+        "claude-opus-4-8",
+        max_output_tokens=16000,   # non-streaming ceiling that stays under the HTTP timeout
+        accepts_temperature=False,
+        adaptive_thinking=True,
+        effort="high",
+    ),
+}
+
+# Which provider to try first, per tier. Free order is capacity-first (Gemini's
+# 1M context swallows big repos, Groq is fastest). Pro order is quality-first:
+# paying for Opus and then serving the request from Flash because Flash was
+# listed first would make the upgrade a lie. Claude still falls back to the
+# others rather than failing — a Pro user who would otherwise get nothing gets
+# a free-tier-quality suite, and the provenance report says so.
+PROVIDER_PRIORITY: dict[Tier, list[Provider]] = {
+    Tier.FREE: [Provider.GEMINI, Provider.GROQ, Provider.CLAUDE],
+    Tier.PRO:  [Provider.CLAUDE, Provider.GEMINI, Provider.GROQ],
+}
 
 # How long to wait before retrying an exhausted key (seconds)
 COOLDOWN = {
@@ -156,12 +227,116 @@ COOLDOWN = {
     Provider.CLAUDE:   120,
 }
 
-# Max tokens we'll request from each provider
-MAX_OUTPUT_TOKENS = {
-    Provider.GEMINI:   8192,
-    Provider.GROQ:     4096,
-    Provider.CLAUDE:   4096,
-}
+
+def model_for(provider: Provider, tier: Tier) -> ModelSpec:
+    return MODELS[(provider, tier)]
+
+
+# ─────────────────────────────────────────────
+# Provenance — which model actually produced an output
+# ─────────────────────────────────────────────
+
+@dataclass
+class ProviderCall:
+    """One successful provider call made while producing a user-visible output."""
+    provider: str
+    model: str
+    context: str                    # "agent1" | "writer_file" | "scan_summary" | ...
+    total_tokens: Optional[int] = None
+
+
+def start_provenance() -> None:
+    """Begin recording provider calls for the current request.
+
+    Call once at the top of a request that produces a user-visible output.
+    """
+    _provenance.set([])
+
+
+def record_provenance(call: ProviderCall) -> None:
+    calls = _provenance.get()
+    if calls is not None:
+        calls.append(call)
+
+
+def upgrade_would_change_model(tier: Tier) -> bool:
+    """Whether upgrading would genuinely get this user a stronger model *today*.
+
+    Two conditions, and both are load-bearing:
+
+    1. The model table must actually differ between the tiers. Derived rather
+       than hardcoded, so if Pro ever stops changing the model this goes False
+       on its own — the claim cannot outlive the thing it claims.
+
+    2. The Pro provider must be reachable. This one was added after running it
+       against the real keys: Anthropic was out of credit, so Pro resolved to
+       the same Groq model Free was already getting — while the UI cheerfully
+       advertised "Pro runs claude-opus-4-8". Selling an upgrade to a model we
+       cannot currently serve is the exact dishonesty this panel exists to
+       avoid, and no unit test would have caught it.
+
+    Note what this is NOT keyed on: the grounding score. A low selector rate
+    means the repo has few stable selectors, which a better model cannot
+    invent — offering an upgrade there would be selling a fix we don't have,
+    and would give us a reason to want the score low.
+    """
+    if tier is not Tier.FREE:
+        return False
+    if model_for(Provider.CLAUDE, Tier.PRO).id == model_for(Provider.CLAUDE, Tier.FREE).id:
+        return False
+    return router.provider_is_viable(Provider.CLAUDE)
+
+
+def provenance_report(tier: Tier = Tier.FREE) -> Optional[dict]:
+    """Aggregate this request's provider calls into a reportable shape.
+
+    Returns None when nothing was recorded (no LLM ran, or the caller never
+    started recording) — the caller must then say nothing rather than guess.
+
+    `primary` is decided by call count and ties break toward the more-capable
+    model, which matters because it is what the UI labels the output with.
+    Deliberately reports provider + model and never the key: which of the
+    numbered keys served a call is an operations detail (see get_key_health),
+    and putting it on a user-facing response would leak the pool's shape into
+    screenshots and bug reports for no user benefit.
+    """
+    calls = _provenance.get()
+    if not calls:
+        return None
+
+    by_model: dict[tuple[str, str], dict] = {}
+    for c in calls:
+        key = (c.provider, c.model)
+        entry = by_model.setdefault(
+            key, {"provider": c.provider, "model": c.model, "calls": 0, "total_tokens": 0}
+        )
+        entry["calls"] += 1
+        entry["total_tokens"] += c.total_tokens or 0
+
+    models = sorted(by_model.values(), key=lambda m: m["calls"], reverse=True)
+    for m in models:
+        m["share"] = round(m["calls"] / len(calls), 3)
+        # A provider that reports no usage (streaming) would otherwise show a
+        # confident 0 rather than "not reported".
+        if m["total_tokens"] == 0:
+            m["total_tokens"] = None
+
+    return {
+        "calls": len(calls),
+        "primary": {"provider": models[0]["provider"], "model": models[0]["model"]},
+        # Present whenever rotation split the work, so a suite that fell back
+        # mid-run isn't labelled with a model that only wrote part of it.
+        "mixed": len(models) > 1,
+        "models": models,
+        # A statement of fact about the model table, not a reaction to how this
+        # particular run scored. Only reachable when calls succeeded, so a
+        # provider outage — which hits paid users identically — can never
+        # surface as an upsell (see config.free_generations_per_month).
+        "upgrade_model": (
+            model_for(Provider.CLAUDE, Tier.PRO).id
+            if upgrade_would_change_model(tier) else None
+        ),
+    }
 
 
 class LLMRouter:
@@ -204,6 +379,7 @@ class LLMRouter:
         stream: bool = False,
         context_hint: str = "",     # used for logging ("agent1" | "agent2")
         json_mode: bool = False,    # force the provider to emit valid JSON
+        tier: Tier = Tier.FREE,     # which model quality the caller is entitled to
     ) -> str:
         """
         Try each provider in priority order until one succeeds.
@@ -212,7 +388,7 @@ class LLMRouter:
         last_error = None
         cooling: list[str] = []     # providers skipped because every key is in cooldown
 
-        for provider in PROVIDER_PRIORITY:
+        for provider in PROVIDER_PRIORITY[tier]:
             if provider not in self._providers:
                 continue
 
@@ -226,18 +402,26 @@ class LLMRouter:
                 cooling.append(provider.value)
                 continue
 
-            await self._broadcast_status(f"Using {provider.value}...")
+            spec = model_for(provider, tier)
+            await self._broadcast_status(f"Using {spec.id}...")
 
             _last_usage.set(None)
             t0 = time.perf_counter()
             try:
                 result = await self._call_provider(
-                    provider, api_key, prompt, system_prompt, temperature, json_mode
+                    provider, api_key, prompt, system_prompt, temperature, json_mode, spec
                 )
                 latency_ms = round((time.perf_counter() - t0) * 1000)
                 api_key.record_success()
+                usage = _last_usage.get()
                 self._log_call(provider, api_key, context_hint, success=True,
-                               latency_ms=latency_ms, usage=_last_usage.get())
+                               latency_ms=latency_ms, usage=usage, model=spec.id)
+                record_provenance(ProviderCall(
+                    provider=provider.value,
+                    model=spec.id,
+                    context=context_hint,
+                    total_tokens=(usage or {}).get("total"),
+                ))
                 return result
 
             except RateLimitError as e:
@@ -294,6 +478,7 @@ class LLMRouter:
         temperature: float = 0.2,
         context_hint: str = "",
         json_mode: bool = False,
+        tier: Tier = Tier.FREE,
     ) -> AsyncGenerator[str, None]:
         """
         Streaming version — yields text chunks as they arrive.
@@ -301,7 +486,7 @@ class LLMRouter:
         """
         last_error = None
 
-        for provider in PROVIDER_PRIORITY:
+        for provider in PROVIDER_PRIORITY[tier]:
             if provider not in self._providers:
                 continue
 
@@ -311,18 +496,27 @@ class LLMRouter:
             if api_key is None:
                 continue
 
-            await self._broadcast_status(f"Streaming from {provider.value}...")
+            spec = model_for(provider, tier)
+            await self._broadcast_status(f"Streaming from {spec.id}...")
 
             t0 = time.perf_counter()
             try:
                 async for chunk in self._stream_provider(
-                    provider, api_key, prompt, system_prompt, temperature, json_mode
+                    provider, api_key, prompt, system_prompt, temperature, json_mode, spec
                 ):
                     yield chunk
                 latency_ms = round((time.perf_counter() - t0) * 1000)
                 api_key.record_success()
                 self._log_call(provider, api_key, context_hint, success=True,
-                               latency_ms=latency_ms)
+                               latency_ms=latency_ms, model=spec.id)
+                record_provenance(ProviderCall(
+                    provider=provider.value,
+                    model=spec.id,
+                    context=context_hint,
+                    # Streaming providers don't report usage; None means
+                    # "not reported", not zero.
+                    total_tokens=None,
+                ))
                 return
 
             except RateLimitError:
@@ -335,6 +529,26 @@ class LLMRouter:
                 continue
 
         raise AllProvidersExhausted(f"All providers failed streaming. Last: {last_error}")
+
+    def provider_is_viable(self, provider: Provider) -> bool:
+        """Whether this provider could realistically serve a request soon.
+
+        Distinguishes the two ways a key can be unusable, because they mean
+        opposite things to a user-facing claim:
+
+          • hard_blocked — out of credit or a burned daily quota. Waiting does
+            not fix it, so anything promising this provider is promising
+            something we cannot deliver.
+          • cooling down — a plain per-minute 429. Waiting *does* fix it, so the
+            provider is still viable and a claim about it stays honest.
+
+        Cold start reports viable: no key has failed yet, so we have no evidence
+        it's blocked. The first real attempt corrects it.
+        """
+        state = self._providers.get(provider)
+        if not state:
+            return False
+        return any(not k.hard_blocked for k in state.keys)
 
     def get_status(self) -> dict:
         """Return current health of all providers (for the UI status panel)."""
@@ -391,14 +605,15 @@ class LLMRouter:
         prompt: str,
         system_prompt: str,
         temperature: float,
-        json_mode: bool = False,
+        json_mode: bool,
+        spec: ModelSpec,
     ) -> str:
         if provider == Provider.GEMINI:
-            return await self._call_gemini(api_key, prompt, system_prompt, temperature, json_mode)
+            return await self._call_gemini(api_key, prompt, system_prompt, temperature, json_mode, spec)
         elif provider == Provider.GROQ:
-            return await self._call_groq(api_key, prompt, system_prompt, temperature, json_mode)
+            return await self._call_groq(api_key, prompt, system_prompt, temperature, json_mode, spec)
         elif provider == Provider.CLAUDE:
-            return await self._call_claude(api_key, prompt, system_prompt, temperature, json_mode)
+            return await self._call_claude(api_key, prompt, system_prompt, temperature, json_mode, spec)
         raise ValueError(f"Unknown provider: {provider}")
 
     async def _stream_provider(
@@ -408,29 +623,30 @@ class LLMRouter:
         prompt: str,
         system_prompt: str,
         temperature: float,
-        json_mode: bool = False,
+        json_mode: bool,
+        spec: ModelSpec,
     ) -> AsyncGenerator[str, None]:
         """Route to provider-specific streaming implementation."""
         if provider == Provider.GEMINI:
-            async for chunk in self._stream_gemini(api_key, prompt, system_prompt, temperature, json_mode):
+            async for chunk in self._stream_gemini(api_key, prompt, system_prompt, temperature, json_mode, spec):
                 yield chunk
         elif provider == Provider.GROQ:
-            async for chunk in self._stream_groq(api_key, prompt, system_prompt, temperature, json_mode):
+            async for chunk in self._stream_groq(api_key, prompt, system_prompt, temperature, json_mode, spec):
                 yield chunk
         elif provider == Provider.CLAUDE:
-            async for chunk in self._stream_claude(api_key, prompt, system_prompt, temperature):
+            async for chunk in self._stream_claude(api_key, prompt, system_prompt, temperature, spec):
                 yield chunk
 
     # ── Gemini ──────────────────────────────
 
-    async def _call_gemini(self, key: APIKey, prompt, system, temperature, json_mode: bool = False) -> str:
+    async def _call_gemini(self, key: APIKey, prompt, system, temperature, json_mode: bool, spec: ModelSpec) -> str:
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"gemini-2.0-flash:generateContent?key={key.key}"
+            f"{spec.id}:generateContent?key={key.key}"
         )
         gen_config = {
             "temperature": temperature,
-            "maxOutputTokens": MAX_OUTPUT_TOKENS[Provider.GEMINI],
+            "maxOutputTokens": spec.max_output_tokens,
         }
         if json_mode:
             gen_config["responseMimeType"] = "application/json"
@@ -462,10 +678,10 @@ class LLMRouter:
         except (KeyError, IndexError) as e:
             raise ProviderError(f"Unexpected Gemini response shape: {e}")
 
-    async def _stream_gemini(self, key: APIKey, prompt, system, temperature, json_mode: bool = False):
+    async def _stream_gemini(self, key: APIKey, prompt, system, temperature, json_mode: bool, spec: ModelSpec):
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"gemini-2.0-flash:streamGenerateContent?alt=sse&key={key.key}"
+            f"{spec.id}:streamGenerateContent?alt=sse&key={key.key}"
         )
         gen_config = {"temperature": temperature}
         if json_mode:
@@ -493,17 +709,17 @@ class LLMRouter:
 
     # ── Groq ────────────────────────────────
 
-    async def _call_groq(self, key: APIKey, prompt, system, temperature, json_mode: bool = False) -> str:
+    async def _call_groq(self, key: APIKey, prompt, system, temperature, json_mode: bool, spec: ModelSpec) -> str:
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
         body = {
-            "model": "llama-3.3-70b-versatile",
+            "model": spec.id,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": MAX_OUTPUT_TOKENS[Provider.GROQ],
+            "max_tokens": spec.max_output_tokens,
         }
         if json_mode:
             body["response_format"] = {"type": "json_object"}
@@ -524,18 +740,18 @@ class LLMRouter:
         _last_usage.set(_openai_usage(data.get("usage")))
         return data["choices"][0]["message"]["content"]
 
-    async def _stream_groq(self, key: APIKey, prompt, system, temperature, json_mode: bool = False):
+    async def _stream_groq(self, key: APIKey, prompt, system, temperature, json_mode: bool, spec: ModelSpec):
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
         body = {
-            "model": "llama-3.3-70b-versatile",
+            "model": spec.id,
             "messages": messages,
             "temperature": temperature,
             "stream": True,
-            "max_tokens": MAX_OUTPUT_TOKENS[Provider.GROQ],
+            "max_tokens": spec.max_output_tokens,
         }
         if json_mode:
             body["response_format"] = {"type": "json_object"}
@@ -562,18 +778,35 @@ class LLMRouter:
 
     # ── Claude ──────────────────────────────
 
-    async def _call_claude(self, key: APIKey, prompt, system, temperature, json_mode: bool = False) -> str:
+    def _claude_body(self, prompt: str, system: str, temperature: float, spec: ModelSpec) -> dict:
+        """Build an Anthropic request for whichever model this tier resolved to.
+
+        The two tiers do not share a request shape. Haiku takes `temperature`;
+        Opus 4.7+ removed the sampling parameters and returns a 400 if one is
+        sent, so `temperature` is gated on the spec rather than always included.
+        Thinking is likewise opt-in per model: it is off unless asked for on
+        Opus 4.8, and `budget_tokens` is gone — depth comes from `effort`.
+        """
+        body: dict = {
+            "model": spec.id,
+            "max_tokens": spec.max_output_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if spec.accepts_temperature:
+            body["temperature"] = temperature
+        if spec.adaptive_thinking:
+            body["thinking"] = {"type": "adaptive"}
+        if spec.effort:
+            body["output_config"] = {"effort": spec.effort}
+        if system:
+            body["system"] = system
+        return body
+
+    async def _call_claude(self, key: APIKey, prompt, system, temperature, json_mode: bool, spec: ModelSpec) -> str:
         # Anthropic has no response_format flag; it follows JSON instructions in
         # the prompt reliably, so json_mode is accepted for a uniform interface
         # but needs no request change here.
-        body = {
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": MAX_OUTPUT_TOKENS[Provider.CLAUDE],
-            "temperature": temperature,
-            "messages": [{"role": "user", "content": prompt}],
-        }
-        if system:
-            body["system"] = system
+        body = self._claude_body(prompt, system, temperature, spec)
 
         async with httpx.AsyncClient(timeout=90) as client:
             r = await client.post(
@@ -598,18 +831,23 @@ class LLMRouter:
             "completion": cu.get("output_tokens"),
             "total": (cu.get("input_tokens") or 0) + (cu.get("output_tokens") or 0) or None,
         })
-        return data["content"][0]["text"]
 
-    async def _stream_claude(self, key: APIKey, prompt, system, temperature):
-        body = {
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": MAX_OUTPUT_TOKENS[Provider.CLAUDE],
-            "temperature": temperature,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": True,
-        }
-        if system:
-            body["system"] = system
+        # Concatenate the text blocks rather than reading content[0]. With
+        # adaptive thinking on, content[0] is a thinking block and indexing it
+        # for "text" raises KeyError — every Pro call would fail while looking
+        # like a malformed-response bug.
+        text = "".join(
+            b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"
+        )
+        if not text:
+            raise ProviderError(
+                f"Claude returned no text block (stop_reason={data.get('stop_reason')})"
+            )
+        return text
+
+    async def _stream_claude(self, key: APIKey, prompt, system, temperature, spec: ModelSpec):
+        body = self._claude_body(prompt, system, temperature, spec)
+        body["stream"] = True
 
         async with httpx.AsyncClient(timeout=90) as client:
             async with client.stream(
@@ -630,7 +868,13 @@ class LLMRouter:
                         try:
                             event = json.loads(line[6:])
                             if event.get("type") == "content_block_delta":
-                                yield event["delta"].get("text", "")
+                                delta = event.get("delta") or {}
+                                # Only text_delta is the answer. With adaptive
+                                # thinking on, thinking_delta arrives on the same
+                                # event type and must not be streamed to the user
+                                # as if it were generated code.
+                                if delta.get("type") == "text_delta":
+                                    yield delta.get("text", "")
                         except Exception:
                             continue
 
@@ -638,10 +882,11 @@ class LLMRouter:
     # Logging & SSE status broadcasts
     # ─────────────────────────────────────────
 
-    def _log_call(self, provider, key, context, success, latency_ms=None, usage=None):
+    def _log_call(self, provider, key, context, success, latency_ms=None, usage=None, model=None):
         self._call_log.append({
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "provider": provider.value,
+            "model": model,
             "key_index": key.index,
             "context": context,
             "success": success,

@@ -10,6 +10,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import DashboardLayout from "./components/DashboardLayout";
 import AdminLayout from "./components/AdminLayout";
 import Home from "./pages/Home";
+import HowItWorks from "./pages/HowItWorks";
 import Dashboard from "./pages/Dashboard";
 import Generate from "./pages/Generate";
 import Publish from "./pages/Publish";
@@ -34,6 +35,10 @@ function AnimatedRoutes() {
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<Home />} />
+        {/* Public on purpose: this is the page that explains what we do with a
+            repo before you hand us one, so it has to answer to someone who
+            hasn't signed up yet. */}
+        <Route path="/how-it-works" element={<HowItWorks />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/auth/callback" element={<AuthCallback />} />

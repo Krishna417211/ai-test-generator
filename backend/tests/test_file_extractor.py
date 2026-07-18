@@ -93,6 +93,35 @@ class TestDetectFramework:
         result = detect_framework({})
         assert "Unknown" in result or "React" in result
 
+    def test_detect_static_html_site(self):
+        """A hand-written multi-page site is not a React app.
+
+        The detected stack is interpolated verbatim into both agents' prompts, so
+        guessing "React" here told the writer to navigate a client-side router
+        that doesn't exist — /login instead of the real login.html — and every
+        generated route 404'd against a working site.
+        """
+        files = {
+            "index.html": "<html><body><a href='login.html'>Sign in</a></body></html>",
+            "login.html": "<form id='loginForm'><input id='email'/></form>",
+            "assets/js/app.js": "document.querySelector('#loginForm')",
+            "assets/css/styles.css": "body { margin: 0 }",
+        }
+        assert "Static HTML" in detect_framework(files)
+
+    def test_static_detection_does_not_shadow_real_frameworks(self):
+        # A React app ships .html too (the Vite index shell) — it must still
+        # read as React, not static.
+        files = {
+            "package.json": json.dumps({"dependencies": {"react": "18.0.0"}}),
+            "index.html": "<div id='root'></div>",
+        }
+        assert "React" in detect_framework(files)
+
+    def test_django_templates_beat_static_detection(self):
+        files = {"manage.py": "import django", "templates/index.html": "{% block content %}"}
+        assert "Django" in detect_framework(files)
+
     def test_detect_django_by_manage_py(self):
         files = {"manage.py": "import django", "app/templates/index.html": "{% block %}"}
         assert "Django" in detect_framework(files)

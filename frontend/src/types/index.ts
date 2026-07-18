@@ -47,6 +47,50 @@ export interface FileValidation {
   filename: string;
   ok: boolean;
   error: string;
+  /** Whether a parser actually read this file. Config and docs pass by default,
+   *  so anything reporting a rate must count only `checked` ones — see
+   *  backend/services/validator.py. */
+  checked?: boolean;
+}
+
+export interface ModelUsage {
+  provider: string;
+  model: string;
+  calls: number;
+  /** null when the provider didn't report usage (streaming) — not zero. */
+  total_tokens: number | null;
+  share: number;
+}
+
+/** Which model(s) produced an output. Model only, never the key — which of the
+ *  numbered keys served a call is an operations detail (admin console), and
+ *  putting it here would leak the key pool's shape into every screenshot. */
+export interface Provenance {
+  calls: number;
+  primary: { provider: string; model: string };
+  /** Rotation split the work — the output must not be labelled with a model
+   *  that only wrote part of it. */
+  mixed: boolean;
+  models: ModelUsage[];
+  /** The model a paid plan would have used, or null when upgrading changes
+   *  nothing. The server derives this from its model table, so it is a fact
+   *  about what Pro runs — never a reaction to a low score, and absent when a
+   *  provider outage (which hits paid users identically) caused the fallback. */
+  upgrade_model?: string | null;
+}
+
+/** What we actually verified about a generated suite — deliberately not an
+ *  "accuracy" score. We never run the generated tests (that needs Docker and a
+ *  live target), so we cannot know whether they pass. These are the two things
+ *  we do check. `*_rate` is null when there was nothing to measure. */
+export interface Grounding {
+  selectors_total: number;
+  selectors_verified: number;
+  selector_rate: number | null;
+  files_checked: number;
+  files_valid: number;
+  file_rate: number | null;
+  heal_attempts: number;
 }
 
 export interface GenerateResponse {
@@ -57,6 +101,8 @@ export interface GenerateResponse {
   selector_warnings: string[];
   summary: string;
   validation?: FileValidation[];
+  grounding?: Grounding | null;
+  provenance?: Provenance | null;
   error?: string;
 }
 
@@ -71,6 +117,9 @@ export interface PublishResult {
   test_count: number;
   all_valid: boolean;
   validation?: FileValidation[];
+  /** null when no suite was generated (no CI requested, or the AI was down). */
+  grounding?: Grounding | null;
+  provenance?: Provenance | null;
   warnings: string[];
 }
 
@@ -98,6 +147,12 @@ export interface ScanResult {
   counts: Record<string, number>;
   checks_run: number;
   findings: SecurityFinding[];
+  /** Scan reports trust differently from generate, because the flows differ in
+   *  kind: the findings are deterministic (a header is there or it isn't), so
+   *  there is no rate to quote. The only part that varies is the prioritised
+   *  plan — so we say whether a model wrote it or it's the plain fallback. */
+  summary_source?: "ai" | "fallback";
+  provenance?: Provenance | null;
 }
 
 export interface ProviderStatus {

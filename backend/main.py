@@ -47,7 +47,7 @@ from models.schemas import (
 from services.file_extractor import extract_zip, filter_for_push
 from services.github_service import GitHubService, parse_github_url, RepoNotFoundError, RepoAccessError
 from services.git_publisher import GitPublisher, GitPublishError
-from services.security_scanner import SecurityScanner, ScanError
+from services.security_scanner import SecurityScanner, ScanError, precheck_target
 from services import github_oauth, google_oauth
 from services import auth as auth_svc
 from services import billing
@@ -55,8 +55,11 @@ from services import verification
 from services.auth import require_user
 from services.admin import require_admin
 from services.mailer import EmailNotConfigured, EmailDeliveryError
-from services.quota import require_quota, get_quota, current_period
-from services.llm_router import router as llm_router, AllProvidersExhausted
+from services.quota import require_quota, get_quota, current_period, tier_for_user
+from services.llm_router import (
+    router as llm_router, AllProvidersExhausted, start_provenance, provenance_report, Tier,
+)
+from services.progress import Progress, ndjson
 from services.store import store
 
 configure_logging(settings.log_level)
@@ -189,44 +192,13 @@ async def get_status(ctx: dict = Depends(require_user)):
 # Phase 1: Analyze repo (GitHub URL)
 # ─────────────────────────────────────────────
 
-@app.post("/api/analyze", dependencies=[Depends(rate_limit(analyze_limiter))])
-async def analyze_repo(payload: GenerateRequest, ctx: dict = Depends(require_user)):
+def _analysis_body(result, user_id: str, request: dict, tier: Tier = Tier.FREE) -> dict:
+    """Persist the job and build the analyze response. Shared by URL and ZIP.
+
+    Carries provenance because this analysis is itself a user-visible AI output
+    — it's what the preview screen asks you to confirm before a credit is spent,
+    so "which model read my repo?" is a fair question at exactly this point.
     """
-    Phase 1: Fetch the repo, extract UI files, run Filter Agent.
-    Returns a project analysis + file tree preview.
-    The client shows this to the user before generating tests.
-    """
-    if not payload.repo_url:
-        raise HTTPException(400, "repo_url is required for this endpoint")
-
-    try:
-        repo_info = parse_github_url(payload.repo_url)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-
-    gh = GitHubService(token=payload.github_token)
-
-    try:
-        tree = await gh.get_file_tree(repo_info)
-    except RepoNotFoundError as e:
-        raise HTTPException(404, str(e))
-    except RepoAccessError as e:
-        raise HTTPException(403, str(e))
-
-    # Fetch all files concurrently
-    paths = [item["path"] for item in tree]
-    logger.info(f"Fetching {len(paths)} files from {payload.repo_url}")
-    raw_files_list = await gh.fetch_files(repo_info, paths, concurrency=15)
-    raw_files = {f.path: f.content for f in raw_files_list}
-
-    # Run Filter Agent
-    agent = FilterAgent()
-    try:
-        result = await agent.run(raw_files, user_description=payload.test_flows)
-    except NoTestableUIError as e:
-        raise HTTPException(422, str(e))
-
-    # Build response
     previews = [
         FilePreview(
             path=path,
@@ -237,14 +209,13 @@ async def analyze_repo(payload: GenerateRequest, ctx: dict = Depends(require_use
         for path, content in list(result.files.items())[:50]  # max 50 previews
     ]
 
-    # Store session for Phase 2
     import uuid
     job_id = str(uuid.uuid4())
     store.create(job_id, {
-        "user_id": ctx["user_id"],
+        "user_id": user_id,
         "files": result.files,
         "filter_result": result,
-        "request": payload.model_dump(),
+        "request": request,
     })
 
     return {
@@ -260,7 +231,61 @@ async def analyze_repo(payload: GenerateRequest, ctx: dict = Depends(require_use
             total_tokens=result.total_tokens,
             file_previews=previews,
         ).model_dump(),
+        "provenance": provenance_report(tier),
     }
+
+
+@app.post("/api/analyze", dependencies=[Depends(rate_limit(analyze_limiter))])
+async def analyze_repo(payload: GenerateRequest, ctx: dict = Depends(require_user)):
+    """
+    Phase 1: Fetch the repo, extract UI files, run Filter Agent.
+    Streams step progress as NDJSON, ending with the project analysis + file
+    tree preview. The client shows this to the user before generating tests.
+
+    The URL is parsed before the stream opens so a malformed one is still a
+    plain 400 — see services/progress.py for why that split matters.
+    """
+    if not payload.repo_url:
+        raise HTTPException(400, "repo_url is required for this endpoint")
+
+    try:
+        repo_info = parse_github_url(payload.repo_url)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    async def work(progress: Progress) -> dict:
+        start_provenance()
+        tier = tier_for_user(ctx["user_id"])
+        gh = GitHubService(token=payload.github_token)
+
+        await progress.start("fetch")
+        try:
+            tree = await gh.get_file_tree(repo_info)
+        except RepoNotFoundError as e:
+            raise HTTPException(404, str(e))
+        except RepoAccessError as e:
+            raise HTTPException(403, str(e))
+
+        paths = [item["path"] for item in tree]
+        logger.info(f"Fetching {len(paths)} files from {payload.repo_url}")
+        raw_files_list = await gh.fetch_files(repo_info, paths, concurrency=15)
+        raw_files = {f.path: f.content for f in raw_files_list}
+        await progress.done("fetch", f"{len(raw_files)} files read")
+
+        agent = FilterAgent()
+        try:
+            result = await agent.run(
+                raw_files,
+                user_description=payload.test_flows,
+                progress=progress,
+                tier=tier,
+            )
+        except NoTestableUIError as e:
+            raise HTTPException(422, str(e))
+
+        return _analysis_body(result, ctx["user_id"], payload.model_dump(), tier)
+
+    return ndjson(work)
 
 
 # ─────────────────────────────────────────────
@@ -311,6 +336,8 @@ async def upload_zip(
     base_url: str = Form("http://localhost:3000"),
     ctx: dict = Depends(require_user),
 ):
+    # Read and unzip before the stream opens: an oversized or corrupt archive is
+    # decidable now, so it stays a plain 413/400 rather than an in-band error.
     content = await read_zip_upload(file)
 
     try:
@@ -320,50 +347,33 @@ async def upload_zip(
 
     logger.info(f"ZIP upload: {len(raw_files)} files extracted")
 
-    agent = FilterAgent()
-    try:
-        result = await agent.run(raw_files, user_description=test_flows)
-    except NoTestableUIError as e:
-        raise HTTPException(422, str(e))
+    async def work(progress: Progress) -> dict:
+        start_provenance()
+        tier = tier_for_user(ctx["user_id"])
+        # The upload itself was the "fetch" — it is already on disk by the time
+        # the stream opens, so report it done rather than pretending to wait.
+        await progress.start("fetch")
+        await progress.done("fetch", f"{len(raw_files)} files read")
 
-    import uuid
-    job_id = str(uuid.uuid4())
-    store.create(job_id, {
-        "user_id": ctx["user_id"],
-        "files": result.files,
-        "filter_result": result,
-        "request": {
+        agent = FilterAgent()
+        try:
+            result = await agent.run(
+                raw_files,
+                user_description=test_flows,
+                progress=progress,
+                tier=tier,
+            )
+        except NoTestableUIError as e:
+            raise HTTPException(422, str(e))
+
+        return _analysis_body(result, ctx["user_id"], {
             "framework": framework,
             "language": language,
             "test_flows": test_flows,
             "base_url": base_url,
-        },
-    })
+        }, tier)
 
-    previews = [
-        FilePreview(
-            path=path,
-            size=len(content),
-            importance=5,
-            preview=content[:200],
-        )
-        for path, content in list(result.files.items())[:50]
-    ]
-
-    return {
-        "job_id": job_id,
-        "analysis": ProjectAnalysis(
-            project_summary=result.project_summary,
-            framework=result.framework,
-            key_pages=result.key_pages,
-            key_components=result.key_components,
-            routes=result.routes,
-            testing_challenges=result.testing_challenges,
-            file_count=result.file_count,
-            total_tokens=result.total_tokens,
-            file_previews=previews,
-        ).model_dump(),
-    }
+    return ndjson(work)
 
 
 # ─────────────────────────────────────────────
@@ -1455,8 +1465,7 @@ playwright-report/
 """
 
 
-@app.post("/api/publish-zip", response_model=PublishResponse,
-          dependencies=[Depends(rate_limit(analyze_limiter))])
+@app.post("/api/publish-zip", dependencies=[Depends(rate_limit(analyze_limiter))])
 async def publish_zip(
     file: UploadFile = File(...),
     github_token: str = Form(""),      # PAT fallback when GitHub OAuth isn't configured
@@ -1480,6 +1489,11 @@ async def publish_zip(
     If add_cicd is true, an E2E test suite + GitHub Actions workflow are
     generated and validated locally (WriterAgent self-heal loop) BEFORE the
     push — so what lands in git is already green, and we push exactly once.
+
+    Streams step progress as NDJSON, ending with a PublishResponse. Everything
+    that can be rejected without doing work — no repo name, no token, a corrupt
+    or empty archive — is raised before the stream opens and stays a plain HTTP
+    error.
     """
     if not repo_name.strip():
         raise HTTPException(400, "A repository name is required")
@@ -1500,26 +1514,66 @@ async def publish_zip(
     if not raw_files:
         raise HTTPException(400, "The ZIP archive contained no files")
 
+    async def work(progress: Progress) -> dict:
+        return await _publish_work(
+            progress, raw_files=raw_files, token=token, repo_name=repo_name,
+            add_cicd=add_cicd, private=private, framework=framework,
+            language=language, test_flows=test_flows, base_url=base_url,
+            repo_description=repo_description, user_id=ctx["user_id"],
+        )
+
+    return ndjson(work)
+
+
+async def _publish_work(
+    progress: Progress, *, raw_files: dict, token: str, repo_name: str,
+    add_cicd: bool, private: bool, framework: str, language: str,
+    test_flows: str, base_url: str, repo_description: str, user_id: str,
+) -> dict:
+    """The publish pipeline. Split out of the endpoint so the streaming wrapper
+    stays a thin shell over the same logic that used to be inline."""
+    start_provenance()
+    tier = tier_for_user(user_id)
+
+    await progress.start("read")
+    await progress.done("read", f"{len(raw_files)} files in the archive")
+
     # Keep only what belongs in a repo (drop node_modules, binaries, huge files).
+    await progress.start("filter")
     push_files, warnings = filter_for_push(raw_files)
     if not push_files:
         raise HTTPException(400, "Nothing to push after filtering build/dependency files")
+    dropped = len(raw_files) - len(push_files)
+    await progress.done(
+        "filter",
+        f"{len(push_files)} to push"
+        + (f" · {dropped} dropped" if dropped > 0 else ""),
+    )
 
     cicd_added = False
     test_count = 0
     validation: list[dict] = []
     all_valid = True
+    # None until a suite is actually generated: on a push with no CI requested,
+    # or one where the AI was down, there is nothing measured and the response
+    # must say nothing rather than report a grounding of zero.
+    grounding: dict | None = None
 
     # None means "don't attempt a suite" — either the user didn't ask for CI, or
     # there's no UI to drive. Pushing the project itself never depends on this.
     filter_result = None
+    if not add_cicd:
+        await progress.skip("suite", "CI/CD not requested")
     if add_cicd:
         # Generate a validated E2E test suite + CI workflow and fold it into the
         # push. WriterAgent's self-heal loop is the "validate locally until green"
         # step — it re-prompts the LLM to fix any file that fails static validation.
+        await progress.start("suite")
         filter_agent = FilterAgent()
         try:
-            filter_result = await filter_agent.run(raw_files, user_description=test_flows)
+            filter_result = await filter_agent.run(
+                raw_files, user_description=test_flows, tier=tier,
+            )
         except NoTestableUIError as e:
             # Same reasoning as the provider-outage branch below: land the code
             # and say what's missing. The CI workflow is dropped with it — it
@@ -1528,6 +1582,7 @@ async def publish_zip(
             warnings.append(
                 f"{e} Your project was pushed without an E2E suite or CI/CD pipeline."
             )
+            await progress.skip("suite", "No testable UI in this project")
 
     if filter_result is not None:
         writer = WriterAgent()
@@ -1541,6 +1596,7 @@ async def publish_zip(
                 include_ci=True,
                 self_heal=True,
                 max_heal_attempts=4,
+                tier=tier,
             )
         except Exception as e:
             # Writing tests needs an LLM; pushing the project doesn't. A provider
@@ -1554,10 +1610,12 @@ async def publish_zip(
                 "project was pushed without tests or the CI/CD pipeline — "
                 "re-publish to add them once capacity is back."
             )
+            await progress.skip("suite", "AI unavailable — pushing your code anyway")
         else:
             test_count = result.test_count
             validation = result.validation
             all_valid = all(v.get("ok", False) for v in validation)
+            grounding = result.grounding.as_dict()
             if result.failed_files:
                 # Partial suite: some files never generated (quota ran out mid-run).
                 # The writer already withheld the CI workflow, so don't claim CI
@@ -1578,17 +1636,29 @@ async def publish_zip(
                 )
 
             for gf in result.files:
-                # Don't clobber the project's own README with the test-suite README.
-                path = ("TESTING.md" if gf.filename == "README.md" and "README.md" in push_files
-                        else gf.filename)
-                push_files[path] = gf.content
+                # No collision guard needed: the suite lives in its own directory
+                # (agents/scaffold.SUITE_DIR), so its README and package.json are
+                # e2e/README.md and e2e/package.json and cannot land on the
+                # project's own. The CI workflow is the one file written to the
+                # repo root, and only a previous Testra push would own that path.
+                push_files[gf.filename] = gf.content
             # Only true when the suite is whole and the CI workflow actually shipped.
             cicd_added = not result.failed_files
+            g = result.grounding
+            await progress.done(
+                "suite",
+                f"{test_count} tests · {g.files_valid}/{g.files_checked} code files parsed"
+                + (
+                    f" · {g.selectors_verified}/{g.selectors_total} selectors verified"
+                    if g.selectors_total else ""
+                ),
+            )
 
     # Ensure a .gitignore exists so the pushed repo stays clean.
     if ".gitignore" not in push_files:
         push_files[".gitignore"] = _DEFAULT_GITIGNORE
 
+    await progress.start("push")
     publisher = GitPublisher(token=token)
     try:
         pub = await publisher.publish(
@@ -1601,18 +1671,21 @@ async def publish_zip(
         )
     except GitPublishError as e:
         raise HTTPException(400, str(e))
+    await progress.done("push", f"{pub.files_pushed} files → {pub.full_name}")
 
     logger.info(f"Published {pub.files_pushed} files to {pub.full_name} (cicd={cicd_added})")
 
     # Remember what we created — /api/repo deletion is limited to these, and the
     # dashboard reads the same row back as publish activity.
+    await progress.start("record")
     store.record_published_repo(
-        pub.full_name, ctx["user_id"], pub.repo_url,
+        pub.full_name, user_id, pub.repo_url,
         test_count=test_count,
         files_pushed=pub.files_pushed,
         cicd_added=cicd_added,
         private=private,
     )
+    await progress.done("record", "You can undo this from your dashboard")
 
     return PublishResponse(
         success=True,
@@ -1625,15 +1698,17 @@ async def publish_zip(
         test_count=test_count,
         all_valid=all_valid,
         validation=validation,
+        grounding=grounding,
+        provenance=provenance_report(tier),
         warnings=warnings + pub.warnings,
-    )
+    ).model_dump()
 
 
 # ─────────────────────────────────────────────
 # Security scan: audit a deployed URL for production vulnerabilities
 # ─────────────────────────────────────────────
 
-async def _ai_scan_summary(result) -> str:
+async def _ai_scan_summary(result, tier: Tier = Tier.FREE) -> str:
     """Ask the LLM for a short, prioritized action plan. Best-effort."""
     top = result.findings[:15]
     lines = [f"- [{f['severity'].upper()}] {f['title']}" for f in top]
@@ -1650,6 +1725,7 @@ async def _ai_scan_summary(result) -> str:
             system_prompt="You are a pragmatic application security engineer.",
             temperature=0.3,
             context_hint="security_scan",
+            tier=tier,
         )).strip()
     except Exception as e:
         logger.warning(f"AI scan summary failed: {e}")
@@ -1713,60 +1789,90 @@ async def delete_published_repo(
     return {"success": True, "deleted": full_name}
 
 
-@app.post("/api/scan", response_model=ScanResponse,
-          dependencies=[Depends(rate_limit(analyze_limiter))])
+@app.post("/api/scan", dependencies=[Depends(rate_limit(analyze_limiter))])
 async def scan_url(payload: ScanRequest, ctx: dict = Depends(require_user)):
     """
     Passively audit a deployed URL for common production security issues and
     return prioritized findings with concrete fixes. Non-intrusive: it inspects
     headers/TLS/cookies and checks for accidentally-exposed files — no attacks.
+
+    Streams step progress as NDJSON, ending with a ScanResponse. The response
+    model is asserted by _scan_body's return type rather than the decorator —
+    a StreamingResponse can't be validated against one.
+
+    Targeting is settled before the stream opens, per progress.py's contract: a
+    bad scheme or a third-party site is decidable from the URL alone, so it stays
+    a real 400 instead of an in-band error arriving after a 200 and a half-drawn
+    pipeline. Only the network-free checks run here — DNS and the SSRF guard stay
+    inside the scanner, resolved once, next to the request they protect.
     """
-    scanner = SecurityScanner()
-    started = time.monotonic()
     try:
-        result = await scanner.scan(payload.url)
+        precheck_target(payload.url)
     except ScanError as e:
         raise HTTPException(400, str(e))
-    except Exception as e:
-        logger.error(f"Scan failed: {e}")
-        raise HTTPException(500, "Scan failed unexpectedly. Please try again.")
-    elapsed_ms = int((time.monotonic() - started) * 1000)
 
-    summary = ""
-    if payload.ai_summary and result.findings:
-        summary = await _ai_scan_summary(result)
-    if not summary:
-        summary = _fallback_summary(result)
+    async def work(progress: Progress) -> dict:
+        start_provenance()
+        tier = tier_for_user(ctx["user_id"])
+        scanner = SecurityScanner()
+        started = time.monotonic()
+        try:
+            result = await scanner.scan(payload.url, progress=progress)
+        except ScanError as e:
+            raise HTTPException(400, str(e))
+        elapsed_ms = int((time.monotonic() - started) * 1000)
 
-    logger.info(f"Scanned {result.final_url}: grade {result.grade}, "
-                f"{len(result.findings)} findings")
+        summary = ""
+        summary_source = "fallback"
+        if payload.ai_summary and result.findings:
+            await progress.start("plan")
+            summary = await _ai_scan_summary(result, tier)
+            if summary:
+                summary_source = "ai"
+        if not summary:
+            summary = _fallback_summary(result)
+            # Either the model was never asked (a clean site) or it failed and
+            # _ai_scan_summary swallowed it. Both land here, and neither should
+            # leave a "plan" step spinning — nothing else will close it.
+            await progress.start("plan")
+        await progress.done("plan", "Action plan ready")
 
-    # Scans were previously not recorded anywhere, so a user's audit history
-    # vanished the moment they navigated away. As with generations, a failure
-    # to log must not discard the result the user is waiting on.
-    try:
-        store.record_scan(
-            user_id=ctx["user_id"],
-            url=result.final_url or result.url,
-            grade=result.grade,
+        logger.info(f"Scanned {result.final_url}: grade {result.grade}, "
+                    f"{len(result.findings)} findings")
+
+        # Scans were previously not recorded anywhere, so a user's audit history
+        # vanished the moment they navigated away. As with generations, a failure
+        # to log must not discard the result the user is waiting on.
+        await progress.start("save")
+        try:
+            store.record_scan(
+                user_id=ctx["user_id"],
+                url=result.final_url or result.url,
+                grade=result.grade,
+                score=result.score,
+                findings=len(result.findings),
+                duration_ms=elapsed_ms,
+                counts=result.counts,
+            )
+            await progress.done("save", "Saved to your history")
+        except Exception as e:
+            logger.warning(f"Could not record scan history: {e}")
+            await progress.done("save", "Not saved — your result is unaffected")
+
+        return ScanResponse(
+            url=result.url,
+            final_url=result.final_url,
             score=result.score,
-            findings=len(result.findings),
-            duration_ms=elapsed_ms,
+            grade=result.grade,
+            summary=summary,
             counts=result.counts,
-        )
-    except Exception as e:
-        logger.warning(f"Could not record scan history: {e}")
+            checks_run=result.checks_run,
+            findings=result.findings,
+            summary_source=summary_source,
+            provenance=provenance_report(tier),
+        ).model_dump()
 
-    return ScanResponse(
-        url=result.url,
-        final_url=result.final_url,
-        score=result.score,
-        grade=result.grade,
-        summary=summary,
-        counts=result.counts,
-        checks_run=result.checks_run,
-        findings=result.findings,
-    )
+    return ndjson(work)
 
 
 # ─────────────────────────────────────────────
@@ -1825,6 +1931,8 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
     filter_result = session["filter_result"]
     agent = WriterAgent()
     started = time.monotonic()
+    start_provenance()
+    tier = tier_for_user(ctx["user_id"])
 
     def elapsed_ms() -> int:
         return int((time.monotonic() - started) * 1000)
@@ -1839,6 +1947,7 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
             include_ci=payload.include_ci,
             pregenerated_raw=session.get("streamed_raw"),
             self_heal=payload.self_heal,
+            tier=tier,
         )
     except AllProvidersExhausted as e:
         # Our shared API keys are dry — this is an outage on our side and hits
@@ -1891,6 +2000,12 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
         selector_warnings=result.selector_warnings,
         summary=result.summary,
         validation=result.validation,
+        grounding=result.grounding.as_dict(),
+        # This request's own calls, or — when it reused the SSE stream's output
+        # and made none — the provenance recorded when that output was written.
+        # Either way it names a model that genuinely produced these files, never
+        # one we merely would have used.
+        provenance=provenance_report(tier) or session.get("streamed_provenance"),
     )
 
     # Generation is the last step that needs the job — drop the uploaded source
@@ -1928,6 +2043,7 @@ async def stream_generation(
     agent = WriterAgent()
 
     async def event_generator():
+        start_provenance()
         # Send initial status
         yield f"data: {json.dumps({'type': 'status', 'message': 'Starting generation...'})}\n\n"
         await asyncio.sleep(0.1)
@@ -1946,6 +2062,7 @@ async def stream_generation(
                 language=language,
                 test_flows=test_flows or session["request"].get("test_flows", ""),
                 base_url=base_url,
+                tier=tier_for_user(ctx["user_id"]),
             ):
                 buffer += chunk
                 # Send status updates if any are queued (non-blocking)
@@ -1957,7 +2074,18 @@ async def stream_generation(
 
             # Cache the streamed output so /api/generate can reuse it instead of
             # running the whole (expensive) generation a second time.
-            store.update(job_id, streamed_raw=buffer)
+            #
+            # The provenance rides along with it. Without this the model that
+            # actually wrote the suite is lost: /api/generate reuses this buffer,
+            # makes no call of its own, and so honestly reports "no model ran" —
+            # leaving the results screen unable to say what wrote the tests in
+            # the one flow the UI actually uses. The cached text and the record
+            # of who produced it are the same fact and are stored together.
+            store.update(
+                job_id,
+                streamed_raw=buffer,
+                streamed_provenance=provenance_report(tier_for_user(ctx["user_id"])),
+            )
 
             yield f"data: {json.dumps({'type': 'done', 'message': 'Generation complete'})}\n\n"
 

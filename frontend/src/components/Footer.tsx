@@ -15,6 +15,7 @@ export default function Footer() {
           <Link to="/generate" className="hover:text-white/80 transition-colors">Generate</Link>
           <Link to="/publish" className="hover:text-white/80 transition-colors">Publish</Link>
           <Link to="/scan" className="hover:text-white/80 transition-colors">Scan</Link>
+          <Link to="/how-it-works" className="hover:text-white/80 transition-colors">How it works</Link>
           <a href="https://github.com" className="hover:text-white/80 transition-colors">GitHub</a>
         </div>
       </div>

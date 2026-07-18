@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import { motion, type Variants } from "framer-motion";
 import {
-  Sparkles, Rocket, ShieldCheck, ArrowRight, Zap, Wand2, GitBranch,
+  Sparkles, Rocket, ShieldCheck, ArrowRight, Zap, Wand2, GitBranch, Workflow,
 } from "lucide-react";
 import Page from "../components/Page";
 import TiltCard from "../components/TiltCard";
@@ -118,6 +118,14 @@ export default function Home() {
               <p className="text-sm text-grey-300 leading-relaxed">{s.desc}</p>
             </motion.div>
           ))}
+        </div>
+        {/* The three cards above are the pitch; some visitors want the wiring
+            before they hand over a private repo. */}
+        <div className="mt-8 text-center">
+          <Link to="/how-it-works"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-300 hover:gap-2.5 transition-all">
+            <Workflow size={15} /> See every step, and the API behind it <ArrowRight size={14} />
+          </Link>
         </div>
       </section>
 

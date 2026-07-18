@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { ShieldCheck, Loader2, Globe, AlertTriangle, CheckCircle2, Youtube } from "lucide-react";
 import { scanUrl } from "../utils/api";
+import FlowPipeline, { applyStep, type StepStates } from "./FlowPipeline";
+import TrustPanel from "./TrustPanel";
 import { pluralize } from "../utils/format";
 import type { ScanResult, SecurityFinding, Severity } from "../types";
 
@@ -82,15 +84,19 @@ export default function ScanPanel() {
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [steps, setSteps] = useState<StepStates>({});
 
   const run = async () => {
     if (!url.trim()) return;
     setScanning(true);
     setError(null);
     setResult(null);
+    setSteps({});
     try {
-      setResult(await scanUrl(url.trim()));
+      setResult(await scanUrl(url.trim(), (e) => setSteps((s) => applyStep(s, e))));
     } catch (e: any) {
+      // The pipeline stays on screen on failure — the step still spinning is
+      // where it broke, which beats an error message with no context.
       setError(e.message || "Scan failed");
     } finally {
       setScanning(false);
@@ -104,8 +110,13 @@ export default function ScanPanel() {
       {/* The page subtitle already lists what gets checked; repeating it here
           just made the reader parse the same sentence twice. Keep only what
           they can't know from it — that this is safe to point at production. */}
+      {/* Says up front that this is for your own site. The server refuses
+          third-party targets with a clear message either way, but finding that
+          out after a failed scan is a worse way to learn it than a line of
+          copy — and it's the same sentence in both places. */}
       <p className="text-sm text-grey-400 leading-relaxed">
-        Passive and non-intrusive — it inspects configuration and never attacks your site.
+        Point it at a site you own. Passive and non-intrusive — it inspects
+        configuration and never attacks your site.
       </p>
 
       <div className="relative">
@@ -132,6 +143,13 @@ export default function ScanPanel() {
         )}
       </button>
 
+      {/* Shown while it runs, and kept up if it fails so the failed step stays
+          visible. Dropped once the result renders — by then the findings are
+          the story, not how they were gathered. */}
+      {(scanning || (error && Object.keys(steps).length > 0)) && (
+        <FlowPipeline flow="scan" states={steps} title="Auditing your site" />
+      )}
+
       {error && (
         <div className="px-4 py-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-sm text-rose-400">
           {error}
@@ -151,6 +169,11 @@ export default function ScanPanel() {
               <p className="text-sm text-grey-300 mt-1 leading-relaxed">{result.summary}</p>
             </div>
           </div>
+
+          {/* No grounding for scan: the checks are deterministic — a header is
+              present or it isn't — so there's no rate to quote and inventing one
+              would be noise. What does vary is whether a model wrote the plan. */}
+          <TrustPanel summarySource={result.summary_source} provenance={result.provenance} />
 
           {/* Severity counts */}
           <div className="flex flex-wrap gap-2">
