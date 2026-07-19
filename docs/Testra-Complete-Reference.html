@@ -1,0 +1,1817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Testra — Complete Technical Reference</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+
+  :root {
+    --ink:      #16161d;
+    --muted:    #55555f;
+    --faint:    #78788a;
+    --accent:   #6d4aff;
+    --headnavy: #241a4d;
+    --rule:     #d8d8e2;
+    --code-bg:  #f1f1f5;
+    --note-bg:  #f2effe;
+    --warn-bg:  #fdf4ec;
+    --warn-bar: #e08a3c;
+    --th-bg:    #ebe7fb;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 10.2pt;
+    line-height: 1.5;
+    color: var(--ink);
+    margin: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ── Cover ─────────────────────────────────────────── */
+  .cover { height: 247mm; display: flex; flex-direction: column; justify-content: center; }
+  .cover h1 { font-size: 34pt; margin: 0 0 2mm; letter-spacing: -0.5px; border: 0; padding: 0; }
+  .cover .sub { font-size: 14pt; color: var(--muted); margin-bottom: 6mm; }
+  .cover .bar { width: 34mm; height: 3px; background: var(--accent); margin-bottom: 7mm; }
+  .cover .blurb { font-size: 11pt; max-width: 118mm; color: var(--ink); margin-bottom: 8mm; }
+  .meta { display: grid; grid-template-columns: 26mm 1fr; row-gap: 1.6mm; font-size: 9.4pt; }
+  .meta dt { font-weight: 700; }
+  .meta dd { margin: 0; color: var(--muted); }
+
+  /* ── Structure ─────────────────────────────────────── */
+  .page-break { page-break-before: always; }
+
+  h1 {
+    font-size: 19pt;
+    color: var(--ink);
+    margin: 0 0 5mm;
+    padding-bottom: 2.5mm;
+    border-bottom: 2px solid var(--accent);
+    letter-spacing: -0.3px;
+  }
+  h2 { font-size: 12.5pt; color: var(--headnavy); margin: 7mm 0 2.5mm; }
+  h3 { font-size: 10.8pt; color: var(--headnavy); margin: 5mm 0 2mm; }
+  /* A heading stranded at the foot of a page reads as a section that turned out
+     to be empty. Keep each one with the block it introduces. */
+  h1, h2, h3 { page-break-after: avoid; break-after: avoid; }
+  h2 + p, h2 + ul, h2 + ol, h2 + table, h3 + p { page-break-before: avoid; }
+  table, pre, .filenote { page-break-inside: avoid; }
+  h1 + .filenote { margin-top: -3mm; }
+  .filenote { font-size: 8.8pt; color: var(--faint); margin-bottom: 4mm; }
+  .hnote { font-size: 8.8pt; color: var(--faint); font-weight: 400; }
+
+  p { margin: 0 0 3mm; }
+  ul, ol { margin: 0 0 3mm; padding-left: 6mm; }
+  li { margin-bottom: 1.2mm; }
+
+  /* ── Code ──────────────────────────────────────────── */
+  code {
+    font-family: "DejaVu Sans Mono", Consolas, monospace;
+    font-size: 8.6pt;
+    background: var(--code-bg);
+    padding: 0.4mm 1.1mm;
+    border-radius: 2px;
+  }
+  pre {
+    font-family: "DejaVu Sans Mono", Consolas, monospace;
+    font-size: 8.1pt;
+    line-height: 1.42;
+    background: #f7f7fa;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 3mm 4mm;
+    margin: 0 0 4mm;
+    white-space: pre;
+    overflow: hidden;
+  }
+  pre.diagram { border-left: 3px solid var(--accent); }
+
+  /* ── Tables ────────────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; margin: 0 0 4mm; font-size: 9.1pt; }
+  th {
+    background: var(--th-bg);
+    text-align: left;
+    font-weight: 700;
+    padding: 1.8mm 2.4mm;
+    border: 1px solid var(--rule);
+    color: var(--headnavy);
+  }
+  td { padding: 1.8mm 2.4mm; border: 1px solid var(--rule); vertical-align: top; }
+  td code { background: transparent; padding: 0; }
+  .nowrap { white-space: nowrap; }
+
+  /* ── Callouts ──────────────────────────────────────── */
+  .note, .warn {
+    padding: 3mm 4mm;
+    margin: 0 0 4mm;
+    font-size: 9.3pt;
+    page-break-inside: avoid;
+  }
+  .note { background: var(--note-bg); border-left: 3px solid var(--accent); }
+  .warn { background: var(--warn-bg); border-left: 3px solid var(--warn-bar); }
+  .note p:last-child, .warn p:last-child, .note ul:last-child, .warn ul:last-child { margin-bottom: 0; }
+  .note strong, .warn strong { color: var(--headnavy); }
+
+  /* ── Badges ────────────────────────────────────────── */
+  .badge {
+    display: inline-block;
+    font-family: "DejaVu Sans Mono", Consolas, monospace;
+    font-size: 7.6pt;
+    background: var(--th-bg);
+    color: var(--headnavy);
+    padding: 0.7mm 2mm;
+    border-radius: 2px;
+    vertical-align: middle;
+    margin-left: 2mm;
+    font-weight: 700;
+  }
+  .badge-open {
+    background: #fde8e8; color: #a02020;
+    letter-spacing: 0.4px;
+  }
+  .badge-new { background: #e6f6ec; color: #1d6b3a; }
+
+  /* ── Contents ──────────────────────────────────────── */
+  .toc { list-style: none; padding: 0; font-size: 10pt; }
+  .toc li { margin-bottom: 1.9mm; }
+  .toc .n { display: inline-block; width: 8mm; color: var(--faint); }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════ COVER ════════════════════ -->
+<section class="cover">
+  <h1>Testra</h1>
+  <div class="sub">Complete Technical Reference</div>
+  <div class="bar"></div>
+  <p class="blurb">
+    An AI system that reads a web codebase and writes runnable end-to-end test
+    suites for Playwright, Cypress, or Selenium — grounded in selectors extracted
+    from the user's real source code, and verified against it before they ship.
+  </p>
+  <dl class="meta">
+    <dt>Repository</dt><dd>github.com/Krishna417211/testgen-ai</dd>
+    <dt>Branch</dt><dd>feat/admin-console-and-account-flows</dd>
+    <dt>Stack</dt><dd>Python 3.11+ / FastAPI &nbsp;·&nbsp; React 18 / TypeScript / Vite</dd>
+    <dt>Scale</dt><dd>~12,000 lines backend (32 files) &nbsp;·&nbsp; ~9,000 lines frontend (61 files)</dd>
+    <dt>Surface</dt><dd>45 HTTP endpoints &nbsp;·&nbsp; 8 SQLite tables &nbsp;·&nbsp; 38 config settings &nbsp;·&nbsp; 650 tests</dd>
+    <dt>Generated</dt><dd>19 July 2026</dd>
+  </dl>
+</section>
+
+<!-- ════════════════════ CONTENTS ════════════════════ -->
+<section class="page-break">
+  <h1>Contents</h1>
+  <ol class="toc">
+    <li><span class="n">1.</span> What Testra Is — the product in one page</li>
+    <li><span class="n">2.</span> System Architecture — components and data flow</li>
+    <li><span class="n">3.</span> The Request Lifecycle — analyze → stream → generate</li>
+    <li><span class="n">4.</span> Step Progress — streaming the long POSTs</li>
+    <li><span class="n">5.</span> The Two-Agent Pipeline — FilterAgent and WriterAgent</li>
+    <li><span class="n">6.</span> The Trust Pipeline — grounding, self-heal, fragility</li>
+    <li><span class="n">7.</span> The Scaffold — turning tests into a runnable suite</li>
+    <li><span class="n">8.</span> The LLM Router — tiered, multi-provider rotation</li>
+    <li><span class="n">9.</span> The File Extractor — deterministic pre-filtering</li>
+    <li><span class="n">10.</span> Authentication and Sessions</li>
+    <li><span class="n">11.</span> Email, Verification, and One-Time Secrets</li>
+    <li><span class="n">12.</span> The Admin Model</li>
+    <li><span class="n">13.</span> Quota and Billing</li>
+    <li><span class="n">14.</span> The Security Scanner</li>
+    <li><span class="n">15.</span> GitHub Integration and Publishing</li>
+    <li><span class="n">16.</span> The Data Model — 8 tables</li>
+    <li><span class="n">17.</span> Complete API Reference — 45 endpoints</li>
+    <li><span class="n">18.</span> Frontend Architecture</li>
+    <li><span class="n">19.</span> Configuration Reference — 38 settings</li>
+    <li><span class="n">20.</span> Testing and CI</li>
+    <li><span class="n">21.</span> Deployment — AWS, OIDC, and the rollout</li>
+    <li><span class="n">22.</span> Known Limitations</li>
+    <li><span class="n">23.</span> Open Findings — issues identified in review</li>
+    <li><span class="n">24.</span> Appendix — full file inventory</li>
+  </ol>
+</section>
+
+<!-- ════════════════════ 1 ════════════════════ -->
+<section class="page-break">
+  <h1>1 · What Testra Is</h1>
+
+  <p>Testra takes a GitHub URL (or an uploaded ZIP) and produces a complete, runnable
+  end-to-end test suite. The product promise is on the landing page:
+  <em>"Paste a GitHub URL. Get production-ready E2E tests in seconds."</em></p>
+
+  <h2>The problem it solves</h2>
+  <p>Asking a general-purpose LLM to "write E2E tests for my app" produces tests full of
+  invented selectors — <code>#login-button</code> where the real element is
+  <code>[data-testid="submit"]</code>. The tests look right and fail immediately.
+  Testra's entire architecture is a response to that single failure mode:
+  <strong>ground the model in selectors that provably exist in the source, then verify
+  what it produced against that source and flag anything it invented.</strong></p>
+
+  <h2>What it produces</h2>
+  <ul>
+    <li><strong>Page Object Model classes</strong> — one per key page, not flat scripts</li>
+    <li><strong>Spec files</strong> grouped by page or flow, with positive and negative cases</li>
+    <li><strong>A runnable scaffold</strong> — dependency manifest, framework config, CI pipelines and README, all templated (§7)</li>
+    <li><strong>A trust report</strong> — per-selector provenance, live-DOM verification, and a durability grade (§6)</li>
+    <li><strong>Selector warnings</strong> — anything not verifiable against source is marked ⚠</li>
+  </ul>
+
+  <h2>Supported targets</h2>
+  <table>
+    <tr><th>Framework</th><th>Languages</th></tr>
+    <tr><td>Playwright</td><td>JavaScript, TypeScript, Python</td></tr>
+    <tr><td>Cypress</td><td>JavaScript, TypeScript</td></tr>
+    <tr><td>Selenium</td><td>Python, Java</td></tr>
+  </table>
+  <p>Input stacks it recognizes: React, Vue, Next.js, Nuxt, Angular, Svelte on the SPA
+  side; Django, Flask, FastAPI, Rails, Laravel plus their template engines on the
+  server-rendered side.</p>
+
+  <h2>Feature surface beyond test generation</h2>
+  <p>The product has grown past its original single purpose. It now includes:</p>
+  <ul>
+    <li><strong>A trust pipeline</strong> — selector grounding against source <em>and</em> the live DOM, a self-heal loop, and fragility grading</li>
+    <li><strong>Live step progress</strong> — the long POSTs stream a flowchart of what is running (§4)</li>
+    <li><strong>Repo publishing</strong> — push a generated suite into a brand-new GitHub repo in one commit</li>
+    <li><strong>Passive security scanning</strong> — grade a deployed URL's production configuration</li>
+    <li><strong>Accounts</strong> — email/password, GitHub OAuth, <em>Google OAuth</em>, email verification, login OTP, password reset</li>
+    <li><strong>Plans and quota</strong> — free tier metered per calendar month, unmetered Pro, Stripe-backed</li>
+    <li><strong>A user dashboard</strong> — activity feed, per-day charts, published repos</li>
+    <li><strong>An admin console</strong> — a standalone portal for user management, plan/quota override, provider health, and platform analytics</li>
+  </ul>
+
+  <div class="note">
+    <p><strong>Design signature.</strong> Throughout this codebase the docstrings record
+    <em>why</em> a decision was made and what breaks otherwise — not what the code does.
+    That reasoning is preserved verbatim in this document wherever it explains a
+    non-obvious choice, because in several cases the "obvious" alternative is a security
+    or correctness bug.</p>
+  </div>
+</section>
+
+<!-- ════════════════════ 2 ════════════════════ -->
+<section class="page-break">
+  <h1>2 · System Architecture</h1>
+
+<pre class="diagram">
+FRONTEND — React 18 / TypeScript / Vite
+19 routes · 29 components · AuthContext · ProtectedRoute
+                  |
+                  |   REST + SSE + NDJSON   (Bearer token, or ?token= for EventSource)
+                  v
+API — FastAPI (main.py, 2116 lines, 45 routes)
+request-id middleware · CORS · rate limiting · JSON logging
+   |        |         |         |         |          |
+   v        v         v         v         v          v
+ auth     quota     admin    scanner   publish   verificat.
+ +OAuth   +billing                               +mailer
+   |        |         |         |         |          |
+   +--------+---------+----+----+---------+----------+
+                           |
+                           v
+        +----------------------------------------+
+        |  GENERATION PIPELINE                   |
+        |                                        |
+        |   github_service --+                   |
+        |                    +--> file_extractor |
+        |   extract_zip -----+         |         |
+        |                              v         |
+        |                        FilterAgent     |  <- Agent 1 (LLM)
+        |                              |         |
+        |                        FilterResult    |
+        |                              |         |
+        |                        WriterAgent     |  <- Agent 2 (LLM)
+        |                         |    |    |    |
+        |                 validator  grounding   |  <- self-heal loop
+        |                              |         |
+        |                    fragility · scaffold|
+        +----------------------------------------+
+                           |
+        +------------------+------------------+
+        v                                     v
+  LLMRouter                            JobStore (SQLite)
+  tier-aware: FREE / PRO               8 tables, stdlib
+  round-robin keys                     survives restarts
+  429 -> cooldown                      TTL pruning
+  provenance recording
+</pre>
+
+  <h2>Layer responsibilities</h2>
+  <table>
+    <tr><th style="width:24mm">Layer</th><th>Modules</th><th style="width:52mm">Owns</th></tr>
+    <tr><td>API</td><td><code>main.py</code>, <code>models/schemas.py</code>, <code>ratelimit.py</code>, <code>progress</code></td><td>HTTP surface, validation, rate limits, correlation IDs</td></tr>
+    <tr><td>Identity</td><td><code>auth</code>, <code>github_oauth</code>, <code>google_oauth</code>, <code>verification</code>, <code>mailer</code>, <code>admin</code></td><td>Who the caller is and what they may do</td></tr>
+    <tr><td>Commerce</td><td><code>quota</code>, <code>billing</code></td><td>Metering, plans, entitlement grants</td></tr>
+    <tr><td>Pipeline</td><td><code>file_extractor</code>, <code>filter_agent</code>, <code>writer_agent</code>, <code>validator</code>, <code>scaffold</code></td><td>Turning a repo into a runnable suite</td></tr>
+    <tr><td>Trust</td><td><code>grounding</code>, <code>fragility</code>, <code>importance_model</code>, <code>benchmark</code></td><td>Proving the suite is worth running</td></tr>
+    <tr><td>Providers</td><td><code>llm_router</code></td><td>Reaching an LLM despite rate limits</td></tr>
+    <tr><td>Features</td><td><code>security_scanner</code>, <code>git_publisher</code>, <code>github_service</code></td><td>Scanning, publishing, fetching</td></tr>
+    <tr><td>Persistence</td><td><code>store</code></td><td>Every durable fact, in one SQLite file</td></tr>
+    <tr><td>Cross-cutting</td><td><code>config</code>, <code>logging_config</code></td><td>Typed settings, structured logs</td></tr>
+  </table>
+
+  <div class="note">
+    <p><strong>No external infrastructure.</strong> Persistence is stdlib <code>sqlite3</code>;
+    rate limiting is in-process; there is no Redis, no queue, no ORM. The system runs from a
+    single process with no services to provision. The cost is documented in §22: rate limits
+    are per-worker, so multi-worker deployment weakens them.</p>
+  </div>
+</section>
+
+<!-- ════════════════════ 3 ════════════════════ -->
+<section class="page-break">
+  <h1>3 · The Request Lifecycle</h1>
+
+  <p>Test generation is a three-call flow, deliberately split so the expensive LLM work is
+  visible while it happens.</p>
+
+  <h2>Step 1 — Analyze <span class="badge">POST /api/analyze</span></h2>
+  <ol>
+    <li><code>parse_github_url</code> splits the URL into owner / repo / branch / subpath</li>
+    <li><code>GitHubService.get_file_tree</code> pulls the whole tree in one Git Trees API call (<code>recursive=1</code>)</li>
+    <li><code>fetch_files</code> pulls contents concurrently — <code>raw.githubusercontent.com</code> for public repos (no rate limit), the Contents API for private</li>
+    <li><code>FileExtractor.extract</code> filters, scores, and budgets the files — no LLM, fast and free</li>
+    <li><code>FilterAgent</code> asks the LLM for a structured project analysis</li>
+    <li>The job is persisted in SQLite; <code>job_id</code> + analysis returns to the client</li>
+  </ol>
+  <p>The alternative entry point, <span class="badge">POST /api/upload-zip</span>, replaces
+  steps 1–3 with <code>extract_zip</code> (in-memory, handles GitHub's nested ZIP layout) and
+  is otherwise identical.</p>
+  <p>Both stream their progress as NDJSON rather than returning a single JSON body — see §4.</p>
+
+  <h2>Step 2 — Stream <span class="badge">GET /api/stream/{job_id}</span> <span class="hnote">(optional)</span></h2>
+  <p>Server-Sent Events stream Agent 2's output token by token. The raw output is cached onto
+  the job row, so a subsequent generate call reuses it rather than paying for a second LLM
+  call — the <code>pregenerated_raw</code> parameter on <code>WriterAgent.run</code>.</p>
+
+  <div class="note">
+    <p><strong>Why SSE takes a query-param token.</strong> The browser <code>EventSource</code>
+    API cannot set custom headers, so it cannot send <code>Authorization: Bearer</code>.
+    <code>auth._extract_token</code> therefore accepts <code>?token=</code> as well. This is a
+    deliberate, documented concession to a browser limitation, not an oversight.</p>
+  </div>
+
+  <h2>Step 3 — Generate <span class="badge">POST /api/generate/{job_id}</span></h2>
+  <ol>
+    <li><code>require_quota</code> authenticates and <em>reserves</em> a generation credit</li>
+    <li>Ownership is re-checked — a job belonging to another account is 403, a missing one 404</li>
+    <li><code>WriterAgent.run</code> plans the file list, then generates each file</li>
+    <li><code>validator.validate_files</code> syntax-checks the output; failures drive the self-heal loop</li>
+    <li>Selectors are grounded against source and, when a URL is supplied, the live DOM (§6); unverified ones are re-prompted, then flagged</li>
+    <li><code>scaffold</code> adds the manifest, config, CI and README that make the suite runnable (§7)</li>
+    <li>On success the lease commits; <strong>on failure it refunds</strong> — a crashed run costs no credit</li>
+  </ol>
+
+  <div class="note">
+    <p><strong>Failed runs are recorded, not dropped.</strong> From <code>main.py</code>:
+    <em>"from the dashboard's side a run that vanished and a run that never happened look
+    identical, and the user who watched this spin for a minute deserves to see it happened."</em>
+    Failures are written to <code>generations</code> with <code>status='failed'</code> and
+    surface in the admin console's <code>recent_failures</code> view.</p>
+  </div>
+</section>
+
+<!-- ════════════════════ 4 ════════════════════ -->
+<section class="page-break">
+  <h1>4 · Step Progress <span class="badge badge-new">NEW</span></h1>
+  <div class="filenote">services/progress.py — 191 lines</div>
+
+  <p><code>/api/analyze</code>, <code>/api/upload-zip</code>, <code>/api/scan</code> and
+  <code>/api/publish-zip</code> each do 10–60 seconds of work behind a single request, and the
+  client had no way to know which part was running. This module streams the answer.</p>
+
+  <p>Each endpoint emits <strong>NDJSON</strong>: one <code>{"type":"step"}</code> line per
+  phase as it starts and finishes, then a single <code>result</code> or <code>error</code>.
+  The client (<code>FlowPipeline</code>) lights up a flowchart from it, so the wait shows which
+  phase is running and what it found:</p>
+
+<pre>{"type":"step","id":"extract","state":"done",
+ "detail":"18 of 240 files kept · React"}</pre>
+
+  <div class="note">
+    <p><strong>Why NDJSON and not SSE.</strong> All four endpoints are POSTs and two carry a
+    multipart upload, while <code>EventSource</code> can only issue a GET with no headers and
+    no body. Streaming the POST's own response body keeps one request, the
+    <code>Authorization</code> header and the file upload exactly as they are — only the
+    response <em>shape</em> changes.</p>
+  </div>
+
+  <h2>The error split this forces</h2>
+  <p>The status line goes out before the work starts, so a failure mid-flight can no longer
+  <em>be</em> an HTTP status. That splits error handling in two, and the split is load-bearing:</p>
+  <ul>
+    <li>Anything decidable up front — a malformed URL, a missing GitHub token, an exhausted
+      quota — <strong>must</strong> be raised before the first byte is yielded, so it stays a
+      real 400/403/402 and the client keeps reacting to it as it always has
+      (<code>QuotaExceededError</code> → the upgrade modal).</li>
+    <li>Anything that can only fail once the work is underway is reported in-band as
+      <code>{"type":"error","status":N,"detail":…}</code> and re-raised on the client
+      (<code>raiseApiError</code> in <code>utils/api.ts</code>) as the same exception the
+      non-streaming call would have thrown.</li>
+  </ul>
+
+  <div class="warn">
+    <p><strong>Step ids are a cross-language contract.</strong> They are shared with
+    <code>frontend/src/flows.ts</code>. A drifted id is silent in the browser — the card simply
+    never lights — so <code>Progress</code> rejects an unknown id rather than emitting an event
+    nothing listens for.</p>
+  </div>
+</section>
+
+<!-- ════════════════════ 5 ════════════════════ -->
+<section class="page-break">
+  <h1>5 · The Two-Agent Pipeline</h1>
+
+  <h2>Agent 1 — FilterAgent <span class="hnote">(agents/filter_agent.py, 269 lines)</span></h2>
+  <p>Runs in two phases.</p>
+
+  <h3>Phase 1a — local extraction (no LLM)</h3>
+  <p><code>FileExtractor.extract</code> does the heavy lifting deterministically. See §9.</p>
+
+  <h3>Phase 1b — LLM project analysis</h3>
+  <p>Sends a compact file-tree summary and asks, in JSON mode, for a
+  <code>FilterResult</code>: project summary, key pages with test priorities, key components,
+  routes, and testing challenges.</p>
+
+  <p><strong>The <code>FilterResult</code> contract</strong> — the pipeline's central data structure:</p>
+  <table>
+    <tr><th style="width:44mm">Field</th><th style="width:22mm">Type</th><th>Meaning</th></tr>
+    <tr><td><code>project_summary</code></td><td>str</td><td>Human-readable summary shown in the UI</td></tr>
+    <tr><td><code>key_pages</code></td><td>list[dict]</td><td><code>{path, description, test_priority, suggested_tests}</code></td></tr>
+    <tr><td><code>key_components</code></td><td>list[dict]</td><td><code>{path, description}</code></td></tr>
+    <tr><td><code>routes</code></td><td>list[str]</td><td>Routes detected in routing code</td></tr>
+    <tr><td><code>framework</code></td><td>str</td><td>Detected stack</td></tr>
+    <tr><td><code>testing_challenges</code></td><td>list[str]</td><td>Obstacles, plus extractor warnings</td></tr>
+    <tr><td><code>files</code></td><td>dict[str,str]</td><td>The filtered source — passed whole to Agent 2</td></tr>
+    <tr><td><code>total_tokens</code>, <code>file_count</code></td><td>int</td><td>Extraction accounting</td></tr>
+  </table>
+
+  <div class="warn">
+    <p><strong>Two anti-hallucination defences, both learned the hard way.</strong></p>
+    <p><strong>1. <code>NoTestableUIError</code>.</strong> If extraction yields zero
+    browser-renderable files, the pipeline stops rather than calling the LLM. The docstring
+    records why: <em>"with an empty file tree the LLM has nothing to describe, and it answers by
+    echoing the shape of the example in the prompt — inventing a login page, a /dashboard route
+    and a JWT flow for a project that has none. Failing loudly beats a confident fiction."</em></p>
+    <p><strong>2. Placeholder-only schemas.</strong> The prompt's JSON schema uses
+    <code>&lt;angle-bracket&gt;</code> placeholders, never realistic samples. Again from the
+    source: <em>"An earlier version illustrated the shape with 'src/pages/Login.tsx', routes
+    ['/', '/login', '/dashboard'] and a JWT/infinite-scroll challenge — and the model reproduced
+    those verbatim for projects that contained none of them. Describe the shape; never supply
+    content that is plausible enough to copy."</em></p>
+  </div>
+
+  <p>The prompt also carries explicit grounding rules that override everything else: every path
+  must appear verbatim in the file tree, every route must be traceable to shown code, and empty
+  arrays are correct where padded filler is a failure.</p>
+
+  <h2>Agent 2 — WriterAgent <span class="hnote">(agents/writer_agent.py, 1113 lines)</span></h2>
+
+  <h3>File-by-file generation</h3>
+  <p>The original design asked for the whole suite as one JSON blob and hit the output-token cap
+  on large repos — silently truncating. The current design is two-stage:</p>
+  <ol>
+    <li><code>_plan_files</code> — asks only for a manifest (filenames + roles). A tiny response
+      that cannot truncate. Capped at 12 files (<code>writer_agent.py:872</code>).</li>
+    <li><code>_generate_one_file</code> — generates each file's contents in its own call, so
+      every response stays well under the cap.</li>
+  </ol>
+  <p><code>_generate_single_shot</code> survives as a fallback when planning yields nothing.</p>
+
+  <h3>Selector grounding</h3>
+  <p><code>_extract_available_selectors</code> (<code>writer_agent.py:1009</code>) mines the real
+  source for <code>data-testid</code>, <code>data-cy</code>, <code>id</code>, <code>name</code>,
+  and <code>class</code> values, and injects them into the prompt under the heading <em>"prefer
+  these; anything else is a guess."</em> The model is instructed to mark any selector it must
+  invent with <code>⚠ WARNING: Selector may need verification</code>.</p>
+  <p>What the model produces is then <em>checked</em> rather than trusted — see §6.</p>
+
+  <h3>The self-heal loop</h3>
+  <p>Two independent checks feed regeneration:</p>
+  <ul>
+    <li><strong>Syntax</strong> — <code>services/validator.py</code> performs a real syntax check
+      where a toolchain exists (<code>py_compile</code> for Python, <code>node --check</code> for
+      JavaScript) and a structural check (bracket balance, non-truncation) otherwise.</li>
+    <li><strong>Grounding</strong> — every selector that failed to resolve is sent back with the
+      real anchors that <em>do</em> exist, so the fix is a grounded substitution, not another guess.</li>
+  </ul>
+
+  <div class="note">
+    <p><strong>Validation counts only what it actually checked.</strong>
+    <code>FileValidation</code> tracks whether anything was verified at all. Config and docs pass
+    by default, so counting them inflates the reported number: <em>"8/8 files passed syntax
+    validation" reads as eight checked files when two of them were a README and a YAML nobody
+    parsed.</em></p>
+  </div>
+
+  <h3>Failure honesty</h3>
+  <p>When a single file fails to generate, the exception is <em>not</em> swallowed. From the
+  source: <em>"Swallowing this used to turn 'the LLM died mid-suite' into a silent gap: the file
+  vanished, the run still looked successful, and CI got pushed against a suite that couldn't
+  run."</em> Failed filenames are recorded on <code>_failed_files</code> and surfaced.</p>
+</section>
+
+<!-- ════════════════════ 6 ════════════════════ -->
+<section class="page-break">
+  <h1>6 · The Trust Pipeline <span class="badge badge-new">NEW</span></h1>
+
+  <p>The failure mode this product exists to prevent is a suite that looks perfect and breaks on
+  the first run because the model invented a selector. Four components attack that, and
+  <strong>none of them execute the generated code</strong> — there is no sandbox (see
+  <code>services/validator.py</code>); they reason about the code and the app statically.</p>
+
+  <h2>Grounding — does every selector resolve to something real?</h2>
+  <div class="filenote">services/grounding.py — 349 lines</div>
+
+  <p>From the module docstring: <em>"This is the trust spine of the product. An LLM will happily
+  write <code>page.locator('#submit-btn')</code> for a button whose id is actually
+  <code>submit</code>, and the suite looks perfect until it is run. We refuse to ship that
+  unexamined."</em></p>
+
+  <p>There are two ground truths, and they answer different questions:</p>
+  <table>
+    <tr><th style="width:34mm">Ground truth</th><th>What it proves</th><th style="width:34mm">Availability</th></tr>
+    <tr>
+      <td><strong>Source grounding</strong></td>
+      <td>The selector exists in the repo's markup. Carries <em>provenance</em> — the file and
+        line the element was declared on, so the UI can say "this came from
+        <code>LoginForm.tsx:42</code>" instead of asking the user to trust us.</td>
+      <td>Any repo</td>
+    </tr>
+    <tr>
+      <td><strong>DOM grounding</strong></td>
+      <td>The selector matches an element on the <em>deployed</em> page right now. Stronger
+        evidence — it is what the browser will actually see.</td>
+      <td>Only when the user supplies a URL they own</td>
+    </tr>
+  </table>
+
+  <p>Live HTML is fetched through the security scanner's SSRF-guarded, non-executing path
+  (<code>validate_target</code> + <code>_redirect_guard</code>, §14) — never executing anything,
+  only reading the DOM.</p>
+
+  <div class="note">
+    <p><strong>Both are built the same way on purpose.</strong> Extract the set of anchors that
+    exist (ids, test-ids, classes, form names, ARIA roles, accessible labels, link/button text),
+    then check each generated selector's key against that set. A selector verified against source
+    and one verified against the live DOM are judged by the same rules.</p>
+    <p>No CSS engine is needed: the selectors we emit reduce to a handful of anchor kinds, and
+    membership <em>is</em> the question "would <code>querySelector</code> find this".</p>
+  </div>
+
+  <h2>Fragility — which selectors will break <em>later</em>?</h2>
+  <div class="filenote">services/fragility.py — 262 lines</div>
+
+  <p>From the docstring: <em>"The failure that makes people abandon a generated E2E suite is not
+  a selector that is wrong today — validation catches those. It is a selector that is right today
+  and brittle tomorrow: <code>div &gt; div:nth-child(3) &gt; button</code> matches now and breaks
+  the first time someone adds a wrapper."</em></p>
+
+  <p>A weighted linear scorer over named, inspectable features — positional depth, hashed
+  classes, absolute XPath, versus stable contracts like <code>data-testid</code>/role — predicts
+  break-risk 0.0 (rock solid) → 1.0 (will break), and grades the suite A–F.</p>
+
+  <div class="note">
+    <p><strong>Why a feature model and not an LLM call.</strong> <em>"Brittleness is a small,
+    stable, explainable function of a selector's shape … That is exactly what a linear scorer over
+    named features does well and cheaply, with no token cost and a reason attached to every
+    score."</em> The weights are deliberately <em>data</em> (<code>FEATURE_WEIGHTS</code>), not
+    code, so the benchmark harness can re-fit them from real pass/break data without touching the
+    logic.</p>
+    <p>The score is named as a <em>risk</em> estimate — never dressed up as a probability we
+    measured.</p>
+  </div>
+
+  <h2>The importance model — a learned file scorer</h2>
+  <div class="filenote">services/importance_model.py — 226 lines</div>
+
+  <p><code>file_extractor.score_file</code> ranks files with hand-written rules: a router is a 10,
+  a page is a 9, a util is a 4. Those are good priors but frozen — they cannot notice that in
+  <em>this</em> codebase the interesting behaviour lives in <code>features/</code> and the
+  <code>pages/</code> are thin shells. This module learns that distinction from data.</p>
+
+  <p>It is a logistic-regression classifier implemented from scratch — no numpy, no sklearn — for
+  three stated reasons:</p>
+  <ol>
+    <li><strong>It's honest about being ML.</strong> Every weight is a named coefficient on a
+      named feature, fit by gradient descent and written to JSON you can read.</li>
+    <li><strong>It has no dependencies.</strong> Adding a training stack for one small model would
+      be a poor trade.</li>
+    <li><strong>It's re-fittable from real outcomes.</strong> The bootstrap label is weak
+      supervision; the same <code>fit</code> re-trains on real signal once the self-heal loop and
+      benchmark harness have produced it.</li>
+  </ol>
+  <p>It degrades safely: with no trained artifact on disk, callers fall back to the heuristic
+  <code>score_file</code>, so importing it changes nothing until a model is trained.</p>
+
+  <h2>The benchmark harness — the numbers, over many repos</h2>
+  <div class="filenote">services/benchmark.py — 198 lines</div>
+
+  <p><em>"A demo convinces one person; a benchmark convinces a room."</em> Runs grounding and
+  fragility over a set of (repo, generated-suite) cases and reports:</p>
+  <ul>
+    <li><strong>Verified-selector rate</strong> — of every selector the model wrote, the fraction
+      that provably resolves to a real element. This is the stand-in for "does it work": because
+      suites are never executed, the harness reports the thing it <em>can</em> prove rather than an
+      invented pass rate.</li>
+    <li><strong>Fragility grade</strong> — so a suite can't score well by grounding everything to
+      <code>nth-child</code>.</li>
+  </ul>
+  <p>The harness is honest about denominators: a case that grounded nothing counts as a case with
+  no measurable rate, not a free 100%. Run with
+  <code>python -m services.benchmark cases.json</code>.</p>
+
+  <p>All of this surfaces in the frontend <code>TrustPanel</code>: the live-DOM badge, the
+  per-selector provenance, and the durability grade — each a real measurement, never dressed up
+  as a prediction that the suite passes.</p>
+</section>
+
+<!-- ════════════════════ 7 ════════════════════ -->
+<section class="page-break">
+  <h1>7 · The Scaffold <span class="badge badge-new">NEW</span></h1>
+  <div class="filenote">agents/scaffold.py — 933 lines</div>
+
+  <p>The writer agent's job is page objects and specs. Everything that turns those files into a
+  suite you can actually <code>npm install &amp;&amp; npx playwright test</code> — the dependency
+  manifest, the framework config, the CI pipeline, the README — is boilerplate with one correct
+  answer per framework. It is built here, from templates, rather than asked of the model:
+  <em>"the LLM adds nothing to a package.json and every token it spends on one is a token it can
+  truncate."</em></p>
+
+  <h2>Two invariants this module exists to enforce</h2>
+
+  <div class="warn">
+    <p><strong>1. A suite ships its own dependencies.</strong> Nothing here ever emitted a
+    <code>package.json</code> or a <code>requirements.txt</code>, while the CI it emitted ran
+    <code>npm ci</code> and <code>pip install -r requirements.txt</code>. <em>Those pipelines could
+    not pass on any repo:</em> there was no manifest to install and no lockfile for
+    <code>npm ci</code> to read. The install step and the manifest are now written together, in
+    this file, so they cannot drift apart again.</p>
+    <p><strong>2. The suite lives in its own directory.</strong> Everything lands under
+    <code>SUITE_DIR</code> (<code>e2e/</code>) instead of the repo root. A React app already has a
+    <code>package.json</code> at the root, and writing ours there would silently destroy the app's
+    own manifest — <em>the suite must never be able to damage the repo it is testing.</em></p>
+  </div>
+
+  <h2>Reaching the app under test</h2>
+  <p><code>BASE_URL</code> wins, then a local <code>webServer</code>. One variable points the same
+  suite at staging or prod; unset, the config boots the app so a fresh clone and CI both work with
+  no arguments.</p>
+  <p>Base URLs are normalized to a trailing slash and tests navigate with slashless relative paths
+  — the only combination under which a sub-path deployment (a GitHub Pages project site) stays
+  addressable.</p>
+</section>
+
+<!-- ════════════════════ 8 ════════════════════ -->
+<section class="page-break">
+  <h1>8 · The LLM Router</h1>
+  <div class="filenote">services/llm_router.py — 948 lines</div>
+
+  <p>The router exists so that free-tier rate limits never surface to the user. Its strategy:</p>
+  <ol>
+    <li>Try providers in priority order — <em>which order depends on the caller's tier</em></li>
+    <li>Within a provider, rotate round-robin through every configured key</li>
+    <li>On 429 or error, back off exponentially, then move to the next key or provider</li>
+    <li>Track exhausted keys per reset window and auto-restore after cooldown</li>
+    <li>Stream live provider status to the frontend over SSE</li>
+    <li>Record <em>provenance</em> — which model actually produced each output</li>
+  </ol>
+
+  <h2>Tiers <span class="badge badge-new">NEW</span></h2>
+  <p>The router is now tier-aware. <code>MODELS</code> maps
+  <code>(Provider, Tier)</code> → <code>ModelSpec</code>:</p>
+
+  <table>
+    <tr><th>Provider</th><th>FREE tier model</th><th>PRO tier model</th><th class="nowrap">Max output</th><th class="nowrap">Cooldown</th></tr>
+    <tr><td>Gemini</td><td><code>gemini-2.0-flash</code></td><td><code>gemini-2.0-flash</code></td><td>8192</td><td>60s</td></tr>
+    <tr><td>Groq</td><td><code>llama-3.3-70b-versatile</code></td><td><code>llama-3.3-70b-versatile</code></td><td>4096</td><td>30s</td></tr>
+    <tr><td>Claude</td><td><code>claude-haiku-4-5</code></td><td><strong><code>claude-opus-4-8</code></strong></td><td>4096 / 16000</td><td>120s</td></tr>
+  </table>
+
+  <p>Key env prefixes are unchanged: <code>GEMINI_API_KEY_1..10</code>,
+  <code>GROQ_API_KEY_1..10</code>, <code>ANTHROPIC_API_KEY_1..10</code>.</p>
+
+  <div class="note">
+    <p><strong>Only Anthropic's rows differ between tiers</strong>, <em>"because that is where a
+    materially stronger model is actually available to us: Gemini and Groq stay on their free-tier
+    models and serve as capacity, not as the quality story."</em></p>
+  </div>
+
+  <p>The Pro <code>ModelSpec</code> carries three extra flags, each for a concrete reason recorded
+  in the source:</p>
+  <table>
+    <tr><th style="width:44mm">Flag</th><th>Why</th></tr>
+    <tr><td><code>accepts_temperature=False</code></td><td>Opus 4.7+ reject <code>temperature</code>/<code>top_p</code>/<code>top_k</code> outright (400). Haiku accepts them.</td></tr>
+    <tr><td><code>adaptive_thinking=True</code></td><td><em>"most of what the Pro tier is actually buying: the model reasons about the repo before writing selectors instead of pattern-matching to a generic suite."</em></td></tr>
+    <tr><td><code>effort="high"</code></td><td><code>budget_tokens</code> is removed on 4.7+ — depth is set with <code>effort</code>, not tokens.</td></tr>
+  </table>
+
+  <h2>Priority order, per tier</h2>
+  <table>
+    <tr><th style="width:22mm">Tier</th><th style="width:56mm">Order</th><th>Rationale</th></tr>
+    <tr><td>FREE</td><td>Gemini → Groq → Claude</td><td>Capacity-first — Gemini's 1M context swallows big repos, Groq is fastest</td></tr>
+    <tr><td>PRO</td><td>Claude → Gemini → Groq</td><td>Quality-first — <em>"paying for Opus and then serving the request from Flash because Flash was listed first would make the upgrade a lie"</em></td></tr>
+  </table>
+
+  <div class="note">
+    <p><strong>Pro still falls back rather than failing.</strong> A Pro user who would otherwise
+    get nothing gets a free-tier-quality suite — <em>and the provenance report says so.</em></p>
+  </div>
+
+  <h2>Key concepts</h2>
+  <table>
+    <tr><th style="width:38mm">Type</th><th>Role</th></tr>
+    <tr><td><code>APIKey</code></td><td>One credential. <code>is_available</code>, <code>mark_exhausted</code>, <code>record_success</code>.</td></tr>
+    <tr><td><code>ProviderState</code></td><td>All keys for one provider. <code>next_available_key</code> round-robins, skipping exhausted.</td></tr>
+    <tr><td><code>ModelSpec</code></td><td>The model, output cap, and per-model API quirks.</td></tr>
+    <tr><td><code>ProviderCall</code></td><td>One successful call made while producing a user-visible output — provider, model, context, tokens.</td></tr>
+    <tr><td><code>LLMRouter</code></td><td>The engine. Thread-safe via asyncio locks — safe under concurrent FastAPI requests.</td></tr>
+    <tr><td><code>is_hard_quota</code></td><td>Distinguishes "out of credit / daily quota burned" from a transient 429.</td></tr>
+  </table>
+
+  <h2>Exceptions</h2>
+  <ul>
+    <li><code>RateLimitError</code> — 429 or signalled quota exhaustion</li>
+    <li><code>ProviderError</code> — non-rate-limit failure (5xx, malformed response)</li>
+    <li><code>AllProvidersExhausted</code> — every provider and key tried and failed</li>
+  </ul>
+
+  <div class="note">
+    <p><strong>Per-request status isolation.</strong> Status callbacks are scoped with a
+    <code>ContextVar</code> keyed to the current async task, so concurrent SSE streams never
+    cross-talk. <code>subscribe_status</code> registers a callback for the current task only. The
+    same mechanism scopes provenance recording.</p>
+  </div>
+
+  <div class="note">
+    <p><strong>Exhaustion is an outage, not an upsell.</strong> When every key is hard-blocked,
+    capacity is gone for everyone — Pro subscribers included. <code>quota.py</code> records the
+    reasoning: <em>"Upselling at that moment would be selling something we cannot deliver."</em>
+    That path stays a plain 503; only genuine per-user limits return 402.</p>
+  </div>
+
+  <h2>Observability</h2>
+  <p><code>get_status</code> feeds the public status panel. <code>get_key_health</code> feeds the
+  admin console with per-key state, including which env var to rotate when one goes bad.
+  <code>get_call_log</code> exposes recent calls; <code>_log_call</code> records provider, key,
+  context hint, latency, model, and token usage per call.</p>
+
+  <div class="warn">
+    <p><strong>Docstring drift.</strong> The module header still reads <em>"Try providers in
+    priority order (Gemini → Groq → Claude)"</em> and <em>"All providers are FREE tier — no credit
+    card required."</em> Both predate the tier system and are now wrong for Pro. Recorded in §23.</p>
+  </div>
+</section>
+
+<!-- ════════════════════ 9 ════════════════════ -->
+<section class="page-break">
+  <h1>9 · The File Extractor</h1>
+  <div class="filenote">services/file_extractor.py — 658 lines</div>
+
+  <p>The extractor is where most of the intelligence lives, and it costs nothing — no LLM call.
+  Its stated core insight: <em>"we only want files that render in the browser. Backend logic, DB
+  migrations, server configs — all noise."</em></p>
+
+  <h2>The scoring system</h2>
+  <table>
+    <tr><th style="width:18mm">Score</th><th>Category</th></tr>
+    <tr><td>10</td><td>Router files (<code>App.jsx</code>, <code>router/index.js</code>) — always included</td></tr>
+    <tr><td>9</td><td>Page components (<code>pages/</code>, <code>views/</code>, <code>screens/</code>)</td></tr>
+    <tr><td>8</td><td>Top-level layout components</td></tr>
+    <tr><td>7</td><td>Form and auth components</td></tr>
+    <tr><td>6</td><td>Shared UI components</td></tr>
+    <tr><td>5</td><td>Config files (<code>package.json</code>, <code>vite.config.js</code>)</td></tr>
+    <tr><td>4</td><td>Utility components</td></tr>
+    <tr><td>1</td><td>Everything else UI-adjacent</td></tr>
+  </table>
+  <p>These are frozen priors. <code>services/importance_model.py</code> (§6) refines them from
+  data when a trained artifact is present.</p>
+
+  <h2>Budget behaviour</h2>
+  <p>Files are admitted in score order until <code>token_budget</code> (default
+  <strong>600,000</strong>) is reached. Crucially, low-value files are <strong>summarized rather
+  than dropped</strong> — <code>_summarize_file</code> keeps only the testing-relevant parts:
+  element IDs, class names, form fields, button text, route definitions. Token estimation is
+  <code>len(content) // 4</code>, a rough 4-chars-per-token heuristic.</p>
+
+  <h2>Other responsibilities</h2>
+  <ul>
+    <li><code>detect_framework</code> — SPA frameworks, server-rendered backends, template engines</li>
+    <li><code>detect_monorepo</code> — identifies sub-packages</li>
+    <li><code>find_manifest</code> — shallowest file of a given name, at any depth</li>
+    <li><code>extract_zip</code> — in-memory ZIP handling, including GitHub's nested layout</li>
+    <li><code>filter_for_push</code> — what belongs in a fresh repo, with a 1 MB per-file cap (<code>PUSH_MAX_FILE_BYTES</code>)</li>
+  </ul>
+</section>
+
+<!-- ════════════════════ 10 ════════════════════ -->
+<section class="page-break">
+  <h1>10 · Authentication and Sessions</h1>
+  <div class="filenote">services/auth.py — 208 lines</div>
+
+  <p>Sessions are <strong>opaque server-side tokens</strong>, stored in SQLite, not JWTs. The
+  reason is stated plainly: so they are revocable. A JWT cannot be un-issued; a row can be deleted.</p>
+
+  <h2>Token acceptance</h2>
+  <p><code>_extract_token</code> accepts <code>Authorization: Bearer</code> or a
+  <code>?token=</code> query parameter. The latter exists solely because <code>EventSource</code>
+  cannot set headers (§3).</p>
+
+  <h2>Function surface</h2>
+  <table>
+    <tr><th style="width:52mm">Function</th><th>Role</th></tr>
+    <tr><td><code>hash_password</code> / <code>verify_password</code></td><td>Password hashing</td></tr>
+    <tr><td><code>validate_email</code> / <code>validate_password</code></td><td>Input rules</td></tr>
+    <tr><td><code>encrypt_secret</code> / <code>decrypt_secret</code></td><td>Fernet encryption for stored GitHub tokens. No-op if <code>SESSION_SECRET</code> is unset; legacy plaintext (no prefix) reads back as-is.</td></tr>
+    <tr><td><code>create_login_session</code></td><td>Mints an opaque token</td></tr>
+    <tr><td><code>public_user</code></td><td>Strips secrets before a user is sent to the client</td></tr>
+    <tr><td><code>is_admin</code></td><td>Whether the account holds the admin role</td></tr>
+    <tr><td><code>require_user</code></td><td>The FastAPI dependency — token → user, or 401</td></tr>
+  </table>
+  <p><code>require_user</code> returns a context dict:
+  <code>{user, session, session_id, user_id}</code>.</p>
+
+  <h2>Session lifetime</h2>
+  <p><code>touch_session</code> slides expiry forward on use — <em>an idle timeout, not a fixed
+  one</em>. <code>delete_sessions_for_user</code> revokes every session for an account, optionally
+  keeping the current one (the "log out everywhere else" behaviour).</p>
+
+  <h2>OAuth — two providers</h2>
+
+  <h3>GitHub <span class="hnote">(services/github_oauth.py, 93 lines)</span></h3>
+  <ol>
+    <li><code>authorize_url()</code> — send the browser to GitHub's consent screen</li>
+    <li><code>exchange_code()</code> — swap <code>?code</code> for an access token</li>
+    <li><code>get_user()</code> — resolve login, name, avatar</li>
+  </ol>
+  <p>Lets a user authorize repo creation without pasting a Personal Access Token. Requires
+  <code>GITHUB_CLIENT_ID</code> / <code>GITHUB_CLIENT_SECRET</code>.</p>
+
+  <h3>Google <span class="hnote">(services/google_oauth.py, 108 lines)</span> <span class="badge badge-new">NEW</span></h3>
+  <p>Identical in shape — <code>authorize_url()</code> → <code>exchange_code()</code> →
+  <code>get_user()</code> reading the OpenID userinfo (<code>sub</code>, email, name, picture).</p>
+  <div class="note">
+    <p><strong>Google is only ever an identity here.</strong> Unlike GitHub it grants no repo
+    access, <em>"so the session it produces carries no provider token, and the account it creates
+    is email/password-less until the user sets one."</em></p>
+    <p>Google will only redirect back to an <code>https://</code> callback on a real hostname — a
+    bare IP or plain http is rejected at registration — so this needs the site reachable over
+    HTTPS on a domain (§21).</p>
+  </div>
+  <p>The returning user is matched by <code>users.google_id</code>, Google's stable OpenID subject
+  — mirroring <code>github_id</code>, so a user who later changes their email still resolves to the
+  same account.</p>
+
+  <h2>Rate limiting <span class="hnote">(ratelimit.py, 57 lines)</span></h2>
+  <p>In-memory per-IP sliding windows, applied as FastAPI dependencies. Used via
+  <code>Depends(rate_limit(...))</code> rather than a decorator — the module notes this is
+  deliberate, because <em>unlike slowapi's decorator, it works correctly on routes with path
+  params.</em></p>
+
+  <table>
+    <tr><th style="width:38mm">Limiter</th><th style="width:30mm">Budget</th><th>Applies to</th></tr>
+    <tr><td><code>analyze_limiter</code></td><td>20 / 60s</td><td>Repo analysis, ZIP upload, scan, publish, repo delete, most auth routes</td></tr>
+    <tr><td><code>generate_limiter</code></td><td>10 / 60s</td><td>Generation and streaming</td></tr>
+    <tr><td><code>email_limiter</code></td><td>6 / hour</td><td>Anything that sends mail</td></tr>
+    <tr><td><code>otp_limiter</code></td><td>20 / 10min</td><td>OTP submission attempts</td></tr>
+  </table>
+
+  <p>The email limiter is deliberately much tighter than the rest: <em>"each call puts a message in
+  someone else's inbox, so an unlimited one is a free mail-bombing service pointed at any address
+  an attacker names, and it burns the relay's reputation and sending quota along the way."</em>
+  The OTP limiter complements the per-challenge cap in <code>verification.py</code> — it stops
+  someone parallelising guesses across many freshly-minted challenges from one host.</p>
+
+  <div class="warn">
+    <p><strong>The limiters only work if uvicorn is told to trust the proxy.</strong> They key on
+    <code>request.client.host</code>, but uvicorn only trusts <code>X-Forwarded-For</code> from
+    <code>127.0.0.1</code> by default. Behind Caddy every request arrived wearing the proxy's
+    container IP, so <em>all clients shared one bucket</em>: six signup/OTP emails an hour for the
+    whole site, and any anonymous <code>/api/scan</code> could exhaust the login bucket and lock
+    everyone out of sign-in.</p>
+    <p>The fix lives in <code>backend/Dockerfile</code>: <code>--proxy-headers</code> with
+    <code>--forwarded-allow-ips</code> scoped to private ranges only —
+    <code>127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16</code>. Never <code>"*"</code>, which
+    would take the client-supplied left-most hop and let anyone forge their IP.</p>
+  </div>
+</section>
+
+<!-- ════════════════════ 11 ════════════════════ -->
+<section class="page-break">
+  <h1>11 · Email, Verification, and One-Time Secrets</h1>
+
+  <h2>The mailer <span class="hnote">(services/mailer.py, 112 lines)</span></h2>
+  <p>Transport only, over <code>aiosmtplib</code>. Async so a send never blocks the event loop the
+  way stdlib <code>smtplib</code> would. <code>_assert_header_safe</code> rejects CR/LF in anything
+  that becomes a header — header-injection defence.</p>
+  <p>Two exceptions distinguish the failure modes: <code>EmailNotConfigured</code> (no relay set
+  up) and <code>EmailDeliveryError</code> (relay present but refused or dropped).</p>
+
+  <div class="note">
+    <p><strong>Dev without SMTP.</strong> With no relay configured outside production, the mailer
+    <em>logs</em> the message instead of sending. The full signup → verify → OTP flow runs locally
+    with no mail account. In production an empty relay is <strong>refused rather than
+    skipped</strong>, so the checks cannot silently disable themselves.</p>
+  </div>
+
+  <h2>Verification <span class="hnote">(services/verification.py, 253 lines)</span></h2>
+  <p>This module carries the most carefully reasoned threat model in the codebase.</p>
+
+  <div class="warn">
+    <p><strong>Why the two kinds of secret are stored differently.</strong></p>
+    <p><strong>Link tokens</strong> (verify, reset) are 256-bit random. <em>"Guessing one is not a
+    thing that happens, so a plain SHA-256 is enough to keep the database from being a list of
+    working links: it's preimage-resistant, and there's no dictionary to run against a value with
+    that much entropy."</em></p>
+    <p><strong>The login OTP</strong> is six digits — a million possibilities, which a GPU chews
+    through instantly. It therefore gets <strong>bcrypt</strong>, not SHA-256.</p>
+    <p>The asymmetry is the point: hash strength is chosen against the entropy of what is being
+    hashed, not applied uniformly.</p>
+  </div>
+
+  <table>
+    <tr><th style="width:62mm">Function</th><th>Role</th></tr>
+    <tr><td><code>send_verification_email</code> / <code>consume_verification_token</code></td><td>Signup confirmation</td></tr>
+    <tr><td><code>send_password_reset_email</code> / <code>consume_reset_token</code></td><td>Password reset</td></tr>
+    <tr><td><code>start_login_challenge</code> / <code>verify_login_challenge</code></td><td>Login OTP, issued only after the password check passes</td></tr>
+    <tr><td><code>_new_code</code></td><td>6-digit code from a CSPRNG</td></tr>
+    <tr><td><code>mask_email</code></td><td><code>ada@example.com</code> → <code>a**@example.com</code></td></tr>
+  </table>
+
+  <p><strong>Two more deliberate choices:</strong></p>
+  <ul>
+    <li><code>InvalidCode</code> is one exception for <em>wrong</em>, <em>used</em>, and
+      <em>expired</em>. <em>"Telling an attacker which is a free oracle."</em></li>
+    <li><code>_new_code</code> uses <code>secrets</code>, never <code>random</code> — <em>"the
+      latter's Mersenne Twister is reconstructible from past outputs."</em></li>
+  </ul>
+
+  <h2>TTLs and limits</h2>
+  <table>
+    <tr><th style="width:62mm">Setting</th><th>Default</th></tr>
+    <tr><td><code>email_verify_ttl_seconds</code></td><td>86,400 (24h)</td></tr>
+    <tr><td><code>password_reset_ttl_seconds</code></td><td>3,600 (1h)</td></tr>
+    <tr><td><code>login_otp_ttl_seconds</code></td><td>600 (10m)</td></tr>
+    <tr><td><code>login_otp_max_attempts</code></td><td>5 per challenge</td></tr>
+  </table>
+</section>
+
+<!-- ════════════════════ 12 ════════════════════ -->
+<section class="page-break">
+  <h1>12 · The Admin Model</h1>
+  <div class="filenote">services/admin.py — 57 lines. The smallest security-critical module, and the most opinionated.</div>
+
+  <h2>How someone becomes an admin</h2>
+  <p>By being listed in <code>ADMIN_EMAILS</code> with a <strong>verified</strong> address. That is
+  the entire mechanism. There is deliberately no role column, no grant table, and no promote-user
+  endpoint.</p>
+
+  <div class="warn">
+    <p><strong>The reasoning, verbatim from the source:</strong></p>
+    <ul>
+      <li>privilege can't be escalated by writing to the database, because the grant isn't in the database;</li>
+      <li>there is no privileged-write endpoint to find a bug in, because there is no endpoint;</li>
+      <li>a stolen admin session can act as that admin until it expires, but cannot mint a second admin.</li>
+    </ul>
+    <p>The trade is explicit: changing the admin list is a config change plus a restart — <em>"the
+    right friction for the one role that can read every account."</em></p>
+  </div>
+
+  <h2>Two rules the module exists to enforce</h2>
+  <ol>
+    <li><strong>The address must be verified.</strong> With
+      <code>REQUIRE_EMAIL_VERIFICATION=false</code> a stranger could sign up as an admin's address
+      and be issued a session — so the allowlist alone is not proof of who holds the address.</li>
+    <li><strong>Non-admins get 404, not 403.</strong> <em>"A 403 confirms the console exists to
+      someone who already has a session; to everyone else it should look absent."</em></li>
+  </ol>
+  <p>The client's <code>user.is_admin</code> decides whether the nav item renders and
+  <strong>nothing else</strong> — every route re-derives the role server-side via
+  <code>require_admin</code>.</p>
+
+  <h2>A standalone console <span class="badge badge-new">NEW</span></h2>
+  <p>The admin surface is no longer a section of the product. It is a separate portal behind its
+  own sign-in (<code>pages/AdminLogin.tsx</code>) with its own shell
+  (<code>components/AdminLayout.tsx</code>) and its own nav list.</p>
+  <div class="note">
+    <p>From <code>nav.ts</code>, on why <code>ADMIN_NAV_ITEMS</code> is a separate list rather than
+    an <code>adminOnly</code> flag: <em>"/admin is a standalone console behind its own sign-in, not
+    a section of the product, and a flag would invite something to render these next to 'Generate'
+    the moment someone forgot to filter on it."</em></p>
+  </div>
+
+  <h2>Admin capabilities</h2>
+  <table>
+    <tr><th style="width:56mm">Capability</th><th>Endpoint</th></tr>
+    <tr><td>List / search / sort users</td><td><code>GET /api/admin/users</code></td></tr>
+    <tr><td>User detail</td><td><code>GET /api/admin/users/{id}</code></td></tr>
+    <tr><td>Suspend / unsuspend (incl. bulk)</td><td><code>POST /api/admin/users/{id}/suspend</code></td></tr>
+    <tr><td>Override plan</td><td><code>POST /api/admin/users/{id}/plan</code></td></tr>
+    <tr><td>Override usage counter</td><td><code>POST /api/admin/users/{id}/usage</code></td></tr>
+    <tr><td>Revoke all sessions</td><td><code>POST /api/admin/users/{id}/logout-all</code></td></tr>
+    <tr><td>Delete account</td><td><code>DELETE /api/admin/users/{id}</code></td></tr>
+    <tr><td>Platform overview + trends</td><td><code>GET /api/admin/overview</code></td></tr>
+    <tr><td>Provider / key health</td><td><code>GET /api/admin/system</code></td></tr>
+  </table>
+
+  <p><code>set_usage</code> exists as a support tool — <em>"your run failed, here's the credit
+  back."</em> <code>set_suspended</code> notes that sessions are the caller's job: a suspended user
+  holding a live token would otherwise keep working.</p>
+</section>
+
+<!-- ════════════════════ 13 ════════════════════ -->
+<section class="page-break">
+  <h1>13 · Quota and Billing</h1>
+
+  <h2>Quota <span class="hnote">(services/quota.py, 184 lines)</span></h2>
+  <p>Free accounts get <code>free_generations_per_month</code> (default <strong>5</strong>)
+  generations per <strong>UTC calendar month</strong>. Pro is unmetered.</p>
+
+  <h3>The lease pattern</h3>
+  <p>Quota is <strong>reserved before</strong> the work starts and <strong>refunded if it
+  fails</strong>, so a crashed run doesn't cost the user a credit.</p>
+  <table>
+    <tr><th style="width:44mm">Piece</th><th>Role</th></tr>
+    <tr><td><code>current_period</code></td><td>The billing bucket — UTC calendar month</td></tr>
+    <tr><td><code>next_period_start</code></td><td>Epoch seconds at which usage resets</td></tr>
+    <tr><td><code>limit_for</code></td><td>Allowance per month, or <code>None</code> for unlimited</td></tr>
+    <tr><td><code>get_quota</code></td><td>Read-only — consumes nothing</td></tr>
+    <tr><td><code>QuotaLease</code></td><td>A reserved unit. <code>.commit()</code> or <code>.refund()</code>.</td></tr>
+    <tr><td><code>consume_quota</code></td><td>Reserve one, or raise 402</td></tr>
+    <tr><td><code>require_quota</code></td><td>The dependency: authenticate, then reserve</td></tr>
+  </table>
+  <p>At the store layer, <code>try_consume</code> is <strong>atomic</strong> — the reservation
+  cannot double-spend under concurrency. <code>get_plan</code> resolves the <em>effective</em>
+  plan: a lapsed paid plan reads as <code>free</code> without needing a background job to
+  downgrade it.</p>
+  <p>Remaining quota is surfaced in the nav while signed in
+  (<code>components/QuotaBar.tsx</code>).</p>
+
+  <h2>Billing — Stripe <span class="hnote">(services/billing.py, 293 lines)</span></h2>
+  <p>This module owns <em>what a plan costs</em> and <em>how a webhook is read</em>. It holds no
+  Stripe SDK and no secret key — the checkout side is a hosted <strong>Stripe Payment Link</strong>,
+  and the grant side is a signed webhook. Everything here is pure functions over payloads; the
+  store writes live in <code>main.billing_webhook</code>.</p>
+
+  <div class="warn">
+    <p><strong>The entitlement rule.</strong> An entitlement may only be granted by something that
+    <strong>proves a payment happened for a known user</strong> — a hosted checkout plus a signed
+    webhook. <code>set_plan</code>'s docstring is explicit: <em>"Call this from a verified payment
+    webhook — never straight from a client request."</em></p>
+  </div>
+
+  <h3>Wiring it up</h3>
+  <ol>
+    <li>Create a Stripe Payment Link per plan (monthly, yearly) →
+      <code>BILLING_CHECKOUT_URL_MONTHLY</code> / <code>_YEARLY</code></li>
+    <li>Add a webhook endpoint at <code>/api/billing/webhook</code>, subscribed to
+      <code>checkout.session.completed</code> and <code>invoice.paid</code>. Its signing secret
+      (<code>whsec_…</code>) goes in <code>BILLING_WEBHOOK_SECRET</code>.</li>
+    <li>Nothing else.</li>
+  </ol>
+
+  <div class="note">
+    <p><strong>Why <code>client_reference_id</code> carries both ids.</strong> A Payment Link
+    accepts exactly one piece of caller state in its query string, echoed back on the Checkout
+    Session. There is no arbitrary-metadata parameter, so the plan rides inside that single field
+    alongside the user id — hence the <code>usr_x__monthly</code> encoding. Stripe restricts the
+    value to alphanumerics, dashes and underscores, which is why the separator is <code>__</code>
+    and not <code>:</code>.</p>
+  </div>
+
+  <div class="note">
+    <p><strong>Why renewals need the customer mapping.</strong> Only the Checkout Session echoes
+    <code>client_reference_id</code>. The <code>invoice.paid</code> that arrives on every
+    subsequent renewal identifies the payer solely by Stripe customer id, so the first payment must
+    record customer → user (<code>store.link_stripe_customer</code>) — <em>or every subscriber
+    would lapse after one period.</em></p>
+  </div>
+
+  <table>
+    <tr><th style="width:44mm">Function</th><th>Role</th></tr>
+    <tr><td><code>plans</code></td><td>The catalogue the pricing UI renders</td></tr>
+    <tr><td><code>checkout_url</code></td><td>Hosted Payment Link, tagged so the webhook can identify the payer</td></tr>
+    <tr><td><code>verify_webhook</code></td><td><strong>Constant-time</strong> signature check over the raw body</td></tr>
+    <tr><td><code>is_granting_event</code></td><td>False for <code>payment.failed</code>, cancellations, refunds, and the many other webhook types that must not unlock anything</td></tr>
+    <tr><td><code>extract_grant</code></td><td>Pulls <code>(user_id, plan_id)</code> from a verified payload</td></tr>
+  </table>
+  <p>Defaults are $20/month, $100/year.</p>
+</section>
+
+<!-- ════════════════════ 14 ════════════════════ -->
+<section class="page-break">
+  <h1>14 · The Security Scanner</h1>
+  <div class="filenote">services/security_scanner.py — 926 lines</div>
+
+  <p>Given a URL the user owns, the scanner fetches the site and inspects its
+  <strong>configuration</strong>. It is explicitly non-intrusive: it reads headers, cookies,
+  TLS/redirect behaviour, and probes a short curated list of files that should never be public.
+  <strong>It sends no attack payloads and brute-forces nothing.</strong></p>
+
+  <h2>Checks performed</h2>
+  <table>
+    <tr><th style="width:52mm">Check</th><th>Covers</th></tr>
+    <tr><td><code>_check_transport</code></td><td>HTTPS enforcement, HSTS</td></tr>
+    <tr><td><code>_check_security_headers</code></td><td>CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy</td></tr>
+    <tr><td><code>_check_cookies</code></td><td>Secure, HttpOnly, SameSite — reported per <em>problem</em>, not per cookie</td></tr>
+    <tr><td><code>_check_disclosure</code></td><td>Server / framework version leakage</td></tr>
+    <tr><td><code>_check_cors</code></td><td>CORS misconfiguration</td></tr>
+    <tr><td><code>_check_content</code></td><td>Content-level issues</td></tr>
+    <tr><td><code>_check_exposed_files</code></td><td><code>.env</code>, <code>.git/config</code>, and similar</td></tr>
+  </table>
+
+  <div class="warn">
+    <p><strong>SSRF defence, in two layers.</strong></p>
+    <p><code>_assert_public_host</code> resolves the hostname and rejects private, loopback,
+    link-local, reserved, and multicast IPs.</p>
+    <p><code>_redirect_guard</code> re-validates <strong>every redirect hop</strong> as an httpx
+    response hook, firing <em>before</em> each redirect is followed — so an open redirect on the
+    target cannot bounce the scanner onto an internal address. Validating only the initial URL
+    would leave exactly that hole.</p>
+    <p>This same guarded path is what DOM grounding (§6) reuses to fetch a user's deployed page.</p>
+  </div>
+
+  <h2>Scoring</h2>
+  <p>Findings roll into a 0–100 score and a letter grade. Penalties are <strong>capped per
+  category</strong>, because a plain sum let one repeated misconfiguration sink everything:
+  <em>"five cookies each missing three flags is -120 on a 100-point scale, which graded any site
+  with a few analytics cookies F no matter how good the rest of it was."</em></p>
+  <p><code>exposure</code> is uncapped on purpose: <em>"a world-readable .env is not one issue
+  among several, and it should be able to take the grade to F by itself."</em></p>
+  <p><code>_looks_sensitive</code> confirms a 200 response actually resembles the sensitive file
+  rather than an SPA catch-all returning 200 for everything — the difference between a real finding
+  and a false positive on every single-page app.</p>
+  <p><code>_youtube</code> generates a YouTube <em>search</em> URL for each fix, never a specific
+  video — a link that can't rot into someone else's content.</p>
+</section>
+
+<!-- ════════════════════ 15 ════════════════════ -->
+<section class="page-break">
+  <h1>15 · GitHub Integration and Publishing</h1>
+
+  <h2>Fetching <span class="hnote">(services/github_service.py, 230 lines)</span></h2>
+  <table>
+    <tr><th style="width:34mm">Path</th><th>Mechanism</th></tr>
+    <tr><td>Public repos</td><td><code>raw.githubusercontent.com</code> — no auth, no rate limits, faster</td></tr>
+    <tr><td>Private repos</td><td>GitHub REST Contents API with OAuth token or PAT</td></tr>
+    <tr><td>ZIP upload</td><td><code>file_extractor.extract_zip</code></td></tr>
+  </table>
+  <p><code>get_file_tree</code> uses the Git Trees API with <code>recursive=1</code> — the whole
+  tree in one request. <code>parse_github_url</code> handles bare repo URLs,
+  <code>/tree/branch</code>, and <code>/tree/branch/subpath</code>, and its test suite pins tricky
+  cases: <code>krishna.github.io</code>, <code>awesome.gitignore-demo</code>,
+  <code>my.github.io.git</code> — i.e. stripping <code>.git</code> without mangling names that
+  legitimately contain it.</p>
+  <p>Errors: <code>RepoNotFoundError</code>, <code>RepoAccessError</code>.</p>
+
+  <h2>Publishing <span class="hnote">(services/git_publisher.py, 265 lines)</span></h2>
+  <p>Creates a fresh GitHub repo and pushes a whole project into it in a <strong>single
+  commit</strong>, using the Git Data API end-to-end — <strong>no local <code>git</code> binary
+  required</strong>.</p>
+
+<pre>1. GET   /user                  -> resolve authenticated owner
+2. POST  /user/repos (auto_init) -> create repo with a base commit
+3. GET   /git/ref/heads/{branch}  -> base commit sha
+4. GET   /git/commits/{sha}       -> base tree sha
+5. POST  /git/blobs   (per file)  -> blob shas, uploaded concurrently
+6. POST  /git/trees               -> new tree layered on the base
+7. POST  /git/commits             -> new commit
+8. PATCH /git/refs/heads/{branch} -> move the ref</pre>
+
+  <div class="note">
+    <p><strong>Publish-then-generate ordering.</strong> <code>main.py</code> notes that tests are
+    generated and validated locally — through the writer agent's self-heal loop and the grounding
+    pipeline — <em>before</em> the push. The repo is only created once there is something worth
+    pushing.</p>
+  </div>
+
+  <p><code>was_published_by</code> is the authorization gate on deletion: <strong>true only if THIS
+  user published THIS repo through the app.</strong> Testra will not delete a repo it did not
+  create on that user's behalf, even with a valid token that could. <code>delete_repo</code> is
+  marked irreversible.</p>
+</section>
+
+<!-- ════════════════════ 16 ════════════════════ -->
+<section class="page-break">
+  <h1>16 · The Data Model</h1>
+  <div class="filenote">services/store.py — 1,157 lines. Stdlib <code>sqlite3</code> only; thread-safe; no ORM.</div>
+
+  <h2>Tables</h2>
+  <table>
+    <tr><th style="width:34mm">Table</th><th>Columns</th></tr>
+    <tr><td><code>users</code></td><td>id, email, password_hash, name, github_id, github_login, avatar_url, created_at, plan, plan_expires_at, email_verified, suspended, suspended_at, suspended_reason, <strong>stripe_customer_id</strong>, <strong>google_id</strong></td></tr>
+    <tr><td><code>sessions</code></td><td>session_id, created_at, expires_at, data</td></tr>
+    <tr><td><code>jobs</code></td><td>job_id, created_at, updated_at, data</td></tr>
+    <tr><td><code>usage</code></td><td>user_id, period, count</td></tr>
+    <tr><td><code>generations</code></td><td>id, user_id, created_at, source, framework, language, test_count, file_count, status, duration_ms, error</td></tr>
+    <tr><td><code>scans</code></td><td>id, user_id, created_at, url, grade, score, findings, duration_ms, counts</td></tr>
+    <tr><td><code>published_repos</code></td><td>full_name, user_id, repo_url, created_at, test_count, files_pushed, cicd_added, private</td></tr>
+    <tr><td><code>user_settings</code></td><td>user_id, framework, language, base_url, updated_at</td></tr>
+  </table>
+  <p>Indexed on <code>users(stripe_customer_id)</code> and <code>users(google_id)</code> — both
+  created <em>after</em> <code>_migrate</code> runs, because both columns arrive by ALTER and do not
+  exist on a deployed database until then.</p>
+
+  <h2>Migrations</h2>
+  <p><code>CREATE TABLE IF NOT EXISTS</code> silently skips a table that's already there, so new
+  columns need an explicit ALTER against the live schema. <code>_ADDED_COLUMNS</code> drives this.
+  Every column must be nullable or carry a DEFAULT — SQLite cannot add a NOT NULL column without
+  one to a table that already has rows.</p>
+
+  <div class="note">
+    <p><strong>Two defaults chosen for the data that already exists, not for the ideal:</strong></p>
+    <ul>
+      <li><code>email_verified</code> defaults to <strong>1</strong>, not 0: accounts predating
+        email verification were created when the address was never checked, and flipping them to
+        unverified <em>would lock out every existing user at once</em>. New rows pass
+        <code>email_verified=0</code> explicitly.</li>
+      <li><code>generations.status</code> defaults to <code>'success'</code> because that is what
+        every existing row is — until failure recording existed, a generation was only written
+        after it had already succeeded.</li>
+    </ul>
+  </div>
+
+  <h2>Lifecycle management</h2>
+  <ul>
+    <li><code>_migrate</code> — adds columns to tables that already exist in deployed databases</li>
+    <li><code>prune</code> / <code>prune_sessions</code> — TTL expiry (<code>job_ttl_seconds</code>, default 24h)</li>
+    <li><code>vacuum</code> — reclaims file space, <em>"SQLite keeps pages otherwise"</em></li>
+    <li><code>sweep</code> — expire stale jobs and sessions, then reclaim</li>
+  </ul>
+
+  <h2>Notable method semantics</h2>
+  <table>
+    <tr><th style="width:44mm">Method</th><th>Why it's written the way it is</th></tr>
+    <tr><td><code>activity_totals</code></td><td>Lifetime counts, deliberately separate from the capped <code>list_*</code> methods — <em>"the headline number must not silently"</em> track a display cap</td></tr>
+    <tr><td><code>activity_feed</code></td><td>Every feature's activity as one timeline, newest first</td></tr>
+    <tr><td><code>activity_series</code></td><td>Per-day counts, zero-filled</td></tr>
+    <tr><td><code>platform_series</code></td><td>The all-tenant twin of <code>activity_series</code>, zero-filled the same way</td></tr>
+    <tr><td><code>_escape_like</code></td><td>Neutralises LIKE wildcards so a search term matches itself literally</td></tr>
+    <tr><td><code>try_consume</code></td><td>Atomic quota reservation</td></tr>
+    <tr><td><code>get_plan</code></td><td>Effective plan — lapsed paid reads as free with no background job</td></tr>
+    <tr><td><code>link_stripe_customer</code></td><td>Maps Stripe customer → user so renewals can be attributed</td></tr>
+    <tr><td><code>set_suspended</code></td><td>Reversible admin lock; keeps the audit trail queryable</td></tr>
+    <tr><td><code>delete_account</code></td><td>Erases a user and everything belonging to them. Irreversible.</td></tr>
+    <tr><td><code>recent_failures</code></td><td>Failed generations across all users — <em>"the admin's first stop when something is broken"</em></td></tr>
+  </table>
+</section>
+
+<!-- ════════════════════ 17 ════════════════════ -->
+<section class="page-break">
+  <h1>17 · Complete API Reference</h1>
+  <div class="filenote">45 routes. All under <code>main.py</code> (2,116 lines).</div>
+
+  <h2>System</h2>
+  <table>
+    <tr><th style="width:20mm">Method</th><th style="width:46mm">Path</th><th>Purpose</th></tr>
+    <tr><td>GET</td><td><code>/health</code></td><td>Liveness</td></tr>
+    <tr><td>GET</td><td><code>/metrics</code></td><td>Metrics</td></tr>
+    <tr><td>GET</td><td><code>/api/status</code></td><td>Provider health for the public status panel</td></tr>
+    <tr><td>GET</td><td><code>/api/logs</code></td><td>Recent router call log</td></tr>
+  </table>
+
+  <h2>Generation pipeline</h2>
+  <table>
+    <tr><th style="width:20mm">Method</th><th style="width:46mm">Path</th><th>Guards</th></tr>
+    <tr><td>POST</td><td><code>/api/analyze</code></td><td><code>analyze_limiter</code> · NDJSON</td></tr>
+    <tr><td>POST</td><td><code>/api/upload-zip</code></td><td><code>analyze_limiter</code> · NDJSON</td></tr>
+    <tr><td>POST</td><td><code>/api/generate/{job_id}</code></td><td><code>generate_limiter</code> · <code>require_quota</code> + ownership</td></tr>
+    <tr><td>GET</td><td><code>/api/stream/{job_id}</code></td><td><code>generate_limiter</code> · SSE</td></tr>
+  </table>
+
+  <h2>Authentication</h2>
+  <table>
+    <tr><th style="width:20mm">Method</th><th style="width:56mm">Path</th><th>Purpose</th></tr>
+    <tr><td>GET</td><td><code>/api/auth/config</code></td><td>Which auth methods this server offers</td></tr>
+    <tr><td>POST</td><td><code>/api/auth/signup</code></td><td>Register</td></tr>
+    <tr><td>POST</td><td><code>/api/auth/login</code></td><td>Password check → session or OTP challenge</td></tr>
+    <tr><td>POST</td><td><code>/api/auth/login/verify-otp</code></td><td>Complete OTP login</td></tr>
+    <tr><td>POST</td><td><code>/api/auth/verify-email</code></td><td>Redeem a verification link</td></tr>
+    <tr><td>POST</td><td><code>/api/auth/resend-verification</code></td><td><code>email_limiter</code></td></tr>
+    <tr><td>POST</td><td><code>/api/auth/forgot-password</code></td><td><code>email_limiter</code></td></tr>
+    <tr><td>POST</td><td><code>/api/auth/reset-password</code></td><td>Redeem a reset token</td></tr>
+    <tr><td>POST</td><td><code>/api/auth/change-password</code></td><td>Authenticated change</td></tr>
+    <tr><td>POST</td><td><code>/api/auth/logout</code></td><td>End this session</td></tr>
+    <tr><td>POST</td><td><code>/api/auth/logout-all</code></td><td>Revoke every session</td></tr>
+    <tr><td>GET</td><td><code>/api/auth/github/login</code> · <code>/callback</code></td><td>GitHub OAuth</td></tr>
+    <tr><td>GET</td><td><code>/api/auth/google/login</code> · <code>/callback</code></td><td><strong>Google OAuth</strong></td></tr>
+    <tr><td>GET</td><td><code>/api/auth/me</code></td><td>Current user</td></tr>
+  </table>
+
+  <h2>Account</h2>
+  <table>
+    <tr><th style="width:20mm">Method</th><th style="width:46mm">Path</th><th>Purpose</th></tr>
+    <tr><td>GET</td><td><code>/api/profile</code></td><td>Profile + lifetime activity</td></tr>
+    <tr><td>GET</td><td><code>/api/dashboard</code></td><td>Feed, series, published repos</td></tr>
+    <tr><td>GET / PUT</td><td><code>/api/settings</code></td><td>Form defaults</td></tr>
+    <tr><td>DELETE</td><td><code>/api/account</code></td><td>Irreversible erase</td></tr>
+  </table>
+
+  <h2>Admin</h2>
+  <table>
+    <tr><th style="width:20mm">Method</th><th>Path</th></tr>
+    <tr><td>GET</td><td><code>/api/admin/users</code> · <code>/api/admin/users/{id}</code></td></tr>
+    <tr><td>POST</td><td><code>/api/admin/users/{id}/suspend</code> · <code>/plan</code> · <code>/usage</code> · <code>/logout-all</code></td></tr>
+    <tr><td>DELETE</td><td><code>/api/admin/users/{id}</code></td></tr>
+    <tr><td>GET</td><td><code>/api/admin/overview</code> · <code>/api/admin/system</code></td></tr>
+  </table>
+
+  <h2>Billing</h2>
+  <table>
+    <tr><th style="width:20mm">Method</th><th style="width:46mm">Path</th><th>Note</th></tr>
+    <tr><td>GET</td><td><code>/api/billing/me</code></td><td>Plan + quota state</td></tr>
+    <tr><td>POST</td><td><code>/api/billing/checkout</code></td><td>Hosted Stripe Payment Link</td></tr>
+    <tr><td>POST</td><td><code>/api/billing/webhook</code></td><td><strong>The only path that grants entitlement.</strong> Signature-verified.</td></tr>
+  </table>
+
+  <h2>Publishing and scanning</h2>
+  <table>
+    <tr><th style="width:20mm">Method</th><th style="width:52mm">Path</th><th>Note</th></tr>
+    <tr><td>POST</td><td><code>/api/publish-zip</code></td><td>Create repo + push · NDJSON</td></tr>
+    <tr><td>GET</td><td><code>/api/repos</code></td><td>Repos published through Testra</td></tr>
+    <tr><td>DELETE</td><td><code>/api/repo/{owner}/{repo}</code></td><td>Gated by <code>was_published_by</code></td></tr>
+    <tr><td>POST</td><td><code>/api/scan</code></td><td>Passive security scan · NDJSON</td></tr>
+  </table>
+</section>
+
+<!-- ════════════════════ 18 ════════════════════ -->
+<section class="page-break">
+  <h1>18 · Frontend Architecture</h1>
+  <div class="filenote">React 18 · TypeScript · Vite · React Router · 61 files, ~9,000 lines</div>
+
+  <h2>Routes</h2>
+  <table>
+    <tr><th style="width:62mm">Path</th><th style="width:38mm">Page</th><th>Access</th></tr>
+    <tr><td><code>/</code></td><td>Home</td><td>Public</td></tr>
+    <tr><td><code>/how-it-works</code></td><td>HowItWorks</td><td>Public</td></tr>
+    <tr><td><code>/login</code> · <code>/signup</code></td><td>Login / Signup</td><td>Public</td></tr>
+    <tr><td><code>/auth/callback</code></td><td>AuthCallback</td><td>Public</td></tr>
+    <tr><td><code>/verify-email</code></td><td>VerifyEmail</td><td>Public</td></tr>
+    <tr><td><code>/forgot-password</code> · <code>/reset-password</code></td><td>ForgotPassword / ResetPassword</td><td>Public</td></tr>
+    <tr><td><code>/status</code></td><td>Status</td><td>Public</td></tr>
+    <tr><td><code>/dashboard</code></td><td>Dashboard</td><td>Protected</td></tr>
+    <tr><td><code>/generate</code></td><td>Generate</td><td>Protected</td></tr>
+    <tr><td><code>/publish</code></td><td>Publish</td><td>Protected</td></tr>
+    <tr><td><code>/scan</code></td><td>Scan</td><td>Protected</td></tr>
+    <tr><td><code>/settings</code> · <code>/profile</code></td><td>Settings / Profile</td><td>Protected</td></tr>
+    <tr><td><code>/admin</code> · <code>/admin/users</code> · <code>/admin/system</code></td><td>Admin console</td><td>Admin</td></tr>
+    <tr><td><code>*</code></td><td>NotFound</td><td>Public</td></tr>
+  </table>
+
+  <h2>State and access control</h2>
+  <ul>
+    <li><code>context/AuthContext.tsx</code> — the single source of session state</li>
+    <li><code>components/ProtectedRoute.tsx</code> — redirects unauthenticated users</li>
+    <li><code>components/ErrorBoundary.tsx</code> — catches render failures</li>
+    <li><code>nav.ts</code> — <code>NAV_ITEMS</code> (product) and <code>ADMIN_NAV_ITEMS</code> (console), defined once</li>
+  </ul>
+
+  <div class="note">
+    <p><strong>One nav list, defined once.</strong> The sidebar renders <code>NAV_ITEMS</code> on
+    every signed-in page, so NavBar no longer carries its own copy — <em>"two lists that had to be
+    kept in step was exactly how /profile ended up reachable from one menu and not the other."</em></p>
+  </div>
+
+  <div class="note">
+    <p><strong>Client-side gating is cosmetic by design.</strong> <code>user.is_admin</code>
+    decides only whether the nav item renders. Every admin route re-derives the role server-side.
+    The frontend check is UX; the server check is security.</p>
+  </div>
+
+  <h2>Component groups <span class="hnote">(29 components)</span></h2>
+  <table>
+    <tr><th style="width:32mm">Group</th><th>Components</th></tr>
+    <tr><td>Generation flow</td><td>GenerateInput, ConfigureStep, PreviewStep, ResultsStep, StepIndicator, StreamingOutput, CodeViewer</td></tr>
+    <tr><td>Progress &amp; trust</td><td><strong>FlowPipeline</strong>, <strong>TrustPanel</strong></td></tr>
+    <tr><td>Dashboard</td><td>DashboardLayout, ActivityChart, CountUp, <strong>QuotaBar</strong></td></tr>
+    <tr><td>Admin</td><td>AdminLayout, AdminLogin, AdminOverview, AdminUsers (775 lines), AdminSystem</td></tr>
+    <tr><td>Auth</td><td>AuthForm, ProtectedRoute</td></tr>
+    <tr><td>Features</td><td>PublishPanel, ScanPanel, ProviderStatus, UpgradeModal</td></tr>
+    <tr><td>Presentation</td><td>Hero3D, AuroraBackground, TiltCard, ScrollProgress, Page, PageHeader, Footer, NavBar, ErrorBoundary</td></tr>
+  </table>
+
+  <h2>Utilities</h2>
+  <ul>
+    <li><code>utils/api.ts</code> (842 lines) — the entire typed API client, including NDJSON stream parsing and <code>raiseApiError</code></li>
+    <li><code>types/index.ts</code> (339 lines) — shared types mirroring the backend schemas</li>
+    <li><code>flows.ts</code> (272 lines) — the step-id contract with <code>services/progress.py</code></li>
+    <li><code>utils/format.ts</code>, <code>utils/download.ts</code>, <code>utils/chartPalette.ts</code>, <code>lib/celebrate.ts</code></li>
+  </ul>
+
+  <h2>Build output</h2>
+  <p><code>npm run build</code> runs <code>tsc &amp;&amp; vite build</code>. Current output:</p>
+  <table>
+    <tr><th style="width:56mm">Asset</th><th style="width:30mm">Raw</th><th>Gzipped</th></tr>
+    <tr><td><code>index.js</code></td><td>666.87 kB</td><td>198.30 kB</td></tr>
+    <tr><td><code>Hero3D.js</code></td><td>828.27 kB</td><td>223.70 kB</td></tr>
+    <tr><td><code>index.css</code></td><td>39.75 kB</td><td>8.14 kB</td></tr>
+  </table>
+  <p>2,577 modules transformed. Both JS chunks exceed Vite's 500 kB warning threshold — the 3D hero
+  is the dominant cost and remains a code-splitting candidate (§23).</p>
+</section>
+
+<!-- ════════════════════ 19 ════════════════════ -->
+<section class="page-break">
+  <h1>19 · Configuration Reference</h1>
+  <div class="filenote">config.py — 191 lines, typed via <code>pydantic-settings</code>. Read from the environment and <code>backend/.env</code> in one place, rather than scattered <code>os.getenv</code> calls. 38 settings.</div>
+
+  <h2>Application</h2>
+  <table>
+    <tr><th style="width:62mm">Setting</th><th>Default</th></tr>
+    <tr><td><code>app_env</code></td><td><code>development</code></td></tr>
+    <tr><td><code>log_level</code></td><td><code>INFO</code></td></tr>
+    <tr><td><code>cors_origins</code></td><td><code>*</code></td></tr>
+    <tr><td><code>frontend_url</code></td><td><code>http://localhost:5173</code></td></tr>
+    <tr><td><code>backend_url</code></td><td><code>http://localhost:8000</code></td></tr>
+  </table>
+
+  <h2>Sessions and OAuth</h2>
+  <table>
+    <tr><th style="width:62mm">Setting</th><th>Default</th></tr>
+    <tr><td><code>github_client_id</code> / <code>github_client_secret</code></td><td>empty</td></tr>
+    <tr><td><code>google_client_id</code> / <code>google_client_secret</code></td><td>empty</td></tr>
+    <tr><td><code>oauth_session_ttl_seconds</code></td><td>28,800 (8h)</td></tr>
+    <tr><td><code>session_secret</code></td><td>empty — <strong>tokens stored unencrypted if unset</strong> (local dev only)</td></tr>
+  </table>
+
+  <h2>Email</h2>
+  <table>
+    <tr><th style="width:62mm">Setting</th><th>Default</th></tr>
+    <tr><td><code>smtp_host</code> / <code>smtp_user</code> / <code>smtp_password</code> / <code>smtp_from</code></td><td>empty</td></tr>
+    <tr><td><code>smtp_port</code></td><td>587</td></tr>
+    <tr><td><code>smtp_from_name</code></td><td><code>Testra</code></td></tr>
+    <tr><td><code>smtp_starttls</code> / <code>smtp_ssl</code></td><td>true / false</td></tr>
+    <tr><td><code>smtp_timeout</code></td><td>15</td></tr>
+    <tr><td><code>require_email_verification</code></td><td>true</td></tr>
+    <tr><td><code>login_otp_enabled</code></td><td>true</td></tr>
+    <tr><td><code>email_verify_ttl_seconds</code></td><td>86,400 (24h)</td></tr>
+    <tr><td><code>password_reset_ttl_seconds</code></td><td>3,600 (1h)</td></tr>
+    <tr><td><code>login_otp_ttl_seconds</code></td><td>600 (10m)</td></tr>
+    <tr><td><code>login_otp_max_attempts</code></td><td>5</td></tr>
+  </table>
+
+  <h2>Limits and pipeline</h2>
+  <table>
+    <tr><th style="width:62mm">Setting</th><th>Default</th></tr>
+    <tr><td><code>max_repo_size_mb</code></td><td>100</td></tr>
+    <tr><td><code>max_files_per_repo</code></td><td>2,000</td></tr>
+    <tr><td><code>token_budget</code></td><td><strong>600,000</strong> — see §23</td></tr>
+    <tr><td><code>job_ttl_seconds</code></td><td>86,400 (24h)</td></tr>
+  </table>
+
+  <h2>Plans, billing, admin</h2>
+  <table>
+    <tr><th style="width:62mm">Setting</th><th>Default</th></tr>
+    <tr><td><code>free_generations_per_month</code></td><td>5</td></tr>
+    <tr><td><code>pro_price_monthly_usd</code> / <code>_yearly_usd</code></td><td>20 / 100</td></tr>
+    <tr><td><code>billing_checkout_url_monthly</code> / <code>_yearly</code></td><td>empty</td></tr>
+    <tr><td><code>billing_webhook_secret</code></td><td>empty</td></tr>
+    <tr><td><code>billing_contact_email</code></td><td>empty</td></tr>
+    <tr><td><code>admin_emails</code></td><td>empty — the entire admin grant</td></tr>
+  </table>
+
+  <h2>Derived properties</h2>
+  <p><code>is_production</code>, <code>cors_origin_list</code>, <code>admin_email_list</code>,
+  <code>is_admin_email</code>, <code>admin_enabled</code>, <code>github_oauth_enabled</code>,
+  <code>google_oauth_enabled</code>, <code>smtp_configured</code>, <code>mail_from_address</code>,
+  <code>email_enabled</code>, <code>billing_enabled</code>, <code>oauth_callback_url</code>.
+  Admin emails are compared lowercased, because that is how <code>users.email</code> is stored.</p>
+
+  <p class="filenote">API keys (<code>GEMINI_API_KEY_1..10</code> etc.) are read directly from the
+  environment by <code>llm_router</code>, not through <code>Settings</code> — they are variable in
+  count.</p>
+</section>
+
+<!-- ════════════════════ 20 ════════════════════ -->
+<section class="page-break">
+  <h1>20 · Testing and CI</h1>
+
+  <h2>Suite</h2>
+  <p><strong>650 tests across 22 files.</strong></p>
+  <table>
+    <tr><th style="width:52mm">File</th><th style="width:18mm">Lines</th><th>Covers</th></tr>
+    <tr><td><code>test_security_scanner.py</code></td><td>658</td><td>Checks, scoring caps, SSRF guards</td></tr>
+    <tr><td><code>test_scaffold.py</code></td><td>497</td><td>Manifests, framework config, CI, suite directory</td></tr>
+    <tr><td><code>test_admin.py</code></td><td>442</td><td>Admin grant, verification requirement, 404-not-403</td></tr>
+    <tr><td><code>test_file_extractor.py</code></td><td>434</td><td>Filtering, scoring, framework detection</td></tr>
+    <tr><td><code>test_billing.py</code></td><td>378</td><td>Stripe webhook verification, grant extraction, renewals</td></tr>
+    <tr><td><code>test_progress.py</code></td><td>344</td><td>NDJSON framing, pre-flight vs in-band errors, step ids</td></tr>
+    <tr><td><code>test_verification.py</code></td><td>339</td><td>Tokens, OTP, expiry, attempt caps</td></tr>
+    <tr><td><code>test_store.py</code></td><td>332</td><td>Persistence, migrations, pruning</td></tr>
+    <tr><td><code>test_llm_router.py</code></td><td>330</td><td>Failover, rotation, cooldown, tiers, provenance</td></tr>
+    <tr><td><code>test_quota.py</code></td><td>192</td><td>Leases, refunds, period rollover</td></tr>
+    <tr><td><code>test_grounding.py</code></td><td>157</td><td>Source and DOM anchor extraction, membership</td></tr>
+    <tr><td><code>test_google_oauth.py</code></td><td>139</td><td>Authorize URL, code exchange, userinfo</td></tr>
+    <tr><td><code>test_git_publisher.py</code></td><td>137</td><td>Blob→tree→commit→ref flow</td></tr>
+    <tr><td><code>test_fragility.py</code></td><td>136</td><td>Feature weights, scoring, grade boundaries</td></tr>
+    <tr><td><code>test_filter_agent.py</code></td><td>132</td><td>Agent 1 behaviour</td></tr>
+    <tr><td><code>test_importance_model.py</code></td><td>120</td><td>Fit, predict, safe fallback with no artifact</td></tr>
+    <tr><td><code>test_writer_agent.py</code></td><td>113</td><td>Selector extraction/validation, JSON parsing</td></tr>
+    <tr><td><code>test_validator.py</code></td><td>111</td><td>Syntax checks, verified-vs-unchecked accounting</td></tr>
+    <tr><td><code>test_benchmark.py</code></td><td>98</td><td>Rates, denominators, leaderboard</td></tr>
+    <tr><td><code>test_auth.py</code></td><td>90</td><td>Hashing, validation, token extraction</td></tr>
+    <tr><td><code>test_github_service.py</code></td><td>69</td><td>URL parsing edge cases</td></tr>
+    <tr><td><code>test_ratelimit.py</code></td><td>24</td><td>Sliding window</td></tr>
+  </table>
+  <p class="filenote">5,272 lines of tests. The admin and verification tests import
+  <code>services.admin</code> / <code>services.verification</code> directly rather than through
+  <code>main.py</code>, so they exercise the modules without standing up the app.</p>
+
+  <h2>CI <span class="hnote">(.github/workflows/ci.yml)</span></h2>
+  <table>
+    <tr><th style="width:30mm">Job</th><th>Runs</th></tr>
+    <tr><td>Backend</td><td>Matrix Python 3.11 / 3.12 / 3.13 · <code>ruff check .</code> · <code>pytest tests/ -v --cov=. --cov-report=term-missing</code></td></tr>
+    <tr><td>Frontend</td><td>Node 20 · <code>npm run build</code> (tsc + vite)</td></tr>
+    <tr><td>Deploy</td><td>master only, after both jobs pass, pushes only — see §21</td></tr>
+  </table>
+  <p>Triggers: push to <code>master</code> / <code>main</code> / <code>develop</code>; PRs to
+  <code>master</code> / <code>main</code>. Default permissions are
+  <code>contents: read</code> — the deploy job widens them for itself, and only for the OIDC
+  token it needs.</p>
+</section>
+
+<!-- ════════════════════ 21 ════════════════════ -->
+<section class="page-break">
+  <h1>21 · Deployment <span class="badge badge-new">NEW</span></h1>
+  <div class="filenote">deploy/ · .github/workflows/ci.yml · docs/DEPLOY.md</div>
+
+  <p>The target is a <strong>single EC2 instance</strong> running Docker Compose behind Caddy,
+  rolled forward by GitHub Actions over SSM. There is no Kubernetes, no load balancer, and no
+  container orchestrator — the same "no infrastructure to provision" principle as §2.</p>
+
+  <h2>The rollout</h2>
+  <ol>
+    <li><strong>Assume the deploy role via OIDC</strong> — <em>the pipeline holds no long-lived AWS
+      keys at all.</em> <code>id-token: write</code> is granted only to this job.</li>
+    <li><strong>Build and push two images to ECR</strong> — backend and web, each tagged with the
+      commit SHA.</li>
+    <li><strong>Roll the instance</strong> via <code>aws ssm send-command</code>: checkout the SHA,
+      log in to ECR, <code>docker compose pull</code> + <code>up -d --remove-orphans</code>, then
+      <code>docker image prune -f</code>.</li>
+    <li><strong>Verify the site actually answers</strong> — poll <code>/health</code> for a 200.</li>
+  </ol>
+
+  <div class="note">
+    <p><strong>Decisions recorded in the workflow, each with its failure mode:</strong></p>
+    <ul>
+      <li><strong>Never <code>:latest</code>.</strong> Images are tagged with the SHA — <em>"a box
+        restarting must come back on the exact build it was on."</em></li>
+      <li><strong>Never on <code>pull_request</code>.</strong> <em>"A fork's PR must not be able to
+        reach AWS."</em></li>
+      <li><strong>Concurrency group, <code>cancel-in-progress: false</code>.</strong> Two deploys
+        racing would leave the box on whichever finished last. Queue them; never cancel one
+        mid-roll.</li>
+      <li><strong>Secrets are not passed from CI.</strong> The app reads them from
+        <code>/var/data/testra.env</code>, which only the box can see.</li>
+      <li><strong>Not <code>aws ssm wait</code>.</strong> Its 100s ceiling is shorter than an image
+        pull, so the workflow polls <code>get-command-invocation</code> itself.</li>
+      <li><strong>Image pruning.</strong> Old layers accumulate until the volume fills, and
+        <em>SQLite on a full disk fails writes.</em></li>
+      <li><strong><code>VITE_API_URL</code> is a build input, not a runtime one.</strong> Vite
+        inlines it into the bundle — <em>"wrong value here ships a broken frontend."</em></li>
+    </ul>
+  </div>
+
+  <div class="warn">
+    <p><strong>A green SSM command only means the containers started.</strong> The health-check step
+    is what notices the app came up broken. There is <strong>no automatic rollback</strong>: on
+    failure the workflow says so explicitly and tells you to redeploy the previous good SHA from
+    the Actions tab.</p>
+  </div>
+
+  <p>The instance itself is provisioned by <code>deploy/aws-setup.sh</code> and
+  <code>deploy/bootstrap.sh</code>; the runtime topology is
+  <code>deploy/docker-compose.prod.yml</code>. Caddy terminates TLS and proxies to uvicorn —
+  which is why the backend runs with <code>--proxy-headers</code> (§10). The OIDC trust policy is
+  pinned to the repository's current name.</p>
+</section>
+
+<!-- ════════════════════ 22 ════════════════════ -->
+<section class="page-break">
+  <h1>22 · Known Limitations</h1>
+  <p class="filenote">From <code>docs/LIMITATIONS.md</code> — the project's own model card.
+  Reproduced because it is load-bearing for anyone trusting the output.</p>
+
+  <div class="warn">
+    <p><strong>What "validated" means — and doesn't.</strong> The green <em>"passed a syntax
+    check"</em> badge means each generated file <strong>parses</strong>. It does <strong>not</strong>
+    mean the tests were executed, or that assertions pass. Selector <em>resolution</em> is a
+    separate and stronger claim, made only where §6's grounding says so — and even a fully grounded
+    suite has never been run. Always run the suite against your app before trusting it in CI.</p>
+  </div>
+
+  <table>
+    <tr><th style="width:34mm">Limitation</th><th>Detail</th></tr>
+    <tr><td>Selector hallucination</td><td>Extraction is regex-based today. It can miss dynamic classes (<code>className={styles.x}</code>) and CSS-in-JS — so both false positives and false negatives are possible. Grounding narrows this but does not close it.</td></tr>
+    <tr><td>No execution</td><td>Nothing runs the generated suite. Grounding proves selectors resolve; it cannot prove a flow passes.</td></tr>
+    <tr><td>Large repos</td><td>May exceed the model's context window. Low-priority files are summarized rather than sent verbatim, which reduces selector accuracy.</td></tr>
+    <tr><td>Output size</td><td>Extremely large suites can hit provider output-token limits. Narrow the scope and regenerate.</td></tr>
+    <tr><td>Free-tier variance</td><td>Quality and latency depend on whichever provider is available. Results can vary run to run — the provenance report says which model answered.</td></tr>
+    <tr><td>Importance model</td><td>Ships untrained. Until an artifact exists it is a no-op and the frozen heuristics apply.</td></tr>
+  </table>
+
+  <h2>Data handling</h2>
+  <ul>
+    <li>Repo contents are held only for a job's lifetime (SQLite, pruned after 24h) and sent to the selected LLM provider</li>
+    <li>Linked GitHub tokens are encrypted at rest <strong>when <code>SESSION_SECRET</code> is set</strong></li>
+    <li>The scanner is passive and refuses internal targets, including on redirect hops — and DOM grounding inherits that guard</li>
+  </ul>
+
+  <h2>Operational limits not in the model card</h2>
+  <ul>
+    <li><strong>Rate limiting is per-worker.</strong> In-memory windows mean N workers permit
+      roughly N× the intended rate. <code>ratelimit.py</code> flags Redis as the production fix.
+      (Separately, the limiters only see real client IPs because of the proxy-header configuration
+      in §10.)</li>
+    <li><strong>Admin changes need a restart</strong> — an accepted trade, not a bug (§12).</li>
+    <li><strong>No automatic rollback</strong> on a failed deploy (§21).</li>
+  </ul>
+
+  <h2>Stated roadmap</h2>
+  <ul>
+    <li>Execute generated suites in a sandbox and report real pass/fail</li>
+    <li>AST-based selector extraction (roles, accessible names, visible text)</li>
+    <li>Retrieval + per-provider context budgeting for large repos (see §23.1)</li>
+    <li>Re-fit the fragility weights and importance model on real outcomes</li>
+  </ul>
+</section>
+
+<!-- ════════════════════ 23 ════════════════════ -->
+<section class="page-break">
+  <h1>23 · Open Findings <span class="badge badge-open">UNRESOLVED</span></h1>
+  <p class="filenote">Identified during review of the generation pipeline. These are not in the
+  project's own docs. Estimates are from code reading, not measurement. Line references verified
+  against the current tree.</p>
+
+  <h2>23.1 — The token budget exceeds two of three providers' context windows</h2>
+  <p><strong>Severity: high.</strong> This is a correctness issue, not an optimization.</p>
+  <p><code>token_budget</code> defaults to <strong>600,000</strong>
+  (<code>config.py:89</code>, <code>file_extractor.py:351</code>). The router's fallback chain is:</p>
+  <table>
+    <tr><th style="width:56mm">Provider</th><th style="width:30mm">Context</th><th>Fits 600k?</th></tr>
+    <tr><td>Gemini 2.0 Flash</td><td>~1M</td><td>Yes</td></tr>
+    <tr><td>Groq llama-3.3-70b</td><td>128k</td><td><strong>No</strong></td></tr>
+    <tr><td>Claude Haiku 4.5 / Opus 4.8</td><td>200k</td><td><strong>No</strong></td></tr>
+  </table>
+  <p>Each <code>ModelSpec</code> caps output via <code>max_output_tokens</code>. <strong>There is no
+  equivalent input guard anywhere.</strong> The budget was sized for Gemini — the source comment at
+  <code>llm_router.py:213</code> still says so (<em># 1M context swallows big repos</em>) — but
+  nothing prevents that same oversized prompt reaching a fallback that cannot hold it.</p>
+  <p><strong>Consequence:</strong> on a repo near the budget, Gemini succeeds and both fallbacks
+  fail on context length. The rotation that exists specifically to survive rate limits cannot fall
+  back. Worse, <code>main.py</code> catches the resulting <code>AllProvidersExhausted</code> and
+  reports it as <em>"our shared API keys are dry"</em> — an outage message for what is actually a
+  prompt-length problem.</p>
+  <p><strong>Now compounded by tiers:</strong> a Pro request tries Claude <em>first</em>. On a large
+  repo the paying user hits the 200k wall before the 1M-context provider is ever attempted, so the
+  upgrade makes large-repo failures <em>more</em> likely, not less.</p>
+  <p><strong>Compounding:</strong> the estimator is <code>len(content) // 4</code>, which
+  undercounts code — so true token counts run <em>above</em> the budget's own accounting.</p>
+  <p><strong>Suggested fix:</strong> a per-provider input budget alongside
+  <code>max_output_tokens</code>, and a distinct error for "prompt too large for every remaining
+  provider" so it stops being misreported as an outage.</p>
+
+  <h2>23.2 — The full repo source is re-sent once per generated file</h2>
+  <p><strong>Severity: high (cost/latency).</strong></p>
+  <p><code>writer_agent.py:921</code> embeds
+  <code>json.dumps(filter_result.files, indent=2)</code> — the entire extracted source — into every
+  single-file prompt. That prompt is built inside the <code>for spec in plan:</code> loop
+  (<code>writer_agent.py:800</code>), and <code>_plan_files</code> returns up to 12 files
+  (<code>writer_agent.py:872</code>). The full source is therefore sent <strong>up to 12 times per
+  generation</strong>, byte-identical each time.</p>
+  <p><strong>Suggested fix:</strong> have <code>_plan_files</code> return the source paths each
+  planned file actually depends on, and send only those. A page object for <code>LoginPage</code>
+  does not need every component in the repo. Estimated 5–8× reduction in input tokens, on every
+  provider — and it brings prompts back inside the fallback context windows in 23.1.</p>
+
+  <h2>23.3 — Prompt ordering makes caching impossible</h2>
+  <p><strong>Severity: medium (cost only).</strong></p>
+  <p>Prompt caching is a prefix match. In <code>_generate_one_file</code>
+  (<code>writer_agent.py:877</code>), the only content that varies across the 12 calls is
+  <code>spec['filename']</code> and its description — and it sits at the <strong>top</strong> of the
+  prompt (<code>## FILE TO WRITE</code>, <code>writer_agent.py:897</code>). Everything after it is
+  identical. Because the one volatile field is at position zero, there is no reusable prefix at all.</p>
+  <p><strong>Suggested fix:</strong> move that block to the end, then add a
+  <code>cache_control: {type: "ephemeral"}</code> breakpoint. No <code>cache_control</code> is set
+  anywhere in the codebase today. The source block clears the minimum cacheable prefix easily.</p>
+  <div class="note">
+    <p><strong>Caching reduces cost, not tokens.</strong> The same tokens are still sent and
+    counted — only the price of the repeated prefix changes. 23.2 is the provider-agnostic fix;
+    this one compounds with it. Note that under the Pro tier Claude is now <em>first</em> in
+    rotation, so a cache would pay off far more often than it would have before.</p>
+  </div>
+
+  <h2>23.4 — Minor</h2>
+  <ul>
+    <li><strong>Redundant payload.</strong> <code>_extract_available_selectors</code>
+      (<code>writer_agent.py:1009</code>) already distills selectors from the source, yet the prompt
+      sends <em>both</em> the distilled list and the full raw source.</li>
+    <li><strong>Wasted whitespace.</strong> <code>indent=2</code> on the embedded JSON blobs
+      (<code>writer_agent.py:901, 907, 921</code>) adds pure formatting tokens the model gains
+      nothing from.</li>
+    <li><strong>Docstring/behaviour drift — filter agent.</strong>
+      <code>filter_agent._build_file_tree_summary</code> claims to show structure "without sending
+      all file contents", but <code>any(hp in path for hp in ["pages/", "router"])</code>
+      (<code>filter_agent.py:263</code>) matches <em>every</em> file under <code>pages/</code>, each
+      contributing an 800-char preview. Bounded per file, unbounded in file count.</li>
+    <li><strong>Docstring/behaviour drift — router.</strong> The <code>llm_router.py</code> module
+      header still describes a fixed Gemini → Groq → Claude order and claims <em>"All providers are
+      FREE tier — no credit card required."</em> Both predate the tier system (§8) and are wrong for
+      Pro, which leads with Opus.</li>
+    <li><strong>Bundle size.</strong> The <code>Hero3D</code> chunk is 828.27 kB (223.70 kB gzipped)
+      and the main chunk has grown to 666.87 kB (198.30 kB); both trip Vite's 500 kB warning.</li>
+  </ul>
+</section>
+
+<!-- ════════════════════ 24 ════════════════════ -->
+<section class="page-break">
+  <h1>24 · Appendix — File Inventory</h1>
+
+  <h2>Backend <span class="hnote">— 32 files, ~12,000 lines (excluding tests)</span></h2>
+  <table>
+    <tr><th style="width:56mm">File</th><th style="width:18mm">Lines</th><th>Role</th></tr>
+    <tr><td><code>main.py</code></td><td>2116</td><td>FastAPI app, 45 routes</td></tr>
+    <tr><td><code>services/store.py</code></td><td>1157</td><td>SQLite persistence, 8 tables</td></tr>
+    <tr><td><code>agents/writer_agent.py</code></td><td>1113</td><td>Agent 2 + self-heal loop</td></tr>
+    <tr><td><code>services/llm_router.py</code></td><td>948</td><td>Tiered provider rotation</td></tr>
+    <tr><td><code>agents/scaffold.py</code></td><td>933</td><td>Runnable suite skeleton</td></tr>
+    <tr><td><code>services/security_scanner.py</code></td><td>926</td><td>Passive scan + SSRF guard</td></tr>
+    <tr><td><code>services/file_extractor.py</code></td><td>658</td><td>Deterministic pre-filter</td></tr>
+    <tr><td><code>models/schemas.py</code></td><td>418</td><td>Pydantic request/response models</td></tr>
+    <tr><td><code>services/grounding.py</code></td><td>349</td><td>Source + DOM selector verification</td></tr>
+    <tr><td><code>services/billing.py</code></td><td>293</td><td>Stripe plans, entitlement</td></tr>
+    <tr><td><code>agents/filter_agent.py</code></td><td>269</td><td>Agent 1</td></tr>
+    <tr><td><code>services/git_publisher.py</code></td><td>265</td><td>Git Data API push</td></tr>
+    <tr><td><code>services/fragility.py</code></td><td>262</td><td>Break-risk scoring</td></tr>
+    <tr><td><code>services/verification.py</code></td><td>253</td><td>One-time secrets</td></tr>
+    <tr><td><code>services/github_service.py</code></td><td>230</td><td>Repo fetching</td></tr>
+    <tr><td><code>services/importance_model.py</code></td><td>226</td><td>Learned file scorer</td></tr>
+    <tr><td><code>services/auth.py</code></td><td>208</td><td>Sessions, hashing, dependency</td></tr>
+    <tr><td><code>services/benchmark.py</code></td><td>198</td><td>Quality harness</td></tr>
+    <tr><td><code>services/progress.py</code></td><td>191</td><td>NDJSON step progress</td></tr>
+    <tr><td><code>config.py</code></td><td>191</td><td>Typed settings</td></tr>
+    <tr><td><code>services/quota.py</code></td><td>184</td><td>Per-user metering</td></tr>
+    <tr><td><code>services/validator.py</code></td><td>162</td><td>Syntax checks</td></tr>
+    <tr><td><code>services/mailer.py</code></td><td>112</td><td>SMTP transport</td></tr>
+    <tr><td><code>services/google_oauth.py</code></td><td>108</td><td>Google OIDC handshake</td></tr>
+    <tr><td><code>services/github_oauth.py</code></td><td>93</td><td>GitHub OAuth handshake</td></tr>
+    <tr><td><code>ratelimit.py</code></td><td>57</td><td>Sliding windows</td></tr>
+    <tr><td><code>services/admin.py</code></td><td>57</td><td>The admin role</td></tr>
+    <tr><td><code>logging_config.py</code></td><td>37</td><td>JSON logs + request IDs</td></tr>
+    <tr><td><code>tests/*</code></td><td>5272</td><td>22 files, 650 tests</td></tr>
+  </table>
+
+  <h2>Frontend <span class="hnote">— 61 files, ~9,000 lines</span></h2>
+  <table>
+    <tr><th style="width:62mm">File</th><th>Lines</th></tr>
+    <tr><td><code>utils/api.ts</code></td><td>842</td></tr>
+    <tr><td><code>pages/AdminUsers.tsx</code></td><td>775</td></tr>
+    <tr><td><code>pages/Settings.tsx</code></td><td>464</td></tr>
+    <tr><td><code>pages/Profile.tsx</code></td><td>388</td></tr>
+    <tr><td><code>types/index.ts</code></td><td>339</td></tr>
+    <tr><td><code>pages/Dashboard.tsx</code></td><td>293</td></tr>
+    <tr><td><code>components/AuthForm.tsx</code></td><td>282</td></tr>
+    <tr><td><code>flows.ts</code></td><td>272</td></tr>
+    <tr><td><code>pages/AdminOverview.tsx</code> · <code>AdminSystem.tsx</code></td><td>271 · 270</td></tr>
+    <tr><td><code>components/TrustPanel.tsx</code></td><td>266</td></tr>
+    <tr><td><code>components/PublishPanel.tsx</code></td><td>235</td></tr>
+    <tr><td><code>pages/AdminLogin.tsx</code> · <code>components/ResultsStep.tsx</code></td><td>234 · 234</td></tr>
+    <tr><td><code>pages/HowItWorks.tsx</code></td><td>217</td></tr>
+    <tr><td><code>components/ScanPanel.tsx</code> · <code>ActivityChart.tsx</code></td><td>214 · 214</td></tr>
+    <tr><td><code>components/ConfigureStep.tsx</code></td><td>206</td></tr>
+    <tr><td><code>components/UpgradeModal.tsx</code></td><td>205</td></tr>
+    <tr><td><code>components/FlowPipeline.tsx</code></td><td>195</td></tr>
+    <tr><td>Remaining 41 files</td><td>&lt;165 each</td></tr>
+  </table>
+
+  <h2>Repository layout</h2>
+<pre>testgen-ai/
+├── backend/
+│   ├── agents/          filter_agent · writer_agent · scaffold
+│   ├── models/          schemas
+│   ├── services/        20 modules
+│   ├── tests/           22 files, 650 tests
+│   ├── main.py · config.py · ratelimit.py · logging_config.py
+│   ├── Dockerfile       (uvicorn --proxy-headers)
+│   └── requirements.txt · .env.example
+├── frontend/
+│   ├── src/  components/ · pages/ · context/ · utils/ · lib/ · types/
+│   ├── Dockerfile.prod · Caddyfile
+├── deploy/              aws-setup.sh · bootstrap.sh · docker-compose.prod.yml
+├── docs/                ARCHITECTURE.md · DEPLOY.md · LIMITATIONS.md
+│                        Testra-Complete-Reference.html/.pdf
+├── .github/workflows/   ci.yml  (backend · frontend · deploy)
+├── docker-compose.yml
+└── README.md</pre>
+
+  <p class="filenote" style="margin-top:8mm">
+    Regenerate this document with <code>docs/build-reference.sh</code>, which renders
+    <code>Testra-Complete-Reference.html</code> to PDF via headless Chrome.
+  </p>
+</section>
+
+</body>
+</html>
