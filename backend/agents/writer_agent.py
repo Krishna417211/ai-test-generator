@@ -249,11 +249,25 @@ class WriterAgent:
         # private URL degrades to source-only grounding rather than failing the
         # whole generation. Nothing is ever executed; we only read the HTML.
         dom_index = None
+        dom_note = None
         if live_url:
             try:
                 html = await grounding_svc.fetch_dom(live_url)
-                dom_index = grounding_svc.build_dom_index(html)
-                logger.info(f"DOM grounding: indexed {len(dom_index.anchors)} anchors from {live_url}")
+                candidate = grounding_svc.build_dom_index(html)
+                # We fetch static HTML and never execute it, so a client-rendered
+                # app hands back a near-empty shell. Verifying against that proves
+                # nothing the source doesn't and would let the report claim a live
+                # -DOM check that never really happened — so decline it and say why
+                # rather than ground against a blank page.
+                if grounding_svc.dom_index_is_useful(candidate):
+                    dom_index = candidate
+                    logger.info(f"DOM grounding: indexed {len(candidate.anchors)} anchors from {live_url}")
+                else:
+                    dom_note = grounding_svc.describe_thin_dom(html)
+                    logger.info(
+                        f"DOM grounding skipped for {live_url}: only "
+                        f"{len(candidate.anchors)} anchors — using source only"
+                    )
             except Exception as e:
                 logger.warning(f"DOM grounding unavailable for {live_url}: {e} — using source only")
 
@@ -361,6 +375,10 @@ class WriterAgent:
         ground_report = grounding_svc.ground_suite(
             generated_files, filter_result.files, dom_index=dom_index
         )
+        # A live URL was supplied but its DOM was declined (client-rendered shell
+        # / too little markup): carry the reason so the TrustPanel can be honest
+        # about verifying against source rather than the live DOM.
+        ground_report.dom_note = dom_note
         fragility_report = fragility_svc.analyze(generated_files)
 
         grounding = Grounding(
