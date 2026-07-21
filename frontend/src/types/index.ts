@@ -116,6 +116,9 @@ export interface SelectorGrounding {
   rate: number | null;
   /** ["source"] or ["source","dom"] — was the live DOM checked too? */
   checked_against: string[];
+  /** Set when a live URL was given but its DOM was declined (a client-rendered
+   *  shell / too little markup): the honest reason grounding fell back to source. */
+  dom_note?: string | null;
   items: GroundedSelector[];
 }
 

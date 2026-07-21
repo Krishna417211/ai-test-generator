@@ -110,6 +110,49 @@ def test_getbytext_checkable_against_dom():
     assert g.verified is True
 
 
+# ── declining an unusable (client-rendered) DOM ──────────────────────────────
+
+SPA_SHELL = '<html><body><div id="root"></div><script src="/assets/app.js"></script></body></html>'
+NEXT_SHELL = '<html><body><div id="__next"></div><script src="/_next/x.js"></script></body></html>'
+THIN_PLAIN = '<html><body><p>maintenance</p></body></html>'
+
+
+def test_spa_shell_dom_is_not_useful():
+    dom = build_dom_index(SPA_SHELL)
+    assert grounding.dom_index_is_useful(dom) is False
+
+
+def test_rendered_dom_is_useful():
+    # the rich DOM fixture above clears the anchor threshold
+    assert grounding.dom_index_is_useful(build_dom_index(DOM)) is True
+
+
+def test_thin_dom_describes_spa_when_mount_present():
+    for shell in (SPA_SHELL, NEXT_SHELL):
+        msg = grounding.describe_thin_dom(shell)
+        assert "client-rendered" in msg and "source" in msg
+
+
+def test_thin_dom_describes_generic_when_no_mount():
+    msg = grounding.describe_thin_dom(THIN_PLAIN)
+    assert "too little markup" in msg and "client-rendered" not in msg
+
+
+def test_thin_dom_rendered_says_it_ran_the_page():
+    # When a browser DID run the page and it's still sparse, the message must not
+    # claim we skipped executing it — that would be false.
+    msg = grounding.describe_thin_dom(SPA_SHELL, rendered=True)
+    assert "headless browser" in msg
+    assert "without executing" not in msg
+
+
+def test_report_carries_dom_note_in_dict():
+    report = grounding.GroundingReport(checked_against=["source"])
+    report.dom_note = grounding.describe_thin_dom(SPA_SHELL)
+    d = report.as_dict()
+    assert d["dom_note"] and d["checked_against"] == ["source"]
+
+
 # ── selector parsing ─────────────────────────────────────────────────────────
 
 def test_parse_anchors_covers_kinds():

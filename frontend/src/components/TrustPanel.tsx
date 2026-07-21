@@ -139,6 +139,22 @@ function DomBadge({ sg }: { sg: SelectorGrounding }) {
   );
 }
 
+/** Shown when a live URL was supplied but its DOM couldn't be used (a
+ *  client-rendered SPA shell / too little markup). Better to say we fell back to
+ *  source than to imply a live-DOM check that never really happened. */
+function DomNote({ sg }: { sg: SelectorGrounding }) {
+  if (!sg.dom_note) return null;
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-xs text-grey-400 flex items-center gap-1.5">
+        <Globe size={11} className="text-grey-500" />
+        Live DOM not used
+      </span>
+      <span className="text-[11px] text-grey-500 text-right max-w-[65%]">{sg.dom_note}</span>
+    </div>
+  );
+}
+
 /** A few verified selectors, each pointing at the source line it came from —
  *  the "this isn't guessed" proof. Capped so it stays a sample, not a dump. */
 function Provenances({ sg }: { sg: SelectorGrounding }) {
@@ -224,6 +240,7 @@ export default function TrustPanel({
             </div>
           )}
           {selectorGrounding && <DomBadge sg={selectorGrounding} />}
+          {selectorGrounding && <DomNote sg={selectorGrounding} />}
           {selectorGrounding && <Provenances sg={selectorGrounding} />}
         </div>
       )}

@@ -22,6 +22,8 @@ scope gate blocks third-party sites the user plainly does not own.
 """
 
 import re
+import ssl
+import time
 import socket
 import asyncio
 import logging
@@ -228,6 +230,154 @@ SECURITY_HEADERS = {
         "Permissions-Policy header tutorial",
     ),
 }
+
+
+# ── Header *strength*, not just presence ──
+#
+# A header can be present and protect nothing. Grading only "is it there?" scores
+# these two common silent failures as safe:
+#
+#   Strict-Transport-Security: max-age=0     -> actively DISABLES HSTS
+#   Content-Security-Policy: ... 'unsafe-inline'  -> whitelists the exact thing a
+#                                                    CSP exists to block (inline XSS)
+#
+# Both are false negatives that make the grade lie in the dangerous direction, so
+# a present-but-weak value gets its own finding. The validators are deliberately
+# conservative — they only fire on values that are unambiguously ineffective, so
+# a present header is never called weak on a judgement call.
+
+# 180 days. Short of this, HSTS gives little protection (a user who hasn't visited
+# in that window is unprotected) and it is well under the 1-year floor that
+# browsers require for the preload list. max-age=0 is called out separately
+# because it is not merely short — it tells the browser to forget HSTS entirely.
+_HSTS_MIN_MAX_AGE = 15_552_000
+
+
+def _hsts_weakness(value: str) -> Optional[tuple[str, str]]:
+    """(title, description) if a *present* HSTS header is ineffective, else None."""
+    m = re.search(r"max-age\s*=\s*(\d+)", value, re.I)
+    if not m:
+        return (
+            "HSTS header has no max-age",
+            "Strict-Transport-Security is present but sets no max-age, so browsers "
+            "cannot honour it — it protects nobody.",
+        )
+    age = int(m.group(1))
+    if age == 0:
+        return (
+            "HSTS is disabled (max-age=0)",
+            "max-age=0 tells browsers to stop enforcing HTTPS for this site — an "
+            "explicit opt-out that leaves visitors open to SSL-stripping.",
+        )
+    if age < _HSTS_MIN_MAX_AGE:
+        days = age // 86_400
+        return (
+            "HSTS max-age is too short",
+            f"max-age is {days} day{'s' if days != 1 else ''}; under ~180 days a "
+            "returning visitor falls out of protection, and it is below the 1-year "
+            "minimum required for HSTS preload.",
+        )
+    return None
+
+
+def _csp_weakness(value: str) -> Optional[tuple[str, str]]:
+    """(title, description) if a *present* CSP leaves scripts effectively open.
+
+    Only judges script execution — the property a CSP is bought for. It parses
+    the effective script source list (script-src, falling back to default-src)
+    and reports it weak only when that list still permits arbitrary script:
+    'unsafe-inline' with no nonce/hash to gate it, 'unsafe-eval', or a wildcard/
+    scheme source. 'strict-dynamic' is treated as safe because browsers then
+    ignore host/scheme sources and bare 'unsafe-inline' anyway — flagging it would
+    be a false positive against the strongest modern policy.
+    """
+    directives: dict[str, list[str]] = {}
+    for part in value.split(";"):
+        toks = part.split()
+        if toks:
+            directives[toks[0].lower()] = [t.lower() for t in toks[1:]]
+
+    script = directives.get("script-src")
+    if script is None:
+        script = directives.get("default-src")
+    if script is None:
+        # No script-src and no default-src fallback: scripts are unrestricted by
+        # this policy. That is exactly the "no CSP protection for scripts" case.
+        return (
+            "CSP does not restrict scripts",
+            "The policy sets neither script-src nor a default-src fallback, so it "
+            "places no restriction on where scripts may load from or run.",
+        )
+
+    if "'strict-dynamic'" in script:
+        return None  # nonces/hashes propagate; host and unsafe-inline are ignored
+
+    has_nonce_or_hash = any(
+        s.startswith("'nonce-") or s.startswith("'sha256-")
+        or s.startswith("'sha384-") or s.startswith("'sha512-")
+        for s in script
+    )
+    problems: list[str] = []
+    if "'unsafe-inline'" in script and not has_nonce_or_hash:
+        problems.append("'unsafe-inline'")
+    if "'unsafe-eval'" in script:
+        problems.append("'unsafe-eval'")
+    if any(s == "*" or s in ("http:", "https:", "data:") for s in script):
+        problems.append("a wildcard/scheme source (*, https:, data:)")
+    if problems:
+        return (
+            "CSP allows unsafe script sources",
+            "The effective script-src permits " + ", ".join(problems) + ", which "
+            "lets injected scripts run — the CSP does not stop the XSS it is meant to.",
+        )
+    return None
+
+
+# ── TLS certificate ──
+#
+# The `tls` category used to mean only "is the URL https?" — it never looked at
+# the certificate, so a site with a cert expiring tomorrow, or one negotiating a
+# dead protocol, graded clean. httpx with verify=True already rejects an outright
+# invalid chain (the scan would fail to connect), so the *new* signal here is the
+# valid-but-about-to-break cert: the outage you can still prevent.
+_CERT_EXPIRY_WARN_DAYS = 15
+_WEAK_TLS_PROTOCOLS = {"SSLv2", "SSLv3", "TLSv1", "TLSv1.1"}
+
+
+def _evaluate_tls(not_after_epoch: float, protocol: str, now_epoch: float) -> list["Finding"]:
+    """Findings implied by a cert's expiry and the negotiated protocol. Pure."""
+    out: list[Finding] = []
+    remaining = not_after_epoch - now_epoch
+    if remaining <= 0:
+        out.append(Finding(
+            "high", "tls", "TLS certificate has expired",
+            "The certificate is past its expiry date; browsers show a full-page "
+            "security warning and refuse the connection.",
+            "Renew the certificate now and automate renewal (e.g. certbot / your "
+            "host's managed TLS) so it can't lapse again.",
+            evidence=f"notAfter epoch {int(not_after_epoch)}",
+            video_url=_youtube("renew expired TLS SSL certificate automate certbot"),
+        ))
+    elif remaining < _CERT_EXPIRY_WARN_DAYS * 86_400:
+        days = int(remaining // 86_400)
+        out.append(Finding(
+            "low", "tls", "TLS certificate expires very soon",
+            f"The certificate expires in {days} day{'s' if days != 1 else ''}. If "
+            "renewal is manual it is at risk of lapsing into a hard browser error.",
+            "Renew now and set up automatic renewal so expiry can't cause an outage.",
+            evidence=f"~{days} days remaining",
+            video_url=_youtube("automate TLS certificate renewal before expiry"),
+        ))
+    if protocol in _WEAK_TLS_PROTOCOLS:
+        out.append(Finding(
+            "medium", "tls", f"Outdated TLS protocol negotiated ({protocol})",
+            f"The connection negotiated {protocol}, which is deprecated and has "
+            "known weaknesses. Modern clients expect TLS 1.2 or 1.3.",
+            "Disable TLS 1.1 and below at the server/CDN; serve only TLS 1.2+.",
+            evidence=f"Negotiated: {protocol}",
+            video_url=_youtube("disable TLS 1.0 1.1 enable TLS 1.2 1.3 server"),
+        ))
+    return out
 
 
 # ── Scope gate: sites the user evidently does not own ──
@@ -588,6 +738,10 @@ class SecurityScanner:
             body = resp.text[: self.max_body_bytes]
 
             checks += self._check_transport(target, resp, findings)
+            if final_url.lower().startswith("https://"):
+                host = urlparse(final_url).hostname
+                if host:
+                    checks += await self._check_certificate(host, findings)
             checks += self._check_security_headers(final_url, h, findings)
             checks += self._check_cookies(resp, final_url, findings)
             checks += self._check_disclosure(h, findings)
@@ -607,13 +761,42 @@ class SecurityScanner:
 
     # ── individual checks ────────────────────
 
+    async def _fetch_tls_info(self, host: str, port: int = 443) -> Optional[tuple[float, str]]:
+        """(cert notAfter epoch, negotiated protocol) for host:port, or None.
+
+        Its own short TLS handshake — independent of the httpx client — so it can
+        read the peer certificate and protocol version httpx hides. Any failure
+        (timeout, connection error, no cert) returns None: verify=True on the main
+        request already proved the chain is valid, so a missing handshake here just
+        means "nothing extra to add", never a finding on its own. Monkeypatched in
+        tests to keep the scan hermetic.
+        """
+        def handshake():
+            ctx = ssl.create_default_context()
+            with socket.create_connection((host, port), timeout=self.timeout) as sock:
+                with ctx.wrap_socket(sock, server_hostname=host) as tls:
+                    return tls.getpeercert(), tls.version()
+        try:
+            cert, protocol = await asyncio.to_thread(handshake)
+        except Exception:
+            return None
+        if not cert or "notAfter" not in cert:
+            return None
+        try:
+            not_after = float(ssl.cert_time_to_seconds(cert["notAfter"]))
+        except Exception:
+            return None
+        return not_after, (protocol or "")
+
+    async def _check_certificate(self, host: str, findings) -> int:
+        """Certificate expiry + negotiated protocol. Two aspects examined."""
+        info = await self._fetch_tls_info(host)
+        if info:
+            findings.extend(_evaluate_tls(info[0], info[1], time.time()))
+        return 2
+
     def _check_transport(self, target, resp, findings) -> int:
         is_https = str(resp.url).lower().startswith("https://")
-        # Did an http:// request get upgraded to https via redirect?
-        started_http = target.lower().startswith("http://")
-        redirected_to_https = any(
-            str(r.url).lower().startswith("https://") for r in resp.history
-        )
         if not is_https:
             findings.append(Finding(
                 "high", "tls", "Site served over plain HTTP",
@@ -624,14 +807,27 @@ class SecurityScanner:
                 evidence=f"Final URL: {resp.url}",
                 video_url=_youtube("how to enable HTTPS TLS certificate website free"),
             ))
-        elif started_http and not redirected_to_https:
-            findings.append(Finding(
-                "medium", "tls", "HTTP does not redirect to HTTPS",
-                "The site is available over HTTP without forcing an upgrade to HTTPS.",
-                "Add a 301 redirect from http:// to https:// at the edge/server.",
-                video_url=_youtube("redirect http to https 301 tutorial"),
-            ))
-        return 2
+        # There is deliberately no "HTTP does not redirect to HTTPS" finding here.
+        # It cannot be asserted truthfully from this single request, and as it was
+        # written it fired *only* as a false positive:
+        #
+        #   • This branch is reached only when the final URL is https (the block
+        #     above returns otherwise). So if the user's target began http:// and
+        #     we are here, the site provably DID redirect http -> https — the good
+        #     outcome, which must not be flagged.
+        #   • The old code tried to confirm that by scanning resp.history for an
+        #     https hop. But httpx records the *pre*-redirect URL in history: a
+        #     clean http->https upgrade leaves history = [301 @ http://host], with
+        #     no https entry to find. So the check saw "no https redirect" for
+        #     exactly the sites that redirect correctly, and told every one of them
+        #     "HTTP does not redirect to HTTPS".
+        #
+        # Truthfully detecting "http is reachable without a forced upgrade" needs a
+        # second, dedicated request to the http:// origin (the scan request can't
+        # answer it). That is a real check worth adding, but as an honest probe —
+        # not by misreading the redirect history of a request that already ended on
+        # https.
+        return 1
 
     def _check_security_headers(self, final_url, h, findings) -> int:
         is_https = final_url.lower().startswith("https://")
@@ -653,7 +849,34 @@ class SecurityScanner:
                 findings.append(Finding(
                     sev, "headers", title, desc, fix, video_url=_youtube(video_q),
                 ))
-        return len(SECURITY_HEADERS)
+
+        # Present-but-weak: a header that is set but ineffective is a false
+        # negative if we only checked presence. See _hsts_weakness / _csp_weakness.
+        hsts = h.get("strict-transport-security", "")
+        if is_https and hsts:
+            weak = _hsts_weakness(hsts)
+            if weak:
+                findings.append(Finding(
+                    "medium", "headers", weak[0], weak[1],
+                    "Set Strict-Transport-Security: max-age=63072000; "
+                    "includeSubDomains; preload",
+                    evidence=f"Strict-Transport-Security: {hsts}",
+                    video_url=_youtube("HSTS strict transport security max-age preload"),
+                ))
+        csp = h.get("content-security-policy", "")
+        if csp:
+            weak = _csp_weakness(csp)
+            if weak:
+                findings.append(Finding(
+                    "high", "headers", weak[0], weak[1],
+                    "Remove 'unsafe-inline'/'unsafe-eval' and wildcard script "
+                    "sources; use nonces or hashes (or 'strict-dynamic') for "
+                    "inline scripts.",
+                    evidence=f"Content-Security-Policy: {csp[:200]}",
+                    video_url=_youtube("content security policy unsafe-inline nonce strict-dynamic fix"),
+                ))
+        # Two value-strength checks always considered, on top of the presence set.
+        return len(SECURITY_HEADERS) + 2
 
     def _check_cookies(self, resp, final_url, findings) -> int:
         """Cookie flags, reported per *problem* rather than per cookie.

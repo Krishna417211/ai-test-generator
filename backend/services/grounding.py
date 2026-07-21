@@ -188,6 +188,61 @@ def build_dom_index(html: str) -> GroundIndex:
     return GroundIndex(source="dom", anchors=parser.anchors)
 
 
+# ── is the fetched DOM actually usable? ───────────────────────────────────────
+#
+# We fetch *static* HTML and never execute it (see fetch_dom). For a
+# client-rendered app — React, Vue, Angular, Next, Nuxt, Svelte — the served
+# body is a single mount element plus <script> tags; the real DOM only exists
+# after JavaScript runs, so build_dom_index sees almost nothing. Grounding a
+# suite against that empty shell would not verify the selectors the browser will
+# actually see, and — worse — would let the report claim it "checked against the
+# live DOM" when the DOM it checked was blank. Below the threshold we decline the
+# DOM and say why, rather than pretend a check happened.
+MIN_USEFUL_DOM_ANCHORS = 8
+
+_SPA_MOUNT_RE = re.compile(
+    r"""<(?:div|main)\b[^>]*\bid=["'](?:root|app|__next|__nuxt|q-app|svelte|application)["']""",
+    re.IGNORECASE,
+)
+
+
+def dom_index_is_useful(dom_index: GroundIndex) -> bool:
+    """Whether a fetched DOM carries enough anchors to verify a suite against.
+
+    A handful of anchors is the signature of a client-rendered shell (or a page
+    that returned an error/placeholder), against which DOM grounding can prove
+    nothing it couldn't from source alone.
+    """
+    return len(dom_index.anchors) >= MIN_USEFUL_DOM_ANCHORS
+
+
+def describe_thin_dom(html: str, *, rendered: bool = False) -> str:
+    """An honest, user-facing reason DOM grounding was skipped for a live URL.
+
+    `rendered` says whether a headless browser actually ran the page. It changes
+    what is true: a rendered page that still exposes almost nothing is genuinely
+    sparse, whereas a static shell is only sparse because we couldn't run its JS.
+    The message must not claim we didn't execute the page when we did.
+    """
+    if rendered:
+        return (
+            "Even after running the page in a headless browser, the live URL exposed "
+            "too few elements to verify against (an empty or heavily gated page). "
+            "Selectors were verified against your source instead of the live DOM."
+        )
+    if _SPA_MOUNT_RE.search(html or ""):
+        return (
+            "The live URL looks client-rendered (a single-page-app shell): it served "
+            "almost no markup until its JavaScript runs, and we read the page without "
+            "executing it. Selectors were verified against your source instead of the "
+            "live DOM."
+        )
+    return (
+        "The live URL returned too little markup to verify against, so selectors were "
+        "verified against your source instead of the live DOM."
+    )
+
+
 async def fetch_dom(url: str, *, timeout: float = 12.0) -> str:
     """Fetch a page's HTML through the scanner's SSRF-guarded, non-executing path.
 
@@ -265,6 +320,10 @@ class GroundingReport:
     verified: int = 0
     checked_against: list = field(default_factory=list)   # ["source"] or ["source","dom"]
     items: list = field(default_factory=list)             # [SelectorGrounding]
+    # Set when a live_url was given but its DOM was declined (a client-rendered
+    # shell / too little markup). Explains why checked_against is source-only
+    # despite a URL being supplied, so the UI doesn't have to infer it.
+    dom_note: Optional[str] = None
 
     @property
     def rate(self) -> Optional[float]:
@@ -283,6 +342,7 @@ class GroundingReport:
             "verified": self.verified,
             "rate": self.rate,
             "checked_against": self.checked_against,
+            "dom_note": self.dom_note,
             "items": [i.as_dict() for i in self.items],
         }
 

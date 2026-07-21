@@ -6,6 +6,7 @@ guard passes for the fake public hosts under test.
 """
 
 import asyncio
+import time
 
 import httpx
 import pytest
@@ -14,7 +15,7 @@ from services import security_scanner
 from services.security_scanner import (
     SecurityScanner, ScanError, OutOfScopeError, UnscannableResponseError,
     validate_target, _looks_sensitive, _redirect_guard, _assert_in_scope,
-    _brand_label,
+    _brand_label, _evaluate_tls,
 )
 
 
@@ -138,6 +139,12 @@ def _install(monkeypatch, handler):
         security_scanner.socket, "getaddrinfo",
         lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))],
     )
+    # TLS inspection opens its own real socket; stub it to a healthy cert so scan
+    # tests stay hermetic and deterministic. Cases that need a bad cert call
+    # _evaluate_tls directly (see TestTlsCertificate).
+    async def _fake_tls(self, host, port=443):
+        return (time.time() + 400 * 86_400, "TLSv1.3")
+    monkeypatch.setattr(security_scanner.SecurityScanner, "_fetch_tls_info", _fake_tls)
 
 
 SECURE_HEADERS = {
@@ -242,6 +249,141 @@ def _cookies(monkeypatch, cookies, url="https://x.example"):
         return httpx.Response(404)
     _install(monkeypatch, handler)
     return asyncio.run(SecurityScanner().scan(url))
+
+
+class TestTransportFalsePositive:
+    def test_http_that_upgrades_to_https_is_not_flagged(self, monkeypatch):
+        """A site that 301s http -> https is doing the right thing and must get
+        no transport finding. The old check read resp.history for an https hop,
+        but httpx stores the *pre*-redirect (http) URL there, so it flagged every
+        site that redirects correctly with 'HTTP does not redirect to HTTPS'."""
+        def handler(req):
+            if req.url.scheme == "http" and req.url.path == "/":
+                return httpx.Response(301, headers={"location": "https://x.example/"})
+            if req.url.path == "/":
+                return httpx.Response(200, headers=SECURE_HEADERS, text="<html>ok</html>")
+            return httpx.Response(404)
+        _install(monkeypatch, handler)
+        r = asyncio.run(SecurityScanner().scan("http://x.example"))
+        assert not any("HTTP" in t for t in _titles(r)), _titles(r)
+        assert r.final_url.startswith("https://")
+
+    def test_plain_http_site_still_flagged(self, monkeypatch):
+        """The real problem — http that stays http — must still be caught."""
+        r = _page(monkeypatch, url="http://plain.example")
+        assert any("Site served over plain HTTP" in t for t in _titles(r))
+
+
+class TestTlsCertificate:
+    """The tls category now inspects the certificate, not just the URL scheme."""
+    NOW = 1_700_000_000.0
+
+    def _titles(self, findings):
+        return [f.title for f in findings]
+
+    def test_expired_cert_flagged_high(self):
+        f = _evaluate_tls(self.NOW - 86_400, "TLSv1.3", self.NOW)
+        assert any("expired" in t for t in self._titles(f))
+        assert f[0].severity == "high"
+
+    def test_expiring_soon_flagged_low(self):
+        f = _evaluate_tls(self.NOW + 3 * 86_400, "TLSv1.3", self.NOW)
+        assert any("expires very soon" in t for t in self._titles(f))
+        assert all(x.severity == "low" for x in f)
+
+    def test_healthy_cert_no_finding(self):
+        assert _evaluate_tls(self.NOW + 200 * 86_400, "TLSv1.3", self.NOW) == []
+
+    def test_healthy_cert_tls12_no_finding(self):
+        assert _evaluate_tls(self.NOW + 200 * 86_400, "TLSv1.2", self.NOW) == []
+
+    def test_weak_protocol_flagged(self):
+        f = _evaluate_tls(self.NOW + 200 * 86_400, "TLSv1", self.NOW)
+        assert any("Outdated TLS protocol" in t for t in self._titles(f))
+
+    def test_expired_and_weak_both_reported(self):
+        f = _evaluate_tls(self.NOW - 86_400, "TLSv1.1", self.NOW)
+        titles = self._titles(f)
+        assert any("expired" in t for t in titles)
+        assert any("Outdated" in t for t in titles)
+
+    def test_http_scan_skips_cert_check(self, monkeypatch):
+        # Over http there's no cert to inspect; _fetch_tls_info must not even be
+        # consulted. Install a counting spy AFTER _install so it isn't clobbered.
+        def handler(req):
+            return httpx.Response(200, text="<html>ok</html>") if req.url.path == "/" \
+                else httpx.Response(404)
+        _install(monkeypatch, handler)
+        called = {"n": 0}
+        async def spy(self, host, port=443):
+            called["n"] += 1
+            return (time.time() + 400 * 86_400, "TLSv1.3")
+        monkeypatch.setattr(security_scanner.SecurityScanner, "_fetch_tls_info", spy)
+        asyncio.run(SecurityScanner().scan("http://plain.example"))
+        assert called["n"] == 0
+
+
+class TestHeaderStrength:
+    """A header can be present and protect nothing. These pin the value-strength
+    checks: present-but-weak must be caught (false negative), and a strong value
+    must never be flagged (false positive)."""
+
+    # ── HSTS ──
+    def test_hsts_max_age_zero_is_flagged(self, monkeypatch):
+        r = _page(monkeypatch, headers={"strict-transport-security": "max-age=0"})
+        assert any("HSTS is disabled" in t for t in _titles(r))
+
+    def test_hsts_too_short_is_flagged(self, monkeypatch):
+        r = _page(monkeypatch, headers={"strict-transport-security": "max-age=3600"})
+        assert any("HSTS max-age is too short" in t for t in _titles(r))
+
+    def test_hsts_no_max_age_is_flagged(self, monkeypatch):
+        r = _page(monkeypatch, headers={"strict-transport-security": "includeSubDomains"})
+        assert any("no max-age" in t for t in _titles(r))
+
+    def test_strong_hsts_not_flagged(self, monkeypatch):
+        r = _page(monkeypatch, headers={
+            "strict-transport-security": "max-age=63072000; includeSubDomains; preload"})
+        assert not any("HSTS" in t and "not set" not in t for t in _titles(r))
+
+    def test_hsts_only_judged_on_https(self, monkeypatch):
+        # Over http, HSTS is meaningless — no weak-HSTS finding, and no "not set".
+        r = _page(monkeypatch, headers={"strict-transport-security": "max-age=0"},
+                  url="http://plain.example")
+        assert not any("HSTS" in t for t in _titles(r))
+
+    # ── CSP ──
+    def test_csp_unsafe_inline_is_flagged(self, monkeypatch):
+        r = _page(monkeypatch, headers={
+            "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'"})
+        assert any("unsafe script sources" in t for t in _titles(r))
+
+    def test_csp_wildcard_script_is_flagged(self, monkeypatch):
+        r = _page(monkeypatch, headers={
+            "content-security-policy": "script-src *"})
+        assert any("unsafe script sources" in t for t in _titles(r))
+
+    def test_csp_unsafe_inline_with_nonce_not_flagged(self, monkeypatch):
+        # A nonce makes browsers ignore 'unsafe-inline' — flagging it is a false positive.
+        r = _page(monkeypatch, headers={
+            "content-security-policy": "script-src 'self' 'nonce-abc123' 'unsafe-inline'"})
+        assert not any("unsafe script sources" in t for t in _titles(r))
+
+    def test_csp_strict_dynamic_not_flagged(self, monkeypatch):
+        r = _page(monkeypatch, headers={
+            "content-security-policy": "script-src 'strict-dynamic' 'unsafe-inline' https:"})
+        assert not any("unsafe script sources" in t for t in _titles(r))
+
+    def test_strong_csp_not_flagged(self, monkeypatch):
+        r = _page(monkeypatch, headers={
+            "content-security-policy": "default-src 'self'; script-src 'self'; object-src 'none'"})
+        assert not any("unsafe script sources" in t for t in _titles(r))
+
+    def test_csp_script_src_falls_back_to_default_src(self, monkeypatch):
+        # No script-src, but default-src is unsafe -> scripts are unrestricted.
+        r = _page(monkeypatch, headers={
+            "content-security-policy": "default-src 'self' 'unsafe-inline'"})
+        assert any("unsafe script sources" in t for t in _titles(r))
 
 
 class TestClickjackingFalsePositive:
@@ -406,7 +548,16 @@ class TestScoring:
         of how many they actually ran."""
         r = _page(monkeypatch, headers=SECURE_HEADERS)
         from services.security_scanner import SENSITIVE_PATHS, SECURITY_HEADERS
-        expected = 2 + len(SECURITY_HEADERS) + 3 + len(SENSITIVE_PATHS) + 4 + 1 + 2
+        # transport is one honest check now (is the final page https), not two —
+        # see _check_transport: the old "does http redirect" sub-check could not be
+        # answered from this request and was removed.
+        # transport 1 + certificate 2 (expiry, protocol) + headers
+        # (presence + 2 value-strength checks) + cookies 3 + exposed files
+        # + disclosure 4 + cors 1 + content 2.
+        expected = (
+            1 + 2 + (len(SECURITY_HEADERS) + 2) + 3
+            + len(SENSITIVE_PATHS) + 4 + 1 + 2
+        )
         assert r.checks_run == expected
 
 
@@ -579,6 +730,9 @@ class TestUserAgent:
             security_scanner.socket, "getaddrinfo",
             lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))],
         )
+        async def _fake_tls(self, host, port=443):
+            return (time.time() + 400 * 86_400, "TLSv1.3")
+        monkeypatch.setattr(security_scanner.SecurityScanner, "_fetch_tls_info", _fake_tls)
         asyncio.run(SecurityScanner().scan("https://x.example"))
         assert seen["ua"] == security_scanner.USER_AGENT
 

@@ -22,6 +22,7 @@ from services.llm_router import router, Tier
 from services.validator import validate_files
 from services import grounding as grounding_svc
 from services import fragility as fragility_svc
+from services import renderer as renderer_svc
 
 logger = logging.getLogger(__name__)
 
@@ -249,11 +250,34 @@ class WriterAgent:
         # private URL degrades to source-only grounding rather than failing the
         # whole generation. Nothing is ever executed; we only read the HTML.
         dom_index = None
+        dom_note = None
         if live_url:
             try:
-                html = await grounding_svc.fetch_dom(live_url)
-                dom_index = grounding_svc.build_dom_index(html)
-                logger.info(f"DOM grounding: indexed {len(dom_index.anchors)} anchors from {live_url}")
+                # Render the page in a headless browser when one is available, so a
+                # client-rendered app is grounded against the DOM the browser
+                # actually builds rather than its empty shell. Falls back to a
+                # static fetch (mode="static") on any deploy without a browser.
+                html, render_mode = await renderer_svc.render_html(live_url)
+                candidate = grounding_svc.build_dom_index(html)
+                # A rendered page with almost no anchors is a genuinely sparse page;
+                # a *static* shell is just JS we couldn't run. Either way, grounding
+                # against near-nothing proves nothing the source doesn't and would
+                # let the report claim a live-DOM check that never really happened —
+                # so decline it and say why, honestly reflecting which case it was.
+                if grounding_svc.dom_index_is_useful(candidate):
+                    dom_index = candidate
+                    logger.info(
+                        f"DOM grounding ({render_mode}): indexed "
+                        f"{len(candidate.anchors)} anchors from {live_url}"
+                    )
+                else:
+                    dom_note = grounding_svc.describe_thin_dom(
+                        html, rendered=(render_mode == "rendered")
+                    )
+                    logger.info(
+                        f"DOM grounding skipped for {live_url} ({render_mode}): only "
+                        f"{len(candidate.anchors)} anchors — using source only"
+                    )
             except Exception as e:
                 logger.warning(f"DOM grounding unavailable for {live_url}: {e} — using source only")
 
@@ -361,6 +385,10 @@ class WriterAgent:
         ground_report = grounding_svc.ground_suite(
             generated_files, filter_result.files, dom_index=dom_index
         )
+        # A live URL was supplied but its DOM was declined (client-rendered shell
+        # / too little markup): carry the reason so the TrustPanel can be honest
+        # about verifying against source rather than the live DOM.
+        ground_report.dom_note = dom_note
         fragility_report = fragility_svc.analyze(generated_files)
 
         grounding = Grounding(
