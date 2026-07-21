@@ -28,17 +28,19 @@ services:
       # every deploy; /data is not. If this ever pointed back inside the
       # container, every account and paid plan would vanish on the next release.
       TESTGEN_DB: /data/testgen.db
-      # Active vulnerability scanning talks to the ZAP sidecar below over the
-      # internal compose network — never exposed to the internet. ZAP_API_KEY and
-      # ZAP_ALLOW_ACTIVE come from /var/data/testra.env; with ZAP_ALLOW_ACTIVE
-      # unset the feature stays off even though the daemon is reachable.
-      ZAP_ADDRESS: http://zap:8090
+      # Active vulnerability scanning talks to the ZAP sidecar over the internal
+      # compose network. The sidecar is opt-in (compose profile "zap", below) and
+      # is NOT started by default, so this address simply won't resolve until the
+      # profile is enabled — the backend then reports active scanning unavailable
+      # and falls back to the passive audit. Nothing here can block a deploy.
+      ZAP_ADDRESS: ${ZAP_ADDRESS:-}
 
     volumes:
       - /var/data/db:/data
 
-    depends_on:
-      - zap
+    # Deliberately NOT depends_on: zap — the daemon is optional and profile-gated,
+    # and the API must never wait on (or be blocked by) a feature that may not be
+    # running. It degrades to passive scanning on its own when ZAP is absent.
 
     # No ports: — the API is only reachable through Caddy, so the instance never
     # exposes an unencrypted 8000 to the internet.
@@ -77,16 +79,25 @@ services:
 
   # OWASP ZAP daemon — the engine behind active vulnerability scanning. Only the
   # backend talks to it (no ports: — never reachable from the internet), and it
-  # only ever runs a scan when a request is both authorized and enabled server-
-  # side. The API key must match ZAP_API_KEY in /var/data/testra.env.
+  # only ever runs a scan when a request is both authorized and enabled server-side.
+  #
+  # OPT-IN. It sits behind the "zap" compose profile, so a normal
+  #   docker compose -f docker-compose.prod.yml up -d
+  # does NOT start it (and cannot be broken by it). To enable active scanning:
+  #   1. add ZAP_API_KEY=<random> and ZAP_ALLOW_ACTIVE=true to /var/data/testra.env
+  #   2. add ZAP_ADDRESS=http://zap:8090 there too (so the backend finds it)
+  #   3. deploy/run with the profile:  ... up -d --profile zap
+  # The :- default below is only so file interpolation never fails when the key
+  # is unset; the daemon isn't running in that case anyway.
   zap:
     image: ghcr.io/zaproxy/zaproxy:stable
     restart: unless-stopped
+    profiles: ["zap"]
     env_file:
       - /var/data/testra.env
     command: >
       zap.sh -daemon -host 0.0.0.0 -port 8090
-      -config api.key=${ZAP_API_KEY:?ZAP_API_KEY must be set in testra.env}
+      -config api.key=${ZAP_API_KEY:-unset}
       -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
     expose:
       - "8090"
