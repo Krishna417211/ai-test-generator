@@ -99,30 +99,45 @@ def get_quota(user_id: str) -> QuotaState:
     )
 
 
-def _payment_required(state: QuotaState) -> HTTPException:
-    """The 402 that drives the upgrade modal.
+def quota_exceeded_detail(state: QuotaState) -> dict:
+    """The structured 402 payload the client turns into the upgrade modal.
 
-    `detail` is a structured object rather than a string so the client can
-    render prices and reset dates without parsing prose.
+    A dict rather than prose so the client can render prices and reset dates
+    without parsing text. Shared by the /api/generate 402 (below) and the
+    /api/stream in-band error, so both paths speak exactly the same shape.
     """
-    return HTTPException(
-        status_code=402,
-        detail={
-            "reason": "quota_exceeded",
-            "message": (
-                f"You've used all {state.limit} free generations this month. "
-                f"Upgrade to Pro for unlimited runs, or wait for your quota to reset."
-            ),
-            "plan": state.plan,
-            "used": state.used,
-            "limit": state.limit,
-            "resets_at": state.resets_at,
-            "pricing": {
-                "monthly_usd": settings.pro_price_monthly_usd,
-                "yearly_usd": settings.pro_price_yearly_usd,
-            },
+    return {
+        "reason": "quota_exceeded",
+        "message": (
+            f"You've used all {state.limit} free generations this month. "
+            f"Upgrade to Pro for unlimited runs, or wait for your quota to reset."
+        ),
+        "plan": state.plan,
+        "used": state.used,
+        "limit": state.limit,
+        "resets_at": state.resets_at,
+        "pricing": {
+            "monthly_usd": settings.pro_price_monthly_usd,
+            "yearly_usd": settings.pro_price_yearly_usd,
         },
-    )
+    }
+
+
+def has_quota_remaining(user_id: str) -> tuple[bool, QuotaState]:
+    """Read-only check: does this user have at least one generation left?
+
+    Consumes nothing. Used to refuse the expensive LLM stream up front for an
+    exhausted user, so the cap applies to the work — not just to the credit that
+    /api/generate charges after the work has already run.
+    """
+    state = get_quota(user_id)
+    ok = state.limit is None or state.remaining is None or state.remaining > 0
+    return ok, state
+
+
+def _payment_required(state: QuotaState) -> HTTPException:
+    """The 402 that drives the upgrade modal."""
+    return HTTPException(status_code=402, detail=quota_exceeded_detail(state))
 
 
 class QuotaLease:

@@ -107,7 +107,10 @@ export default function Generate() {
             else setError(err.message);
           }
         },
-        (err) => { setStep("configure"); setError(err); }
+        (err) => { setStep("configure"); setError(err); },
+        // Out of quota, refused before the LLM even runs → same upgrade modal
+        // the /api/generate 402 shows, instead of a generic stream error.
+        (quotaErr) => { setStep("configure"); setQuotaHit(quotaErr); }
       );
     }, [jobId]);
 

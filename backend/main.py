@@ -55,7 +55,10 @@ from services import verification
 from services.auth import require_user
 from services.admin import require_admin
 from services.mailer import EmailNotConfigured, EmailDeliveryError
-from services.quota import require_quota, get_quota, current_period, tier_for_user
+from services.quota import (
+    require_quota, get_quota, current_period, tier_for_user,
+    has_quota_remaining, quota_exceeded_detail,
+)
 from services.llm_router import (
     router as llm_router, AllProvidersExhausted, start_provenance, provenance_report, Tier,
 )
@@ -106,11 +109,19 @@ async def lifespan(app: FastAPI):
         task.cancel()
 
 
+# The interactive docs and the OpenAPI schema enumerate every route — including
+# the admin and billing surface — so they are served only outside production.
+# In prod these URLs simply don't exist (404); locally and on staging they stay
+# on for convenience.
+_docs_enabled = not settings.is_production
 app = FastAPI(
     lifespan=lifespan,
     title="Testra",
     description="Paste a GitHub URL, get production-ready E2E tests in seconds.",
     version="1.0.0",
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
 )
 
 _cors_origins = settings.cors_origin_list
@@ -2045,8 +2056,24 @@ async def stream_generation(
     filter_result = session["filter_result"]
     agent = WriterAgent()
 
+    # Quota is the cap on generations, but the expensive work is the LLM run that
+    # happens *here* in the stream — /api/generate only charges the credit
+    # afterwards (reusing this stream's cached output). Without this check an
+    # exhausted user could stream unlimited real LLM runs and simply never
+    # finalise, so the cap has to be enforced before the model is invoked, not
+    # only at the charging step. Read-only: the credit is still consumed by
+    # /api/generate, so this does not double-charge.
+    has_quota, quota_state = has_quota_remaining(ctx["user_id"])
+
     async def event_generator():
         start_provenance()
+        if not has_quota:
+            # In-band error (EventSource can't read a 402 status). The client
+            # recognises reason="quota_exceeded" and shows the upgrade modal,
+            # exactly as it does for the /api/generate 402.
+            detail = quota_exceeded_detail(quota_state)
+            yield f"data: {json.dumps({'type': 'error', 'message': detail['message'], 'detail': detail})}\n\n"
+            return
         # Send initial status
         yield f"data: {json.dumps({'type': 'status', 'message': 'Starting generation...'})}\n\n"
         await asyncio.sleep(0.1)

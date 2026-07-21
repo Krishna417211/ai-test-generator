@@ -480,7 +480,11 @@ export async function generateTests(
 export function streamGeneration(
   jobId: string, framework: string, language: string, testFlows: string, baseUrl: string,
   onChunk: (chunk: string) => void, onProvider: (provider: string) => void,
-  onDone: () => void, onError: (err: string) => void
+  onDone: () => void, onError: (err: string) => void,
+  // The stream now refuses an out-of-quota user before running the LLM, sending
+  // an in-band error with reason="quota_exceeded" (EventSource can't read a 402
+  // status). Route that to the upgrade modal, mirroring the /api/generate 402.
+  onQuota?: (err: QuotaExceededError) => void
 ): () => void {
   // EventSource can't set headers, so the auth token rides as a query param.
   const params = new URLSearchParams({ framework, language, test_flows: testFlows, base_url: baseUrl, token: getToken() });
@@ -491,7 +495,11 @@ export function streamGeneration(
       if (msg.type === "chunk") onChunk(msg.content);
       else if (msg.type === "provider_status") onProvider(msg.message);
       else if (msg.type === "done") { onDone(); es.close(); }
-      else if (msg.type === "error") { onError(msg.message); es.close(); }
+      else if (msg.type === "error") {
+        es.close();
+        if (onQuota && msg.detail?.reason === "quota_exceeded") onQuota(new QuotaExceededError(msg.detail));
+        else onError(msg.message);
+      }
     } catch {}
   };
   es.onerror = () => { onError("Stream connection lost"); es.close(); };

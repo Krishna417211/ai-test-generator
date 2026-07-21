@@ -116,6 +116,45 @@ class TestConsume:
         q = quota.get_quota(uid)
         assert q.used == 25 and q.limit is None and q.remaining is None
 
+
+class TestStreamGate:
+    """has_quota_remaining backs the /api/stream refusal — the cap on the LLM
+    run itself, checked before the model is invoked, consuming nothing."""
+
+    def test_free_user_has_quota_until_cap(self, store, free_limit):
+        uid = _user(store)
+        ok, state = quota.has_quota_remaining(uid)
+        assert ok is True and state.remaining == 3
+
+    def test_exhausted_free_user_is_refused(self, store, free_limit):
+        uid = _user(store)
+        for _ in range(3):
+            quota.consume_quota(uid)
+        ok, state = quota.has_quota_remaining(uid)
+        assert ok is False and state.remaining == 0
+
+    def test_check_consumes_nothing(self, store, free_limit):
+        uid = _user(store)
+        for _ in range(5):
+            quota.has_quota_remaining(uid)
+        assert quota.get_quota(uid).used == 0
+
+    def test_pro_is_always_allowed(self, store, free_limit):
+        uid = _user(store)
+        store.set_plan(uid, "pro", time.time() + 3600)
+        ok, state = quota.has_quota_remaining(uid)
+        assert ok is True and state.limit is None
+
+    def test_exceeded_detail_matches_the_402(self, store, free_limit):
+        uid = _user(store)
+        for _ in range(3):
+            quota.consume_quota(uid)
+        _, state = quota.has_quota_remaining(uid)
+        detail = quota.quota_exceeded_detail(state)
+        assert detail["reason"] == "quota_exceeded"
+        assert detail["limit"] == 3
+        assert detail["pricing"]["yearly_usd"] == 100
+
     def test_refund_returns_the_credit(self, store, free_limit):
         uid = _user(store)
         lease = quota.consume_quota(uid)
