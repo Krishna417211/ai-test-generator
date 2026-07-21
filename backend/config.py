@@ -83,6 +83,24 @@ class Settings(BaseSettings):
     # right amount of friction for the one privilege that can read every account.
     admin_emails: str = ""
 
+    # ── Active vulnerability scanning (OWASP ZAP) ──
+    # The passive scanner (services/security_scanner.py) audits configuration —
+    # headers, TLS, cookies, exposed files. It cannot find exploitable bugs
+    # (reflected XSS, SQL injection) because those require *sending* payloads.
+    # ZAP does. It runs as a separate daemon; the backend talks to it over its
+    # REST API. Leave zap_address empty to disable — with it empty the feature is
+    # simply unavailable and nothing else changes.
+    #
+    # Stand one up with:  docker run -u zap -p 8090:8090 ghcr.io/zaproxy/zaproxy \
+    #   zap.sh -daemon -host 0.0.0.0 -port 8090 -config api.key=YOUR_KEY
+    zap_address: str = ""                 # e.g. http://127.0.0.1:8090 — empty disables
+    zap_api_key: str = ""
+    zap_timeout_seconds: int = 900        # active scans are slow; cap the wait
+    # Active scanning sends attack traffic and must only ever target a site the
+    # user owns. It stays OFF unless a request explicitly asks for it AND asserts
+    # authorization; this flag is only the master switch for allowing that at all.
+    zap_allow_active: bool = False
+
     # Limits
     max_repo_size_mb: int = 100
     max_files_per_repo: int = 2000
