@@ -203,6 +203,11 @@ export interface ScanResult {
    *  plan — so we say whether a model wrote it or it's the plain fallback. */
   summary_source?: "ai" | "fallback";
   provenance?: Provenance | null;
+  /** Which engine ran: "passive" (configuration audit) or "active" (ZAP sent
+   *  payloads and can find exploitable bugs). */
+  mode?: "passive" | "active";
+  /** Set when active was requested but couldn't run and it fell back to passive. */
+  scan_note?: string;
 }
 
 export interface ProviderStatus {
