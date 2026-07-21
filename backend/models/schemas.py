@@ -284,6 +284,12 @@ class PublishResponse(BaseModel):
 class ScanRequest(BaseModel):
     url: str
     ai_summary: bool = True
+    # Active scanning sends real attack traffic (via OWASP ZAP) and can find
+    # exploitable bugs the passive checks never can. It only runs when the server
+    # has ZAP configured AND the user confirms they own the target — both are
+    # required, and the passive scan is the default.
+    active: bool = False
+    authorized: bool = False
 
 
 class ScanResponse(BaseModel):
@@ -295,6 +301,13 @@ class ScanResponse(BaseModel):
     counts: dict
     checks_run: int
     findings: list[dict] = []
+    # Which engine produced this: "passive" (configuration audit) or "active"
+    # (ZAP sent payloads). The UI frames the result differently for each.
+    mode: str = "passive"
+    # Set when active was requested but couldn't run (ZAP not configured/reachable)
+    # and the scan fell back to passive — so the UI can say so instead of silently
+    # returning a weaker result than was asked for.
+    scan_note: str = ""
     # Scan reports its trust differently from generate, because the flows differ
     # in kind. The findings are deterministic — a header is present or it isn't,
     # so there is no rate to quote and inventing one would be noise. The only

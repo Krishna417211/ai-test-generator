@@ -28,9 +28,17 @@ services:
       # every deploy; /data is not. If this ever pointed back inside the
       # container, every account and paid plan would vanish on the next release.
       TESTGEN_DB: /data/testgen.db
+      # Active vulnerability scanning talks to the ZAP sidecar below over the
+      # internal compose network — never exposed to the internet. ZAP_API_KEY and
+      # ZAP_ALLOW_ACTIVE come from /var/data/testra.env; with ZAP_ALLOW_ACTIVE
+      # unset the feature stays off even though the daemon is reachable.
+      ZAP_ADDRESS: http://zap:8090
 
     volumes:
       - /var/data/db:/data
+
+    depends_on:
+      - zap
 
     # No ports: — the API is only reachable through Caddy, so the instance never
     # exposes an unencrypted 8000 to the internet.
@@ -66,3 +74,19 @@ services:
 
     depends_on:
       - backend
+
+  # OWASP ZAP daemon — the engine behind active vulnerability scanning. Only the
+  # backend talks to it (no ports: — never reachable from the internet), and it
+  # only ever runs a scan when a request is both authorized and enabled server-
+  # side. The API key must match ZAP_API_KEY in /var/data/testra.env.
+  zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    restart: unless-stopped
+    env_file:
+      - /var/data/testra.env
+    command: >
+      zap.sh -daemon -host 0.0.0.0 -port 8090
+      -config api.key=${ZAP_API_KEY:?ZAP_API_KEY must be set in testra.env}
+      -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+    expose:
+      - "8090"

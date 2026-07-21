@@ -508,11 +508,23 @@ export function streamGeneration(
 
 // ── Security scan ────────────────────────────
 
-export async function scanUrl(url: string, onProgress?: OnProgress): Promise<any> {
+export interface ScanOptions {
+  active?: boolean;       // run ZAP active scan (sends payloads)
+  authorized?: boolean;   // user confirmed they own the target
+}
+
+export async function scanUrl(
+  url: string,
+  onProgress?: OnProgress,
+  opts: ScanOptions = {},
+): Promise<any> {
   return postNdjson("/api/scan", {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ url, ai_summary: true }),
+    body: JSON.stringify({
+      url, ai_summary: true,
+      active: !!opts.active, authorized: !!opts.authorized,
+    }),
   }, onProgress, "Scan failed");
 }
 

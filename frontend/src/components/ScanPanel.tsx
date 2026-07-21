@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ShieldCheck, Loader2, Globe, AlertTriangle, CheckCircle2, Youtube } from "lucide-react";
+import { ShieldCheck, Loader2, Globe, AlertTriangle, CheckCircle2, Youtube, Crosshair } from "lucide-react";
 import { scanUrl } from "../utils/api";
 import FlowPipeline, { applyStep, type StepStates } from "./FlowPipeline";
 import TrustPanel from "./TrustPanel";
@@ -85,15 +85,21 @@ export default function ScanPanel() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ScanResult | null>(null);
   const [steps, setSteps] = useState<StepStates>({});
+  // Active scanning sends real attack traffic, so it's opt-in AND gated on an
+  // explicit ownership confirmation — the toggle can't be armed without it.
+  const [active, setActive] = useState(false);
+  const [owns, setOwns] = useState(false);
 
   const run = async () => {
     if (!url.trim()) return;
+    const wantActive = active && owns;
     setScanning(true);
     setError(null);
     setResult(null);
     setSteps({});
     try {
-      setResult(await scanUrl(url.trim(), (e) => setSteps((s) => applyStep(s, e))));
+      setResult(await scanUrl(url.trim(), (e) => setSteps((s) => applyStep(s, e)),
+        { active: wantActive, authorized: wantActive }));
     } catch (e: any) {
       // The pipeline stays on screen on failure — the step still spinning is
       // where it broke, which beats an error message with no context.
@@ -115,8 +121,9 @@ export default function ScanPanel() {
           out after a failed scan is a worse way to learn it than a line of
           copy — and it's the same sentence in both places. */}
       <p className="text-sm text-grey-400 leading-relaxed">
-        Point it at a site you own. Passive and non-intrusive — it inspects
-        configuration and never attacks your site.
+        Point it at a site you own. The default scan is passive — it inspects
+        configuration and never sends attack traffic. An active scan (below) goes
+        further and probes for exploitable bugs.
       </p>
 
       <div className="relative">
@@ -131,13 +138,51 @@ export default function ScanPanel() {
         />
       </div>
 
+      {/* Active scan opt-in. The toggle arms it; the confirmation below is what
+          actually authorises the traffic, and the run() gate requires both. */}
+      <div className="rounded-xl border border-grey-700 bg-black/20 p-3.5 space-y-2.5">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(e) => { setActive(e.target.checked); if (!e.target.checked) setOwns(false); }}
+            className="mt-0.5 accent-brand-500 w-4 h-4 shrink-0"
+          />
+          <span className="min-w-0">
+            <span className="flex items-center gap-1.5 text-sm font-medium text-white/90">
+              <Crosshair size={13} className="text-amber-400 shrink-0" />
+              Active scan — probe for exploitable bugs (XSS, injection)
+            </span>
+            <span className="block text-xs text-grey-400 mt-0.5 leading-relaxed">
+              Sends real attack traffic via OWASP ZAP. Slower, and only for a site
+              you control.
+            </span>
+          </span>
+        </label>
+        {active && (
+          <label className="flex items-start gap-3 cursor-pointer pl-1">
+            <input
+              type="checkbox"
+              checked={owns}
+              onChange={(e) => setOwns(e.target.checked)}
+              className="mt-0.5 accent-amber-500 w-4 h-4 shrink-0"
+            />
+            <span className="text-xs text-amber-200/90 leading-relaxed">
+              I confirm I own this site or am authorized to actively test it.
+            </span>
+          </label>
+        )}
+      </div>
+
       <button
         onClick={run}
-        disabled={scanning || !url.trim()}
+        disabled={scanning || !url.trim() || (active && !owns)}
         className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl btn-primary disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-sm"
       >
         {scanning ? (
           <><Loader2 size={16} className="animate-spin" /> Scanning...</>
+        ) : active ? (
+          <><Crosshair size={16} /> Run active vulnerability scan</>
         ) : (
           <><ShieldCheck size={16} /> Scan for vulnerabilities</>
         )}
@@ -165,10 +210,27 @@ export default function ScanPanel() {
               <span className="text-[10px] opacity-70">{result.score}/100</span>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs text-grey-500 font-mono break-all">{result.final_url}</div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                  result.mode === "active"
+                    ? "text-amber-300 bg-amber-500/15 border border-amber-500/30"
+                    : "text-grey-400 bg-white/5 border border-white/10"
+                }`}>
+                  {result.mode === "active" ? "Active scan" : "Passive scan"}
+                </span>
+                <span className="text-xs text-grey-500 font-mono break-all">{result.final_url}</span>
+              </div>
               <p className="text-sm text-grey-300 mt-1 leading-relaxed">{result.summary}</p>
             </div>
           </div>
+
+          {/* An honest heads-up when active was asked for but couldn't run. */}
+          {result.scan_note && (
+            <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200/90 leading-relaxed">
+              <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+              {result.scan_note}
+            </div>
+          )}
 
           {/* No grounding for scan: the checks are deterministic — a header is
               present or it isn't — so there's no rate to quote and inventing one

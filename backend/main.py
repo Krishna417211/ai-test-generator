@@ -48,6 +48,7 @@ from services.file_extractor import extract_zip, filter_for_push
 from services.github_service import GitHubService, parse_github_url, RepoNotFoundError, RepoAccessError
 from services.git_publisher import GitPublisher, GitPublishError
 from services.security_scanner import SecurityScanner, ScanError, precheck_target
+from services.zap_scanner import ZapScanner, ZapAuthorizationError, ZapUnavailableError
 from services import github_oauth, google_oauth
 from services import auth as auth_svc
 from services import billing
@@ -1825,12 +1826,50 @@ async def scan_url(payload: ScanRequest, ctx: dict = Depends(require_user)):
     async def work(progress: Progress) -> dict:
         start_provenance()
         tier = tier_for_user(ctx["user_id"])
-        scanner = SecurityScanner()
         started = time.monotonic()
-        try:
-            result = await scanner.scan(payload.url, progress=progress)
-        except ScanError as e:
-            raise HTTPException(400, str(e))
+
+        # Active scanning (ZAP) sends real payloads and can find exploitable bugs
+        # the passive checks can't. It runs only when the user asked for it, the
+        # server allows it, a daemon is reachable, AND the user confirmed they own
+        # the target. Anything short of that falls back to the passive audit — with
+        # a note when active was asked for but unavailable, so the weaker result is
+        # never returned silently.
+        mode = "passive"
+        scan_note = ""
+        result = None
+        if payload.active:
+            if not payload.authorized:
+                raise HTTPException(
+                    400, "Active scanning sends attack traffic — confirm you own or "
+                    "are authorized to test this site first.")
+            zap = ZapScanner()
+            if settings.zap_allow_active and await asyncio.to_thread(zap.available):
+                try:
+                    result = await zap.scan(
+                        payload.url, active=True, authorized=True, progress=progress)
+                    mode = "active"
+                except ZapAuthorizationError as e:
+                    raise HTTPException(403, str(e))
+                except ScanError as e:
+                    raise HTTPException(400, str(e))
+                except ZapUnavailableError as e:
+                    # Daemon dropped after the availability check — degrade to the
+                    # passive audit rather than failing the whole request.
+                    logger.warning(f"ZAP became unavailable mid-scan: {e}")
+                    scan_note = (
+                        "Active scanning stopped being available, so a passive "
+                        "configuration audit was run instead.")
+            else:
+                scan_note = (
+                    "Active scanning isn't available right now, so a passive "
+                    "configuration audit was run instead.")
+
+        if result is None:
+            scanner = SecurityScanner()
+            try:
+                result = await scanner.scan(payload.url, progress=progress)
+            except ScanError as e:
+                raise HTTPException(400, str(e))
         elapsed_ms = int((time.monotonic() - started) * 1000)
 
         summary = ""
@@ -1881,6 +1920,8 @@ async def scan_url(payload: ScanRequest, ctx: dict = Depends(require_user)):
             findings=result.findings,
             summary_source=summary_source,
             provenance=provenance_report(tier),
+            mode=mode,
+            scan_note=scan_note,
         ).model_dump()
 
     return ndjson(work)
