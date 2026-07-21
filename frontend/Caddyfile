@@ -11,6 +11,30 @@
 {$SITE_ADDRESS::80} {
 	encode gzip
 
+	# Security headers on every response. Testra's own /scan flags a site that
+	# omits these (and graded this very deployment a C for it), so the product
+	# must not fail its own audit. HSTS is ignored by browsers over plain HTTP,
+	# so it is harmless on the :80 staging variant and active once a domain +
+	# HTTPS are in play.
+	#
+	# The CSP allow-list is scoped to what this app actually loads:
+	#   • Google Fonts stylesheet + font files (fonts.googleapis/gstatic).
+	#   • cdn.jsdelivr.net — @monaco-editor/react (the CodeViewer) fetches the
+	#     editor + its web-workers from jsdelivr on demand; worker-src blob: is
+	#     for the workers it spins up. FOLLOW-UP: self-host Monaco (vite bundle)
+	#     to drop jsdelivr from script-src and tighten this further.
+	# Everything else stays same-origin, matching the single-origin architecture.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self' https://cdn.jsdelivr.net; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		# Don't advertise the server software.
+		-Server
+	}
+
 	# Generation streams tokens over SSE. Caddy disables buffering for
 	# text/event-stream on its own, but this route is the product's whole
 	# selling point, so it says so explicitly rather than relying on sniffing.
