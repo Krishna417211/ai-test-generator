@@ -22,6 +22,7 @@ from services.llm_router import router, Tier
 from services.validator import validate_files
 from services import grounding as grounding_svc
 from services import fragility as fragility_svc
+from services import renderer as renderer_svc
 
 logger = logging.getLogger(__name__)
 
@@ -252,20 +253,29 @@ class WriterAgent:
         dom_note = None
         if live_url:
             try:
-                html = await grounding_svc.fetch_dom(live_url)
+                # Render the page in a headless browser when one is available, so a
+                # client-rendered app is grounded against the DOM the browser
+                # actually builds rather than its empty shell. Falls back to a
+                # static fetch (mode="static") on any deploy without a browser.
+                html, render_mode = await renderer_svc.render_html(live_url)
                 candidate = grounding_svc.build_dom_index(html)
-                # We fetch static HTML and never execute it, so a client-rendered
-                # app hands back a near-empty shell. Verifying against that proves
-                # nothing the source doesn't and would let the report claim a live
-                # -DOM check that never really happened — so decline it and say why
-                # rather than ground against a blank page.
+                # A rendered page with almost no anchors is a genuinely sparse page;
+                # a *static* shell is just JS we couldn't run. Either way, grounding
+                # against near-nothing proves nothing the source doesn't and would
+                # let the report claim a live-DOM check that never really happened —
+                # so decline it and say why, honestly reflecting which case it was.
                 if grounding_svc.dom_index_is_useful(candidate):
                     dom_index = candidate
-                    logger.info(f"DOM grounding: indexed {len(candidate.anchors)} anchors from {live_url}")
-                else:
-                    dom_note = grounding_svc.describe_thin_dom(html)
                     logger.info(
-                        f"DOM grounding skipped for {live_url}: only "
+                        f"DOM grounding ({render_mode}): indexed "
+                        f"{len(candidate.anchors)} anchors from {live_url}"
+                    )
+                else:
+                    dom_note = grounding_svc.describe_thin_dom(
+                        html, rendered=(render_mode == "rendered")
+                    )
+                    logger.info(
+                        f"DOM grounding skipped for {live_url} ({render_mode}): only "
                         f"{len(candidate.anchors)} anchors — using source only"
                     )
             except Exception as e:

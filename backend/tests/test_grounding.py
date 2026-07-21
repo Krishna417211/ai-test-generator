@@ -138,6 +138,14 @@ def test_thin_dom_describes_generic_when_no_mount():
     assert "too little markup" in msg and "client-rendered" not in msg
 
 
+def test_thin_dom_rendered_says_it_ran_the_page():
+    # When a browser DID run the page and it's still sparse, the message must not
+    # claim we skipped executing it — that would be false.
+    msg = grounding.describe_thin_dom(SPA_SHELL, rendered=True)
+    assert "headless browser" in msg
+    assert "without executing" not in msg
+
+
 def test_report_carries_dom_note_in_dict():
     report = grounding.GroundingReport(checked_against=["source"])
     report.dom_note = grounding.describe_thin_dom(SPA_SHELL)

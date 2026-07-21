@@ -216,8 +216,20 @@ def dom_index_is_useful(dom_index: GroundIndex) -> bool:
     return len(dom_index.anchors) >= MIN_USEFUL_DOM_ANCHORS
 
 
-def describe_thin_dom(html: str) -> str:
-    """An honest, user-facing reason DOM grounding was skipped for a live URL."""
+def describe_thin_dom(html: str, *, rendered: bool = False) -> str:
+    """An honest, user-facing reason DOM grounding was skipped for a live URL.
+
+    `rendered` says whether a headless browser actually ran the page. It changes
+    what is true: a rendered page that still exposes almost nothing is genuinely
+    sparse, whereas a static shell is only sparse because we couldn't run its JS.
+    The message must not claim we didn't execute the page when we did.
+    """
+    if rendered:
+        return (
+            "Even after running the page in a headless browser, the live URL exposed "
+            "too few elements to verify against (an empty or heavily gated page). "
+            "Selectors were verified against your source instead of the live DOM."
+        )
     if _SPA_MOUNT_RE.search(html or ""):
         return (
             "The live URL looks client-rendered (a single-page-app shell): it served "
