@@ -810,3 +810,58 @@ class TestFixVideos:
         url = security_scanner._youtube("fix mixed content https website tutorial")
         assert " " not in url
         assert "fix+mixed+content" in url or "fix%20mixed%20content" in url
+
+
+class TestScoreDifferentiates:
+    """The scanner used to give nearly every site on the internet the same score.
+
+    HARDENING_BUDGET was applied as a hard clamp, and a missing CSP (20) plus a
+    missing HSTS (10) hit the 30-point budget on its own — so every finding after
+    those two was free. Since almost every site is missing at least CSP and HSTS,
+    almost every site scored exactly 70/C regardless of how much else was wrong:
+
+        missing 2 -> 70/C     missing 5           -> 70/C
+        missing 3 -> 70/C     missing 6 + cookies -> 70/C
+
+    A score that can't tell those sites apart reads as a broken tool. These pin
+    the fix: strictly worse hardening must cost strictly more, while a site whose
+    only faults are hardening still can't be graded below C.
+    """
+
+    def _score(self, items):
+        fs = [security_scanner.Finding(sev, cat, title, "", "") for sev, cat, title in items]
+        return SecurityScanner()._build_result("u", "u", fs, 10)
+
+    TWO = [("high", "headers", "CSP"), ("medium", "headers", "HSTS")]
+    THREE = TWO + [("medium", "headers", "XFO")]
+    FIVE = THREE + [("low", "headers", "XCTO"), ("low", "headers", "RP")]
+    SIX_PLUS_COOKIES = FIVE + [
+        ("info", "headers", "PP"),
+        ("medium", "cookies", "Secure"), ("medium", "cookies", "HttpOnly"),
+        ("low", "cookies", "SameSite"),
+    ]
+
+    def test_more_missing_headers_scores_strictly_worse(self):
+        s2 = self._score(self.TWO).score
+        s3 = self._score(self.THREE).score
+        s5 = self._score(self.FIVE).score
+        s6 = self._score(self.SIX_PLUS_COOKIES).score
+        assert s2 > s3 > s5 > s6, (s2, s3, s5, s6)
+
+    def test_hardening_alone_never_drops_below_C(self):
+        # The guarantee the budget exists for: defence-in-depth gaps alone must
+        # not make a site look nearly-failing when nothing is exploitable.
+        for items in (self.TWO, self.THREE, self.FIVE, self.SIX_PLUS_COOKIES):
+            r = self._score(items)
+            assert r.grade == "C", (items, r.score, r.grade)
+            assert r.score >= 65
+
+    def test_clean_site_is_still_perfect(self):
+        r = self._score([])
+        assert (r.score, r.grade) == (100, "A")
+
+    def test_a_real_vulnerability_still_outranks_all_hardening(self):
+        # An exposed .env must sink the grade to F no matter how tidy the headers.
+        r = self._score([("critical", "exposure", "Exposed .env")])
+        assert r.grade == "F"
+        assert r.score < self._score(self.SIX_PLUS_COOKIES).score
