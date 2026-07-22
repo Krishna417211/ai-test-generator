@@ -47,6 +47,10 @@ logger = logging.getLogger(__name__)
 # ZAP's risk vocabulary → the severity words the rest of the app uses. ZAP has no
 # "critical"; its "High" is the top band, which we keep as "high" (grade logic
 # treats high the same weight-class for the F floor below).
+# How often to report progress while waiting on a long ZAP scan. Short enough
+# that no proxy or browser sees an idle stream, long enough not to spam the UI.
+_HEARTBEAT_SECONDS = 10.0
+
 _RISK_TO_SEVERITY = {
     "High": "high",
     "Medium": "medium",
@@ -230,12 +234,14 @@ class ZapScanner:
         await say.start("checks")
         await self._acall("/JSON/core/action/accessUrl/", url=target)
         sid = (await self._acall("/JSON/spider/action/scan/", url=target, recurse="true"))["scan"]
-        await self._await_status("/JSON/spider/view/status/", sid, deadline, poll_interval)
+        await self._await_status("/JSON/spider/view/status/", sid, deadline, poll_interval,
+                                 say, "spider")
         found = len((await self._acall("/JSON/spider/view/results/", scanId=sid))["results"])
 
         if active:
             aid = (await self._acall("/JSON/ascan/action/scan/", url=target, recurse="true"))["scan"]
-            await self._await_status("/JSON/ascan/view/status/", aid, deadline, poll_interval)
+            await self._await_status("/JSON/ascan/view/status/", aid, deadline, poll_interval,
+                                     say, "active scan")
             mode = "active"
         else:
             mode = "spider"
@@ -261,12 +267,32 @@ class ZapScanner:
             checks_run=found,
         )
 
-    async def _await_status(self, path: str, scan_id, deadline: float, poll: float) -> None:
-        """Poll a ZAP 0–100 status endpoint until 100 or the deadline passes."""
-        while int((await self._acall(path, scanId=scan_id))["status"]) < 100:
+    async def _await_status(self, path: str, scan_id, deadline: float, poll: float,
+                            say: Optional[Progress] = None, label: str = "") -> None:
+        """Poll a ZAP 0–100 status endpoint until 100 or the deadline passes.
+
+        `say` is pinged periodically while we wait. That is not cosmetic: an
+        active scan runs for minutes, and this loop previously emitted nothing
+        for its whole duration. A streamed response with no bytes on the wire for
+        minutes looks hung to the user and is liable to be cut by a proxy or the
+        browser long before ZAP finishes — so the scan has to keep talking while
+        it works, and the percentage is genuinely useful besides.
+        """
+        last_beat = 0.0
+        while True:
+            status = int((await self._acall(path, scanId=scan_id))["status"])
+            if status >= 100:
+                return
             if time.monotonic() > deadline:
                 logger.warning("ZAP scan exceeded its time budget; returning partial results.")
                 return
+            now = time.monotonic()
+            if say is not None and now - last_beat >= _HEARTBEAT_SECONDS:
+                last_beat = now
+                # Re-assert the step as running. The UI treats a repeated running
+                # event as "still going", and it puts bytes on the wire.
+                await say.start("checks")
+                logger.info(f"ZAP {label or 'scan'} at {status}%")
             await asyncio.sleep(poll)
 
 
