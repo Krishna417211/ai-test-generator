@@ -171,16 +171,6 @@ jobs:
           docker compose -f deploy/docker-compose.prod.yml --profile zap pull || true
           docker compose -f deploy/docker-compose.prod.yml --profile zap up -d --remove-orphans
           docker image prune -f
-          # The pull above is deliberately '|| true' so a bad ZAP image can never
-          # fail a release — but that also means "the sidecar silently never came
-          # up" looks exactly like a green deploy, which is how active scanning
-          # stayed broken without anyone being told. Print its state so the answer
-          # is in the deploy log instead of only in a scan that quietly went
-          # passive. Informational only: still never fails the release.
-          echo "--- zap sidecar ---"
-          docker compose -f deploy/docker-compose.prod.yml --profile zap ps zap || true
-          docker inspect --format 'zap OOMKilled={{.State.OOMKilled}} restarts={{.RestartCount}}' testra-zap-1 || true
-          free -m || true
           REMOTE_EOF
           )
 
