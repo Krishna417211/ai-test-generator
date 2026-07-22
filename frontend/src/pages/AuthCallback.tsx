@@ -30,8 +30,15 @@ export default function AuthCallback() {
     const loginError = params.get("login_error");
     if (loginError) { setError(OAUTH_ERRORS[loginError] || `Sign-in failed (${loginError}).`); return; }
     if (!token) { setError("No login token received."); return; }
+    // Where to land. Connecting GitHub from the publish page comes back with
+    // ?next=/publish so the user resumes what they were doing rather than being
+    // dropped on the dashboard to navigate back themselves. Only a relative path
+    // is followed (the server enforces the same thing) — an absolute URL here
+    // would be an open redirect wearing a login page.
+    const next = params.get("next") || "";
+    const dest = next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
     adoptToken(token)
-      .then(() => navigate("/dashboard", { replace: true }))
+      .then(() => navigate(dest, { replace: true }))
       .catch(() => setError("Could not complete login. Please try again."));
   }, []);
 

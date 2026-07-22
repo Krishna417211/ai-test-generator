@@ -11,8 +11,12 @@ import { useAuth } from "../context/AuthContext";
 import { celebrate } from "../lib/celebrate";
 
 export default function PublishPanel() {
-  const { user } = useAuth();
-  const hasGithub = Boolean(user?.has_github);
+  const { user, refresh } = useAuth();
+  // What matters here is whether *this session* can push, not whether the
+  // account has a GitHub identity on file — see User.github_connected. Only
+  // /api/auth/me reports it, and a password login populated `user` from the
+  // login response, so re-ask on mount rather than trust what's in hand.
+  const hasGithub = Boolean(user?.github_connected);
 
   const [file, setFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -25,14 +29,26 @@ export default function PublishPanel() {
   const [publishing, setPublishing] = useState(false);
   const [pubError, setPubError] = useState<string | null>(null);
   const [pubResult, setPubResult] = useState<PublishResult | null>(null);
-  const [oauthEnabled, setOauthEnabled] = useState(false);
+  // "unknown" until the server answers. It starts optimistic on purpose: the
+  // only alternative to the GitHub button is a "paste a Personal Access Token"
+  // box, and showing that because a config fetch was slow or failed asks the
+  // user for a credential the product is built to never need.
+  const [oauth, setOauth] = useState<"unknown" | "on" | "off">("unknown");
+  const oauthEnabled = oauth !== "off";
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletedRepo, setDeletedRepo] = useState<string | null>(null);
   const [steps, setSteps] = useState<StepStates>({});
 
-  useEffect(() => { getAuthConfig().then((c) => setOauthEnabled(c.github_oauth_enabled)).catch(() => {}); }, []);
+  useEffect(() => {
+    getAuthConfig()
+      .then((c) => setOauth(c.github_oauth_enabled ? "on" : "off"))
+      .catch(() => {});
+    // Refresh the session-derived github_connected flag. Also what makes the
+    // return trip from OAuth land on a panel that already knows it's connected.
+    refresh().catch(() => {});
+  }, []);
 
   // The push button is disabled until all three are satisfied. Track them by
   // name so we can say which one is missing instead of just graying out.
@@ -40,7 +56,7 @@ export default function PublishPanel() {
     !file && "a project ZIP",
     !repoName.trim() && "a repository name",
     !(hasGithub || (!oauthEnabled && ghToken.trim())) &&
-      (oauthEnabled ? "a connected GitHub account" : "a GitHub token"),
+      (oauthEnabled ? "your GitHub sign-in" : "a GitHub token"),
   ].filter(Boolean) as string[];
   const canPublish = missing.length === 0;
 
@@ -96,13 +112,30 @@ export default function PublishPanel() {
         <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 text-sm">
           <Github size={16} className="text-emerald-300" />
           GitHub connected as <span className="font-semibold text-white">{user?.github_login}</span>
+          {/* An access token can be revoked on GitHub's side at any time, and
+              nothing tells us until a push fails with "invalid or expired".
+              This is the way out of that state without logging out. */}
+          <a href={githubLoginUrl("/publish")} className="ml-auto text-xs text-grey-400 hover:text-white/80 transition-colors shrink-0">
+            Reconnect
+          </a>
         </div>
       ) : oauthEnabled ? (
         <div className="space-y-2">
-          <a href={githubLoginUrl()} className="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-2xl bg-black/40 hover:bg-black/60 border border-white/15 text-white font-semibold transition-all text-sm">
-            <Github size={17} /> Connect GitHub to publish
+          {/* ?next=/publish brings them straight back here with the form intact,
+              and the current session rides along so GitHub is attached to the
+              account they're already signed into. */}
+          <a href={githubLoginUrl("/publish")} className="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-2xl bg-black/40 hover:bg-black/60 border border-white/15 text-white font-semibold transition-all text-sm">
+            <Github size={17} /> {user?.has_github ? "Reconnect GitHub to publish" : "Sign in with GitHub to publish"}
           </a>
-          <p className="text-xs text-grey-400 text-center">We'll create the repo and push on your behalf.</p>
+          <p className="text-xs text-grey-400 text-center">
+            {user?.has_github
+              // has_github without github_connected means the identity is on the
+              // account but this session holds no push token — signing back in
+              // with a password does exactly that. Say so, or "connect" looks
+              // like it didn't work the first time.
+              ? "Your sign-in this time didn't include GitHub access. One click re-authorises pushing — no token to paste."
+              : "You'll approve it on GitHub, then we create the repo and push on your behalf. No token to paste."}
+          </p>
         </div>
       ) : (
         <div className="space-y-2">

@@ -243,6 +243,11 @@ export interface User {
   github_login?: string | null;
   avatar_url?: string | null;
   has_github: boolean;
+  /** Whether the *current session* can push to GitHub right now. `has_github`
+   *  only says the account has a GitHub identity on file — the access token
+   *  publishing needs lives on the session, so the two disagree whenever a
+   *  GitHub user signs back in with a password. Only /api/auth/me sets it. */
+  github_connected?: boolean;
   email_verified?: boolean;
   plan?: "free" | "pro";
   /** Whether to render the Admin nav item. A hint, not a permission: the server
@@ -377,8 +382,21 @@ export async function logout(): Promise<void> {
   broadcastLogout();
 }
 
-export function githubLoginUrl(): string {
-  return `${API_BASE}/api/auth/github/login`;
+/** Start the GitHub OAuth round-trip.
+ *
+ *  `next` is where the browser lands afterwards (the server only honours
+ *  same-site paths). The current session token rides along as `link` when there
+ *  is one, so the server attaches GitHub to the account already signed in
+ *  instead of resolving one from the GitHub profile — which, for a user whose
+ *  GitHub email is private, would mean a brand-new empty account.
+ */
+export function githubLoginUrl(next?: string): string {
+  const params = new URLSearchParams();
+  if (next) params.set("next", next);
+  const token = getToken();
+  if (token) params.set("link", token);
+  const qs = params.toString();
+  return `${API_BASE}/api/auth/github/login${qs ? `?${qs}` : ""}`;
 }
 
 export function googleLoginUrl(): string {
@@ -526,6 +544,28 @@ export async function scanUrl(
       active: !!opts.active, authorized: !!opts.authorized,
     }),
   }, onProgress, "Scan failed");
+}
+
+export interface ScanCapabilities {
+  active_available: boolean;
+  /** Why not, in a sentence fit to show a user. Empty when available. */
+  reason: string;
+  code: string;
+}
+
+/** Whether an active (ZAP) scan can run right now. Asked before the scan so the
+ *  UI can say "unavailable, because X" next to the checkbox instead of after a
+ *  scan that silently ran passive.
+ *
+ *  Never rejects, but note what `code: "unknown"` means: we failed to *ask*, not
+ *  that the answer is no. Callers must not render it as a verdict on ZAP — the
+ *  scan itself reports what actually happened. */
+export async function getScanCapabilities(): Promise<ScanCapabilities> {
+  const res = await fetch(`${API_BASE}/api/scan/capabilities`, { headers: authHeaders() }).catch(() => null);
+  if (!res || !res.ok) {
+    return { active_available: false, reason: "we couldn't reach the server to check", code: "unknown" };
+  }
+  return res.json();
 }
 
 // ── Publish ──────────────────────────────────

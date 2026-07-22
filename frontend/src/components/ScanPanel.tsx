@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ShieldCheck, Loader2, Globe, AlertTriangle, CheckCircle2, Youtube, Crosshair } from "lucide-react";
-import { scanUrl } from "../utils/api";
+import { scanUrl, getScanCapabilities, type ScanCapabilities } from "../utils/api";
 import FlowPipeline, { applyStep, type StepStates } from "./FlowPipeline";
 import TrustPanel from "./TrustPanel";
 import { pluralize } from "../utils/format";
@@ -89,6 +89,12 @@ export default function ScanPanel() {
   // explicit ownership confirmation — the toggle can't be armed without it.
   const [active, setActive] = useState(false);
   const [owns, setOwns] = useState(false);
+  // Whether the server can actually run an active scan. Checked on mount so the
+  // answer is on screen before the user commits to a scan — the alternative is
+  // learning it from a scan_note after waiting for a scan that quietly ran
+  // passive instead.
+  const [caps, setCaps] = useState<ScanCapabilities | null>(null);
+  useEffect(() => { getScanCapabilities().then(setCaps).catch(() => {}); }, []);
 
   const run = async () => {
     if (!url.trim()) return;
@@ -159,6 +165,20 @@ export default function ScanPanel() {
             </span>
           </span>
         </label>
+        {/* Named, not hidden: the checkbox stays usable (the scan still runs, as
+            a passive audit, and says so), but nobody is left guessing why an
+            active scan came back looking passive.
+            Only when the server actually answered. A failed check ("code":
+            "unknown" — API restarting, session expired, offline) says nothing
+            about whether ZAP is up, and announcing it as "active scanning is
+            unavailable" states as fact something we did not learn. The scan
+            itself reports what really happened. */}
+        {caps && caps.code !== "unknown" && !caps.active_available && (
+          <div className="flex items-start gap-2 text-xs text-amber-200/80 leading-relaxed pl-1">
+            <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+            <span>Active scanning is unavailable right now — {caps.reason}. Ticking it still runs the passive audit.</span>
+          </div>
+        )}
         {active && (
           <label className="flex items-start gap-3 cursor-pointer pl-1">
             <input

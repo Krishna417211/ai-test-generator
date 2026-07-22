@@ -114,8 +114,8 @@ class TestActiveGating:
         class _Zap:
             def __init__(self, *a, **k):
                 pass
-            def availability(self):
-                return None          # None == usable; see ZapScanner.availability
+            async def wait_until_ready(self, **k):
+                return "ok", ""      # ("ok", "") == usable; see ZapScanner.diagnose
             async def scan(self, url, *, active=False, authorized=False, progress=None):
                 assert active and authorized
                 if progress:
@@ -129,3 +129,56 @@ class TestActiveGating:
         assert body["mode"] == "active"
         assert body["grade"] == "F"
         assert any("Cross Site Scripting" in f["title"] for f in body["findings"])
+
+    def test_daemon_reason_is_named_in_the_note(self, monkeypatch, client):
+        """A degraded scan must say *which* thing was wrong.
+
+        "Active scanning isn't available" alone is the message that made a key
+        mismatch in production take a day to find — the fix differs per reason,
+        so the reason travels with the result.
+        """
+        monkeypatch.setattr(main.settings, "zap_allow_active", True)
+        _passive_returns(monkeypatch, _fake_result())
+
+        class _Zap:
+            def __init__(self, *a, **k):
+                pass
+            async def wait_until_ready(self, **k):
+                return "bad_key", "the ZAP daemon rejected our API key"
+        monkeypatch.setattr(main, "ZapScanner", _Zap)
+
+        body = _final(client.post("/api/scan", json={
+            "url": "https://x.example", "ai_summary": False,
+            "active": True, "authorized": True}))
+        assert body["mode"] == "passive"
+        assert "rejected our API key" in body["scan_note"]
+
+
+class TestCapabilities:
+    """The endpoint the UI asks before offering an active scan."""
+
+    def test_reports_unconfigured(self, monkeypatch, client):
+        monkeypatch.setattr(main.settings, "zap_address", "")
+        body = client.get("/api/scan/capabilities").json()
+        assert body["active_available"] is False
+        assert body["code"] == "not_configured"
+
+    def test_reports_switched_off(self, monkeypatch, client):
+        monkeypatch.setattr(main.settings, "zap_address", "http://zap:8090")
+        monkeypatch.setattr(main.settings, "zap_allow_active", False)
+        body = client.get("/api/scan/capabilities").json()
+        assert body["active_available"] is False
+        assert body["code"] == "disabled"
+
+    def test_reports_ready(self, monkeypatch, client):
+        monkeypatch.setattr(main.settings, "zap_address", "http://zap:8090")
+        monkeypatch.setattr(main.settings, "zap_allow_active", True)
+
+        class _Zap:
+            def __init__(self, *a, **k):
+                pass
+            def diagnose(self):
+                return "ok", ""
+        monkeypatch.setattr(main, "ZapScanner", _Zap)
+        body = client.get("/api/scan/capabilities").json()
+        assert body["active_available"] is True

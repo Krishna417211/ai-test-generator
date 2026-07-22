@@ -12,6 +12,15 @@ services:
     environment:
       - APP_ENV=development
       - LOG_LEVEL=INFO
+      # Active scanning. These override whatever backend/.env says so the dev
+      # stack works with no extra setup: `docker compose --profile zap up`
+      # brings the daemon with it, and the address below is its name on the
+      # compose network. Without --profile zap the daemon simply isn't there and
+      # the backend reports active scanning unavailable, which is the intended
+      # degraded behaviour, not a failure.
+      - ZAP_ADDRESS=http://zap:8090
+      - ZAP_API_KEY=${ZAP_API_KEY:-testra-local-zap}
+      - ZAP_ALLOW_ACTIVE=true
     volumes:
       - ./backend:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
@@ -31,4 +40,30 @@ services:
     command: npm run dev -- --host
     depends_on:
       - backend
+    restart: unless-stopped
+
+  # OWASP ZAP daemon — the engine behind active vulnerability scanning.
+  #
+  #   docker compose --profile zap up          # dev stack WITH active scanning
+  #   docker compose up                        # without (passive audit only)
+  #
+  # Behind a profile because it's a 1 GB JVM that takes ~1 minute to boot, and
+  # most dev work doesn't need it. The API key must match the backend's above —
+  # both read the same ${ZAP_API_KEY} with the same default, so they can only
+  # disagree if someone edits one of them.
+  #
+  # Port 8090 is published for local debugging only (curl the ZAP API directly);
+  # the production compose file deliberately does not publish it.
+  zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    profiles: ["zap"]
+    ports:
+      - "8090:8090"
+    environment:
+      JAVA_OPTS: "-Xmx512m"
+    mem_limit: 1g
+    command: >
+      zap.sh -daemon -host 0.0.0.0 -port 8090
+      -config api.key=${ZAP_API_KEY:-testra-local-zap}
+      -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
     restart: unless-stopped

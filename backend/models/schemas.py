@@ -129,6 +129,10 @@ class UserPublic(BaseModel):
     github_login: Optional[str] = None
     avatar_url: Optional[str] = None
     has_github: bool = False
+    # Whether *this session* holds a usable GitHub access token (i.e. publishing
+    # will work right now). Set by /api/auth/me only — a login response can't
+    # know it, and the account-level has_github above doesn't imply it.
+    github_connected: bool = False
     email_verified: bool = True
     plan: str = "free"
     # Whether to render the Admin nav item. Not a permission — see

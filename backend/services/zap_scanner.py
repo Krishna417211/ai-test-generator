@@ -126,6 +126,9 @@ class ZapScanner:
         self.address = (address if address is not None else settings.zap_address).rstrip("/")
         self.api_key = api_key if api_key is not None else settings.zap_api_key
         self.http_timeout = timeout
+        # Set by availability(); read by diagnose(). Not part of the public API —
+        # callers that want the code call diagnose(), which refreshes it first.
+        self._last_code = ""
 
     # ── daemon plumbing ──────────────────────
 
@@ -145,6 +148,23 @@ class ZapScanner:
         """True if a daemon is configured and answers. Never raises."""
         return self.availability() is None
 
+    def diagnose(self) -> tuple[str, str]:
+        """(code, reason) — ("ok", "") when ZAP is usable. Never raises.
+
+        The code exists so callers can tell apart the failures that fix
+        themselves from the ones that never will. "Still booting" is worth
+        waiting out — ZAP takes about a minute, and a scan requested during a
+        deploy would otherwise silently downgrade to the passive audit. A
+        mismatched API key is worth nothing: waiting only makes the user stare
+        at a spinner before getting the same answer.
+        """
+        if not self.address:
+            return "not_configured", "no ZAP daemon is configured on the server"
+        reason = self.availability()
+        if reason is None:
+            return "ok", ""
+        return self._last_code or "error", reason
+
     def availability(self) -> Optional[str]:
         """None if ZAP is usable, else a short reason it isn't. Never raises.
 
@@ -154,16 +174,21 @@ class ZapScanner:
         a simple key mismatch in production take far too long to identify. Each
         of those has a different fix, so each gets named.
         """
+        self._last_code = "error"
         if not self.address:
+            self._last_code = "not_configured"
             return "no ZAP daemon is configured on the server"
         try:
             self._call("/JSON/core/view/version/")
+            self._last_code = "ok"
             return None
         except httpx.HTTPStatusError as e:
             code = e.response.status_code
             if code in (401, 403):
+                self._last_code = "bad_key"
                 return ("the ZAP daemon rejected our API key — the backend and the "
                         "daemon are configured with different ZAP_API_KEY values")
+            self._last_code = "http_error"
             return f"the ZAP daemon answered HTTP {code}"
         except httpx.RemoteProtocolError:
             # ZAP does not answer 403 to a bad API key — it closes the connection
@@ -172,15 +197,42 @@ class ZapScanner:
             # "Empty reply from server", while a correct key returns 200. So a
             # disconnect on this endpoint is, in practice, the key being wrong —
             # which is exactly how this failed in production.
+            self._last_code = "bad_key"
             return ("the ZAP daemon rejected our API key (it closed the connection) "
                     "— the backend and the daemon have different ZAP_API_KEY values")
         except httpx.ConnectError:
+            self._last_code = "unreachable"
             return ("the ZAP daemon isn't reachable — it may not be running, or is "
                     "still starting up (it takes about a minute)")
         except httpx.TimeoutException:
+            self._last_code = "unreachable"
             return "the ZAP daemon timed out — it may still be starting up"
         except Exception as e:
+            self._last_code = "error"
             return f"the ZAP daemon could not be reached ({type(e).__name__})"
+
+    async def wait_until_ready(
+        self, timeout: float = 75.0, poll: float = 3.0,
+        progress: Optional[Progress] = None,
+    ) -> tuple[str, str]:
+        """Give a booting daemon time to come up. Returns diagnose()'s pair.
+
+        Called at the top of a scan, not at import: the daemon is a sidecar that
+        restarts independently of the API (a deploy, an OOM kill, a plain
+        `docker compose up`), so "was it there a minute ago" answers nothing.
+        Only "unreachable" is retried — every other failure is a configuration
+        fact that a wait cannot change.
+        """
+        deadline = time.monotonic() + max(0.0, timeout)
+        while True:
+            code, reason = await asyncio.to_thread(self.diagnose)
+            if code != "unreachable" or time.monotonic() >= deadline:
+                return code, reason
+            if progress is not None:
+                # Keeps bytes on the stream while we wait; see _await_status.
+                await progress.start("target")
+            logger.info("Waiting for the ZAP daemon to finish starting up…")
+            await asyncio.sleep(poll)
 
     # ── the scan ─────────────────────────────
 

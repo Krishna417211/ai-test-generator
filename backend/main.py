@@ -23,6 +23,7 @@ import asyncio
 import logging
 import zipfile
 from contextlib import asynccontextmanager
+from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -268,7 +269,10 @@ async def analyze_repo(payload: GenerateRequest, ctx: dict = Depends(require_use
     async def work(progress: Progress) -> dict:
         start_provenance()
         tier = tier_for_user(ctx["user_id"])
-        gh = GitHubService(token=payload.github_token)
+        # A user who signed in with GitHub has already granted repo access, so
+        # reading their private repo needs nothing further from them. The pasted
+        # token stays as an override for the case the session has none.
+        gh = GitHubService(token=payload.github_token or ctx["session"].get("github_token", ""))
 
         await progress.start("fetch")
         try:
@@ -696,13 +700,41 @@ async def reset_password(payload: ResetPasswordRequest):
     )
 
 
+def _safe_next(path: str) -> str:
+    """A same-site path to return the browser to after login, or "".
+
+    Only a relative path is ever accepted. Echoing an arbitrary `next` into a
+    redirect is an open-redirect hole, and this one is reachable by anyone who
+    can craft a link — so anything that could leave the site (absolute URL,
+    scheme-relative //host, a backslash Windows browsers normalise to /) is
+    dropped rather than sanitised.
+    """
+    p = (path or "").strip()
+    if not p.startswith("/") or p.startswith("//") or "\\" in p:
+        return ""
+    return p[:200]
+
+
 @app.get("/api/auth/github/login")
-async def github_login():
-    """Start the OAuth flow — redirect the browser to GitHub's consent screen."""
+async def github_login(next: str = "", link: str = ""):
+    """Start the OAuth flow — redirect the browser to GitHub's consent screen.
+
+    `next`  — where to send the browser once the round-trip completes, so
+              "Connect GitHub" from the publish page comes back to the publish
+              page with the ZIP form still the thing on screen.
+    `link`  — the caller's current session token, when they are already signed
+              in. The callback then attaches GitHub to *that* account instead of
+              resolving an account from scratch, which is what stops a second
+              account being created for someone whose GitHub email is private.
+    """
     if not settings.github_oauth_enabled:
         raise HTTPException(503, "GitHub login is not configured on this server.")
     state = secrets.token_urlsafe(24)
-    store.create_session(_STATE_PREFIX + state, {"kind": "oauth_state"}, _OAUTH_STATE_TTL)
+    store.create_session(
+        _STATE_PREFIX + state,
+        {"kind": "oauth_state", "next": _safe_next(next), "link_session": link.strip()},
+        _OAUTH_STATE_TTL,
+    )
     url = github_oauth.authorize_url(
         client_id=settings.github_client_id,
         redirect_uri=settings.oauth_callback_url,
@@ -724,9 +756,12 @@ async def github_callback(code: str = "", state: str = "", error: str = ""):
     if error or not code:
         return _fail(error or "access_denied")
     # One-time state check (CSRF protection).
-    if not state or store.get_session(_STATE_PREFIX + state) is None:
+    st = store.get_session(_STATE_PREFIX + state) if state else None
+    if st is None:
         return _fail("invalid_state")
     store.delete_session(_STATE_PREFIX + state)
+    next_path = _safe_next(st.get("next") or "")
+    link_session_id = (st.get("link_session") or "").strip()
 
     try:
         token = await github_oauth.exchange_code(
@@ -743,6 +778,17 @@ async def github_callback(code: str = "", state: str = "", error: str = ""):
     # Find or create the user account, linking by github_id first, then email.
     github_id = str(gh.get("id") or gh["login"])
     account = store.get_user_by_github(github_id)
+    # Already signed in and connecting GitHub from inside the app (the publish
+    # page): attach it to the account they are *holding a session for*. Without
+    # this, a GitHub profile with a private email matches nothing, a second
+    # account is created, and the user is silently switched into it — their
+    # history and plan appearing to vanish at the moment they wanted to publish.
+    # A github_id already bound elsewhere still wins: an identity is not moved
+    # between accounts by clicking a button.
+    if not account and link_session_id:
+        live = store.get_session(link_session_id)
+        if live and live.get("user_id"):
+            account = store.get_user_by_id(live["user_id"])
     if not account and gh.get("email"):
         account = store.get_user_by_email(gh["email"])
     # GitHub only exposes a verified address as the account's email, so arriving
@@ -777,8 +823,26 @@ async def github_callback(code: str = "", state: str = "", error: str = ""):
         return _fail("suspended")
 
     # Session carries the GitHub access token so Publish can push on their behalf.
-    session_id = auth_svc.create_login_session(user_id, github_token=token)
-    return RedirectResponse(f"{frontend}/auth/callback?token={session_id}", status_code=307)
+    #
+    # When this was a "connect GitHub" from an existing session, write the token
+    # into that same session rather than minting a new one. The user keeps the
+    # login they already had (same token, same expiry) and simply gains the
+    # ability to push — reconnecting must not read as being logged out and back
+    # in, and any other tab holding the old token would be exactly that.
+    session_id = ""
+    if link_session_id:
+        live = store.get_session(link_session_id)
+        if live and live.get("user_id") == user_id:
+            live["github_token"] = auth_svc.encrypt_secret(token)
+            if store.update_session(link_session_id, live):
+                session_id = link_session_id
+    if not session_id:
+        session_id = auth_svc.create_login_session(user_id, github_token=token)
+
+    dest = f"{frontend}/auth/callback?token={session_id}"
+    if next_path:
+        dest += f"&next={quote(next_path, safe='/?=&')}"
+    return RedirectResponse(dest, status_code=307)
 
 
 @app.get("/api/auth/google/login")
@@ -874,8 +938,19 @@ async def google_callback(code: str = "", state: str = "", error: str = ""):
 
 @app.get("/api/auth/me")
 async def auth_me(ctx: dict = Depends(require_user)):
-    """Return the currently logged-in user (401 if the token is missing/invalid)."""
-    return {"authenticated": True, "user": ctx["user"]}
+    """Return the currently logged-in user (401 if the token is missing/invalid).
+
+    `github_connected` is deliberately not the same thing as `has_github`.
+    has_github says the *account* has a GitHub identity attached — it drives the
+    profile page. Pushing needs a live access token, which lives on the
+    *session*, so an account that once logged in with GitHub and is now on a
+    password session has has_github=True and nothing to push with. Publish keys
+    off this field so the UI offers "Connect GitHub" exactly when a push would
+    otherwise 403, instead of claiming a connection the request can't use.
+    """
+    user = dict(ctx["user"])
+    user["github_connected"] = bool(ctx["session"].get("github_token"))
+    return {"authenticated": True, "user": user}
 
 
 @app.get("/api/profile")
@@ -1801,6 +1876,26 @@ async def delete_published_repo(
     return {"success": True, "deleted": full_name}
 
 
+@app.get("/api/scan/capabilities")
+async def scan_capabilities(ctx: dict = Depends(require_user)):
+    """Whether an active (ZAP) scan can run right now, and if not, why.
+
+    The scan endpoint already degrades gracefully and says what happened, but
+    only *after* the user has waited through a scan they asked to be active.
+    This lets the UI say it up front, next to the checkbox — and it's the one
+    call to make when active scanning "isn't working": the reason it returns is
+    the actual server-side fact, not a guess.
+    """
+    if not settings.zap_address:
+        return {"active_available": False, "reason": "no ZAP daemon is configured on the server",
+                "code": "not_configured"}
+    if not settings.zap_allow_active:
+        return {"active_available": False, "reason": "active scanning is switched off on this server",
+                "code": "disabled"}
+    code, reason = await asyncio.to_thread(ZapScanner().diagnose)
+    return {"active_available": code == "ok", "reason": reason, "code": code}
+
+
 @app.post("/api/scan", dependencies=[Depends(rate_limit(analyze_limiter))])
 async def scan_url(payload: ScanRequest, ctx: dict = Depends(require_user)):
     """
@@ -1846,7 +1941,14 @@ async def scan_url(payload: ScanRequest, ctx: dict = Depends(require_user)):
             if not settings.zap_allow_active:
                 why = "active scanning is switched off on this server"
             else:
-                why = await asyncio.to_thread(zap.availability)
+                # Wait out a booting daemon rather than degrading to passive on
+                # the spot. ZAP takes about a minute to answer after a restart,
+                # and "the scan I asked for quietly became a weaker one because
+                # I clicked during a deploy" is the single most confusing way
+                # this feature fails. Anything that isn't a boot delay comes back
+                # immediately — see wait_until_ready.
+                code, why = await zap.wait_until_ready(progress=progress)
+                why = None if code == "ok" else why
             if why is None:
                 try:
                     result = await zap.scan(

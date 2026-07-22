@@ -25,6 +25,13 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+def _raiser(exc):
+    """A _call stand-in that always fails the same way."""
+    def call(path, **kw):
+        raise exc
+    return call
+
+
 # ── translation layer (pure) ─────────────────
 
 class TestMapping:
@@ -162,3 +169,71 @@ class TestAvailabilityReason:
         monkeypatch.setattr(z, "_call", lambda path, **kw: {"version": "2.17.0"})
         assert z.availability() is None
         assert z.available() is True
+
+
+class TestDiagnoseCodes:
+    """diagnose() adds a machine-readable code beside the human reason.
+
+    The code is what lets a caller distinguish a failure that will fix itself
+    (the daemon is still booting) from one that never will (the key is wrong).
+    """
+
+    def test_ok_when_reachable(self, monkeypatch):
+        z = ZapScanner(address="http://zap:8090", api_key="k")
+        monkeypatch.setattr(z, "_call", lambda path, **kw: {"version": "2.17.0"})
+        assert z.diagnose() == ("ok", "")
+
+    def test_unreachable_is_retryable(self, monkeypatch):
+        z = ZapScanner(address="http://zap:8090", api_key="k")
+        monkeypatch.setattr(z, "_call", _raiser(httpx.ConnectError("refused")))
+        code, reason = z.diagnose()
+        assert code == "unreachable" and "isn't reachable" in reason
+
+    def test_bad_key_is_not_retryable(self, monkeypatch):
+        z = ZapScanner(address="http://zap:8090", api_key="wrong")
+        monkeypatch.setattr(z, "_call", _raiser(httpx.RemoteProtocolError("disconnected")))
+        assert z.diagnose()[0] == "bad_key"
+
+    def test_unconfigured_has_its_own_code(self):
+        assert ZapScanner(address="", api_key="").diagnose()[0] == "not_configured"
+
+
+class TestWaitUntilReady:
+    """A scan requested while the sidecar is still booting must wait it out
+    rather than silently downgrade to the passive audit — ZAP takes about a
+    minute to answer after a deploy or an OOM restart."""
+
+    def test_waits_out_a_booting_daemon(self, monkeypatch):
+        z = ZapScanner(address="http://zap:8090", api_key="k")
+        calls = {"n": 0}
+
+        def flaky(path, **kw):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise httpx.ConnectError("still booting")
+            return {"version": "2.17.0"}
+        monkeypatch.setattr(z, "_call", flaky)
+
+        assert _run(z.wait_until_ready(timeout=30, poll=0)) == ("ok", "")
+        assert calls["n"] == 3
+
+    def test_gives_up_at_the_deadline(self, monkeypatch):
+        z = ZapScanner(address="http://zap:8090", api_key="k")
+        monkeypatch.setattr(z, "_call", _raiser(httpx.ConnectError("refused")))
+        code, reason = _run(z.wait_until_ready(timeout=0, poll=0))
+        assert code == "unreachable" and reason
+
+    def test_does_not_wait_on_a_bad_key(self, monkeypatch):
+        """Waiting cannot fix a configuration mismatch — returning at once is
+        the difference between a clear error and a minute of false hope."""
+        z = ZapScanner(address="http://zap:8090", api_key="wrong")
+        calls = {"n": 0}
+
+        def rejected(path, **kw):
+            calls["n"] += 1
+            raise httpx.RemoteProtocolError("disconnected")
+        monkeypatch.setattr(z, "_call", rejected)
+
+        code, _ = _run(z.wait_until_ready(timeout=60, poll=0))
+        assert code == "bad_key"
+        assert calls["n"] == 1
