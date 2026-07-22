@@ -47,6 +47,10 @@ logger = logging.getLogger(__name__)
 # ZAP's risk vocabulary → the severity words the rest of the app uses. ZAP has no
 # "critical"; its "High" is the top band, which we keep as "high" (grade logic
 # treats high the same weight-class for the F floor below).
+# How often to report progress while waiting on a long ZAP scan. Short enough
+# that no proxy or browser sees an idle stream, long enough not to spam the UI.
+_HEARTBEAT_SECONDS = 10.0
+
 _RISK_TO_SEVERITY = {
     "High": "high",
     "Medium": "medium",
@@ -139,14 +143,44 @@ class ZapScanner:
 
     def available(self) -> bool:
         """True if a daemon is configured and answers. Never raises."""
+        return self.availability() is None
+
+    def availability(self) -> Optional[str]:
+        """None if ZAP is usable, else a short reason it isn't. Never raises.
+
+        The reason matters. "Active scanning isn't available" with nothing after
+        it is unfalsifiable from the outside — it looks identical whether the
+        daemon is missing, still booting, or rejecting our API key, and that made
+        a simple key mismatch in production take far too long to identify. Each
+        of those has a different fix, so each gets named.
+        """
         if not self.address:
-            return False
+            return "no ZAP daemon is configured on the server"
         try:
             self._call("/JSON/core/view/version/")
-            return True
+            return None
+        except httpx.HTTPStatusError as e:
+            code = e.response.status_code
+            if code in (401, 403):
+                return ("the ZAP daemon rejected our API key — the backend and the "
+                        "daemon are configured with different ZAP_API_KEY values")
+            return f"the ZAP daemon answered HTTP {code}"
+        except httpx.RemoteProtocolError:
+            # ZAP does not answer 403 to a bad API key — it closes the connection
+            # without sending anything, which surfaces here as a protocol error.
+            # Measured against ZAP 2.17: a wrong key and a missing key both give
+            # "Empty reply from server", while a correct key returns 200. So a
+            # disconnect on this endpoint is, in practice, the key being wrong —
+            # which is exactly how this failed in production.
+            return ("the ZAP daemon rejected our API key (it closed the connection) "
+                    "— the backend and the daemon have different ZAP_API_KEY values")
+        except httpx.ConnectError:
+            return ("the ZAP daemon isn't reachable — it may not be running, or is "
+                    "still starting up (it takes about a minute)")
+        except httpx.TimeoutException:
+            return "the ZAP daemon timed out — it may still be starting up"
         except Exception as e:
-            logger.info(f"ZAP daemon not reachable at {self.address}: {e}")
-            return False
+            return f"the ZAP daemon could not be reached ({type(e).__name__})"
 
     # ── the scan ─────────────────────────────
 
@@ -200,12 +234,14 @@ class ZapScanner:
         await say.start("checks")
         await self._acall("/JSON/core/action/accessUrl/", url=target)
         sid = (await self._acall("/JSON/spider/action/scan/", url=target, recurse="true"))["scan"]
-        await self._await_status("/JSON/spider/view/status/", sid, deadline, poll_interval)
+        await self._await_status("/JSON/spider/view/status/", sid, deadline, poll_interval,
+                                 say, "spider")
         found = len((await self._acall("/JSON/spider/view/results/", scanId=sid))["results"])
 
         if active:
             aid = (await self._acall("/JSON/ascan/action/scan/", url=target, recurse="true"))["scan"]
-            await self._await_status("/JSON/ascan/view/status/", aid, deadline, poll_interval)
+            await self._await_status("/JSON/ascan/view/status/", aid, deadline, poll_interval,
+                                     say, "active scan")
             mode = "active"
         else:
             mode = "spider"
@@ -231,12 +267,32 @@ class ZapScanner:
             checks_run=found,
         )
 
-    async def _await_status(self, path: str, scan_id, deadline: float, poll: float) -> None:
-        """Poll a ZAP 0–100 status endpoint until 100 or the deadline passes."""
-        while int((await self._acall(path, scanId=scan_id))["status"]) < 100:
+    async def _await_status(self, path: str, scan_id, deadline: float, poll: float,
+                            say: Optional[Progress] = None, label: str = "") -> None:
+        """Poll a ZAP 0–100 status endpoint until 100 or the deadline passes.
+
+        `say` is pinged periodically while we wait. That is not cosmetic: an
+        active scan runs for minutes, and this loop previously emitted nothing
+        for its whole duration. A streamed response with no bytes on the wire for
+        minutes looks hung to the user and is liable to be cut by a proxy or the
+        browser long before ZAP finishes — so the scan has to keep talking while
+        it works, and the percentage is genuinely useful besides.
+        """
+        last_beat = 0.0
+        while True:
+            status = int((await self._acall(path, scanId=scan_id))["status"])
+            if status >= 100:
+                return
             if time.monotonic() > deadline:
                 logger.warning("ZAP scan exceeded its time budget; returning partial results.")
                 return
+            now = time.monotonic()
+            if say is not None and now - last_beat >= _HEARTBEAT_SECONDS:
+                last_beat = now
+                # Re-assert the step as running. The UI treats a repeated running
+                # event as "still going", and it puts bytes on the wire.
+                await say.start("checks")
+                logger.info(f"ZAP {label or 'scan'} at {status}%")
             await asyncio.sleep(poll)
 
 

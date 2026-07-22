@@ -44,8 +44,20 @@
 		}
 	}
 
+	# flush_interval -1 disables response buffering for the whole API, not just
+	# the SSE route above. /api/scan, /api/generate and /api/publish stream NDJSON
+	# progress, and Caddy only auto-disables buffering for text/event-stream — so
+	# application/x-ndjson was being buffered and the client saw nothing until the
+	# response completed. Invisible on a passive scan that finishes in seconds;
+	# fatal on an ACTIVE (ZAP) scan, which runs for minutes and would look hung
+	# and risk hitting a timeout with no bytes on the wire.
+	#
+	# Immediate flushing costs nothing meaningful for ordinary JSON replies, and
+	# scoping it to /api/* keeps the static file server buffered as normal.
 	handle /api/* {
-		reverse_proxy backend:8000
+		reverse_proxy backend:8000 {
+			flush_interval -1
+		}
 	}
 
 	# Health check and the interactive API docs live on the backend too.
