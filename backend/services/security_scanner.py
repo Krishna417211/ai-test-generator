@@ -23,6 +23,7 @@ scope gate blocks third-party sites the user plainly does not own.
 
 import re
 import ssl
+import math
 import time
 import socket
 import asyncio
@@ -73,7 +74,12 @@ USER_AGENT = (
 # among several, and it should be able to take the grade to F by itself.
 CATEGORY_CAPS = {
     "tls": 35,
-    "headers": 35,
+    # `headers` is deliberately roomy (the six tracked headers sum to 48). It used
+    # to be 35, which clipped at "CSP + HSTS + X-Frame-Options" — so a site missing
+    # three headers and a site missing all six deducted the same. The saturation
+    # that cap existed to prevent is now handled smoothly by _hardening_deduction,
+    # which is what actually bounds the hardening total.
+    "headers": 60,
     "cookies": 20,
     "cors": 20,
     "content": 25,
@@ -103,6 +109,37 @@ CATEGORY_CAPS = {
 # sink the grade to F by itself.
 HARDENING_CATEGORIES = {"headers", "cookies", "disclosure"}
 HARDENING_BUDGET = 30
+
+# How quickly hardening deductions saturate. Bigger = slower, more spread-out
+# scores. See _hardening_deduction.
+_HARDENING_SCALE = 25.0
+
+
+def _hardening_deduction(raw: float) -> float:
+    """Compress a raw hardening weight into (0, HARDENING_BUDGET).
+
+    This replaces a hard `min(raw, HARDENING_BUDGET)` clamp, which was the reason
+    the scanner gave nearly every site on the internet the same score.
+
+    The clamp saturated immediately: a missing CSP (20) plus a missing HSTS (10)
+    already hit the 30-point budget, so every further finding cost nothing. Since
+    almost every site is missing at least those two, almost every site landed on
+    exactly 100 - 30 = 70, grade C — whether it was missing two headers or six
+    headers *and* had cookies with no flags. Measured before this change:
+
+        missing 2 -> 70/C     missing 5           -> 70/C
+        missing 3 -> 70/C     missing 6 + cookies -> 70/C
+
+    A score that is identical for wildly different sites tells the reader nothing
+    and reads as a broken tool, which is exactly how it was reported.
+
+    An exponential gives the budget's guarantee without the flat spot: the curve
+    is strictly increasing, so more (or worse) hardening gaps always cost more
+    than fewer, but it approaches HARDENING_BUDGET asymptotically and never
+    reaches it — a hardening-only site still cannot be graded below C on
+    defence-in-depth alone, which is the property the budget existed to protect.
+    """
+    return HARDENING_BUDGET * (1.0 - math.exp(-raw / _HARDENING_SCALE))
 
 
 def _youtube(query: str) -> str:
@@ -1067,21 +1104,22 @@ class SecurityScanner:
         score = 100
         counts = {s: 0 for s in SEVERITY_WEIGHTS}
         spent: dict[str, int] = {}
-        hardening_spent = 0
+        hardening_raw = 0
         for f in unique:
             counts[f.severity] = counts.get(f.severity, 0) + 1
             weight = SEVERITY_WEIGHTS.get(f.severity, 0)
             cap = CATEGORY_CAPS.get(f.category, 100)
             used = spent.get(f.category, 0)
             deduct = max(0, min(weight, cap - used))
-            # Hardening categories also draw on one shared budget, so a site
-            # with nothing exploitable can't be graded down as if it had.
-            if f.category in HARDENING_CATEGORIES:
-                deduct = min(deduct, HARDENING_BUDGET - hardening_spent)
-                deduct = max(0, deduct)
-                hardening_spent += deduct
             spent[f.category] = used + deduct
-            score -= deduct
+            # Hardening findings are accumulated raw and compressed together at
+            # the end (see _hardening_deduction). Deducting them here — clamped
+            # to a shared budget — is what made every site score the same.
+            if f.category in HARDENING_CATEGORIES:
+                hardening_raw += deduct
+            else:
+                score -= deduct
+        score -= round(_hardening_deduction(hardening_raw))
         score = max(0, min(100, score))
         grade = _grade(score)
 
