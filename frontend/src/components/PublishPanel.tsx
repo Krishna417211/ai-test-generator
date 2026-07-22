@@ -3,13 +3,46 @@ import {
   Github, Upload, Lock, Loader2, Rocket, CheckCircle2, ExternalLink, AlertTriangle, Trash2,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { publishZip, getAuthConfig, validateZip, deleteRepo } from "../utils/api";
+import { publishZip, getAuthConfig, validateZip, deleteRepo, githubLoginUrl } from "../utils/api";
 import FlowPipeline, { applyStep, type StepStates } from "./FlowPipeline";
 import TrustPanel from "./TrustPanel";
 import { pluralize } from "../utils/format";
 import type { PublishResult } from "../types";
 import { useAuth } from "../context/AuthContext";
 import { celebrate } from "../lib/celebrate";
+
+// Connecting GitHub means leaving the page, so whatever has been typed is kept
+// here and restored on the way back. A File cannot go in sessionStorage (it is
+// a live handle to a file on disk, not data), so `hadFile` records only that
+// one was chosen — enough to ask for it again by name instead of silently
+// presenting an empty dropzone as though nothing was lost.
+const DRAFT_KEY = "testra_publish_draft";
+
+interface PublishDraft {
+  repoName: string;
+  addCicd: boolean;
+  isPrivate: boolean;
+  fileName: string | null;
+}
+
+function saveDraft(draft: PublishDraft): void {
+  try {
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  } catch {
+    // Private-mode or a full quota — losing the draft is a worse experience,
+    // not a broken one. Never block the connect on it.
+  }
+}
+
+function takeDraft(): PublishDraft | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    sessionStorage.removeItem(DRAFT_KEY); // one-shot: only the trip back restores
+    return raw ? (JSON.parse(raw) as PublishDraft) : null;
+  } catch {
+    return null;
+  }
+}
 
 export default function PublishPanel() {
   const { user, refresh } = useAuth();
@@ -41,6 +74,10 @@ export default function PublishPanel() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletedRepo, setDeletedRepo] = useState<string | null>(null);
   const [steps, setSteps] = useState<StepStates>({});
+  const [connecting, setConnecting] = useState(false);
+  // The ZIP that was picked before connecting. Set only when a draft comes
+  // back, so the dropzone can name what it needs rather than look untouched.
+  const [restoredFileName, setRestoredFileName] = useState<string | null>(null);
 
   useEffect(() => {
     getAuthConfig()
@@ -49,7 +86,24 @@ export default function PublishPanel() {
     // Refresh the session-derived github_connected flag. Also what makes the
     // return trip from OAuth land on a panel that already knows it's connected.
     refresh().catch(() => {});
+
+    // Put the form back the way it was left before the OAuth round-trip.
+    const draft = takeDraft();
+    if (draft) {
+      setRepoName(draft.repoName);
+      setAddCicd(draft.addCicd);
+      setIsPrivate(draft.isPrivate);
+      setRestoredFileName(draft.fileName);
+    }
   }, []);
+
+  const connectGithub = () => {
+    setConnecting(true);
+    saveDraft({ repoName, addCicd, isPrivate, fileName: file?.name ?? null });
+    // Comes back to this page, not Settings — `next` is validated server-side
+    // (_safe_next) so only a same-site path is ever honoured.
+    window.location.href = githubLoginUrl("/publish");
+  };
 
   // The push button is disabled until all three are satisfied. Track them by
   // name so we can say which one is missing instead of just graying out.
@@ -66,6 +120,7 @@ export default function PublishPanel() {
     const invalid = validateZip(f);
     setPubError(invalid);
     setFile(invalid ? null : f);
+    if (!invalid) setRestoredFileName(null); // the ask has been answered
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -121,28 +176,37 @@ export default function PublishPanel() {
           </Link>
         </div>
       ) : oauthEnabled ? (
-        // Connecting GitHub is an account setting, not a publish step: it is
-        // done once and reused by every push afterwards, and putting an OAuth
-        // round-trip inside this form means leaving the site with a chosen ZIP
-        // and typed repo name that no redirect back can restore. Send them to
-        // the one place that owns the connection instead.
-        <div className="px-4 py-3.5 rounded-2xl bg-amber-500/[0.08] border border-amber-500/25 space-y-2">
+        // Connect right here rather than sending the user to Settings mid-task.
+        // The round-trip does leave the page, so the form is saved first and
+        // restored on the way back (see DRAFT_KEY) — everything except the ZIP,
+        // which is a live file handle and cannot be serialized.
+        <div className="px-4 py-3.5 rounded-2xl bg-white/[0.03] border border-grey-700 space-y-3">
           <div className="flex items-center gap-2 text-sm text-white">
-            <Github size={16} className="text-amber-300" />
+            <Github size={16} className="text-grey-300" />
             {user?.has_github
               // has_github without github_connected means the identity is on the
               // account but this session holds no push token — signing back in
               // with a password does exactly that. Say so, or it reads as though
               // the connection they already made came undone.
               ? "This sign-in doesn't include GitHub push access"
-              : "GitHub isn't connected yet"}
+              : "Connect GitHub to publish"}
           </div>
+
+          <button
+            onClick={connectGithub}
+            disabled={connecting}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#24292f] hover:bg-[#32383f] border border-white/15 text-white font-semibold text-sm transition-colors disabled:opacity-60"
+          >
+            {connecting ? (
+              <><Loader2 size={16} className="animate-spin" /> Opening GitHub…</>
+            ) : (
+              <><Github size={16} /> {user?.has_github ? "Reconnect GitHub" : "Connect with GitHub"}</>
+            )}
+          </button>
+
           <p className="text-xs text-grey-400">
-            Connect it once in{" "}
-            <Link to="/settings#github" className="text-brand-300 hover:text-brand-200 underline underline-offset-2">
-              Settings → Connected accounts
-            </Link>
-            , then come back and push. Nothing to paste — you approve it on GitHub.
+            Nothing to paste — you approve it on GitHub and land back here.
+            Connect once and every push afterwards just works.
           </p>
         </div>
       ) : (
@@ -171,6 +235,15 @@ export default function PublishPanel() {
       >
         <Upload size={20} className={file ? "text-emerald-400" : "text-grey-500"} />
         <p className="text-sm text-grey-300">{file ? file.name : "Drop your project ZIP here"}</p>
+        {/* A browser will not hand a file back across a page load, so after
+            connecting we ask for the same one by name instead of pretending it
+            was never chosen. */}
+        {!file && restoredFileName && (
+          <p className="text-xs text-amber-300/80 px-4 text-center">
+            Pick <span className="font-mono">{restoredFileName}</span> again — browsers can't
+            carry a file across the GitHub sign-in.
+          </p>
+        )}
         <input ref={fileRef} type="file" accept=".zip" className="hidden" onChange={(e) => selectFile(e.target.files?.[0])} />
       </div>
 
