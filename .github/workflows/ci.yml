@@ -144,8 +144,13 @@ jobs:
           # vulnerability scanning. Its memory is hard-capped in the compose file,
           # so if the instance is too small the kernel kills only that container —
           # the API and Caddy keep serving and the backend falls back to passive
-          # scanning by itself. `|| true` on the pull so a slow/unavailable ZAP
-          # image can never fail a release of the app itself.
+          # scanning by itself. The pull tolerates failure so a slow or
+          # unavailable ZAP image can never fail a release of the app itself.
+          #
+          # NOTE: no backticks anywhere in this heredoc. It is unquoted (so that
+          # ${BACKEND_IMAGE} etc. interpolate), which means bash also treats
+          # backticks as command substitution — a pair of them in a comment made
+          # the shell try to run its contents and log a syntax error mid-deploy.
           docker compose -f deploy/docker-compose.prod.yml --profile zap pull || true
           docker compose -f deploy/docker-compose.prod.yml --profile zap up -d --remove-orphans
           # Old image layers accumulate until the volume fills; SQLite on a full
