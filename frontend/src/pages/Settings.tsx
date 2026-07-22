@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Settings as SettingsIcon, Loader2, Check, AlertCircle, Github, LogOut,
-  Trash2, KeyRound, SlidersHorizontal, Gauge, ShieldAlert,
+  Trash2, KeyRound, SlidersHorizontal, Gauge, ShieldAlert, Link2,
 } from "lucide-react";
 import Page from "../components/Page";
 import PageHeader from "../components/PageHeader";
@@ -10,6 +10,7 @@ import { useAuth } from "../context/AuthContext";
 import {
   getSettings, saveSettings, changePassword, logoutEverywhere, deleteAccount,
   getProfile, startCheckout, CheckoutUnavailableError, deleteRepo,
+  getAuthConfig, githubLoginUrl,
 } from "../utils/api";
 import { pluralize } from "../utils/format";
 import type { UserSettings, Profile, PlanCatalogueEntry } from "../types";
@@ -26,13 +27,18 @@ const LANGUAGES = [
   { value: "java", label: "Java" },
 ];
 
-function Section({ icon: Icon, title, description, children, danger = false }: {
+function Section({ icon: Icon, title, description, children, danger = false, id, highlight = false }: {
   icon: any; title: string; description: string;
-  children: React.ReactNode; danger?: boolean;
+  children: React.ReactNode; danger?: boolean; id?: string; highlight?: boolean;
 }) {
   return (
-    <section className={`rounded-2xl border p-5 sm:p-6 ${
-      danger ? "border-rose-500/30 bg-rose-500/[0.04]" : "border-grey-700 bg-white/[0.03]"}`}>
+    <section id={id} className={`rounded-2xl border p-5 sm:p-6 transition-colors ${
+      danger ? "border-rose-500/30 bg-rose-500/[0.04]"
+      // Arriving from a "connect it in Settings" link lands on a page of five
+      // near-identical cards; without this the user has to read all of them to
+      // find the one they were sent for.
+      : highlight ? "border-brand-400/50 bg-brand-400/[0.06]"
+      : "border-grey-700 bg-white/[0.03]"}`}>
       <div className="flex items-center gap-2 mb-1">
         <Icon size={14} className={danger ? "text-rose-400" : "text-grey-400"} />
         <h2 className={`text-xs font-semibold uppercase tracking-wider ${
@@ -240,6 +246,92 @@ function AccountSection() {
   );
 }
 
+// ── Connected accounts ───────────────────────
+
+/** Where GitHub gets connected — once, on the account — rather than as a step
+ *  inside the publish flow.
+ *
+ *  The distinction the UI has to get right is `has_github` vs
+ *  `github_connected` (see /api/auth/me). The first says the *account* carries a
+ *  GitHub identity; the second says *this session* holds an access token and can
+ *  therefore push. A GitHub user who later signs in with a password has the
+ *  first and not the second, and would hit a 403 at publish time with nothing on
+ *  screen explaining why. So the button keys off `github_connected` and the
+ *  wording off `has_github`.
+ */
+function ConnectionsSection({ highlight }: { highlight: boolean }) {
+  const { user, refresh } = useAuth();
+  // Optimistic until the server answers: the fallback to this button is asking
+  // for a pasted Personal Access Token, which is the thing connecting exists to
+  // avoid — don't show it because a config fetch was slow.
+  const [oauth, setOauth] = useState<"unknown" | "on" | "off">("unknown");
+  const oauthEnabled = oauth !== "off";
+  const connected = Boolean(user?.github_connected);
+
+  useEffect(() => {
+    getAuthConfig().then((c) => setOauth(c.github_oauth_enabled ? "on" : "off")).catch(() => {});
+    // The return trip from OAuth lands here; re-ask so the card shows connected
+    // without a manual reload. `user` in hand may predate the round-trip.
+    refresh().catch(() => {});
+  }, []);
+
+  // Back here afterwards, on this card, with the hash that highlights it.
+  const connectUrl = githubLoginUrl("/settings#github");
+
+  return (
+    <Section
+      id="github"
+      highlight={highlight}
+      icon={Link2}
+      title="Connected accounts"
+      description="Connect GitHub once here, and publishing works without asking you for anything."
+    >
+      <div className="rounded-xl border border-grey-700 bg-white/[0.02] px-4 py-3.5">
+        <div className="flex flex-wrap items-center gap-3">
+          <Github size={18} className={connected ? "text-brand-300" : "text-grey-400"} />
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-white">GitHub</div>
+            <div className="text-xs text-grey-400 truncate">
+              {connected
+                ? <>Connected as <span className="font-mono text-grey-200">@{user?.github_login}</span> — Testra can create repos and push on your behalf.</>
+                : user?.has_github
+                  // The identity is on the account but this session has no push
+                  // token. Saying "not connected" flatly reads as "the connection
+                  // I made last week vanished", so name what actually happened.
+                  ? <>Linked to <span className="font-mono text-grey-200">@{user.github_login}</span>, but this sign-in didn't include push access.</>
+                  : "Not connected."}
+            </div>
+          </div>
+          {oauthEnabled && (
+            <a href={connectUrl}
+               className={`ml-auto inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold shrink-0 ${
+                 connected
+                   ? "btn-ghost text-grey-200"
+                   : "btn-primary"}`}>
+              <Github size={14} />
+              {connected ? "Reconnect" : user?.has_github ? "Re-authorise GitHub" : "Connect GitHub"}
+            </a>
+          )}
+        </div>
+      </div>
+
+      {oauthEnabled ? (
+        <p className="text-[11px] text-grey-500 mt-3 leading-relaxed">
+          You approve it on GitHub — there's no token to paste, and we never see your
+          password. {connected
+            ? "Reconnect if a push starts failing: an access token can be revoked on GitHub's side at any time, and nothing tells us until it's used."
+            : "Until it's connected, Publish has nothing to push with."}
+        </p>
+      ) : (
+        <p className="text-[11px] text-amber-300/80 mt-3 leading-relaxed">
+          GitHub sign-in isn't configured on this server, so there's nothing to connect
+          here — Publish will ask for a Personal Access Token (repo scope) instead.
+        </p>
+      )}
+    </Section>
+  );
+}
+
 // ── Plan & billing ───────────────────────────
 
 function PlanSection({ profile }: { profile: Profile }) {
@@ -432,6 +524,18 @@ function DangerSection({ profile, reload }: { profile: Profile; reload: () => vo
 export default function Settings() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { hash } = useLocation();
+  const wantsGithub = hash === "#github";
+  const scrolled = useRef(false);
+
+  // react-router doesn't restore hash targets itself, and the section isn't in
+  // the DOM on the first paint anyway. Scroll once, after it mounts.
+  useEffect(() => {
+    if (!wantsGithub || scrolled.current) return;
+    scrolled.current = true;
+    requestAnimationFrame(() =>
+      document.getElementById("github")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  }, [wantsGithub]);
 
   const load = useCallback(async () => {
     try {
@@ -451,6 +555,7 @@ export default function Settings() {
       <div className="space-y-5">
         <DefaultsSection />
         <AccountSection />
+        <ConnectionsSection highlight={wantsGithub} />
         {error && (
           <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-300">
             {error}

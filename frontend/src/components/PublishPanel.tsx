@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import {
   Github, Upload, Lock, Loader2, Rocket, CheckCircle2, ExternalLink, AlertTriangle, Trash2,
 } from "lucide-react";
-import { publishZip, getAuthConfig, githubLoginUrl, validateZip, deleteRepo } from "../utils/api";
+import { Link } from "react-router-dom";
+import { publishZip, getAuthConfig, validateZip, deleteRepo } from "../utils/api";
 import FlowPipeline, { applyStep, type StepStates } from "./FlowPipeline";
 import TrustPanel from "./TrustPanel";
 import { pluralize } from "../utils/format";
@@ -56,7 +57,7 @@ export default function PublishPanel() {
     !file && "a project ZIP",
     !repoName.trim() && "a repository name",
     !(hasGithub || (!oauthEnabled && ghToken.trim())) &&
-      (oauthEnabled ? "your GitHub sign-in" : "a GitHub token"),
+      (oauthEnabled ? "a connected GitHub account" : "a GitHub token"),
   ].filter(Boolean) as string[];
   const canPublish = missing.length === 0;
 
@@ -107,34 +108,41 @@ export default function PublishPanel() {
 
   return (
     <div className="w-full max-w-xl mx-auto glass rounded-3xl p-6 shadow-card space-y-5">
-      {/* GitHub connection */}
+      {/* GitHub connection — established in Settings, only reported here. */}
       {hasGithub ? (
         <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 text-sm">
           <Github size={16} className="text-emerald-300" />
           GitHub connected as <span className="font-semibold text-white">{user?.github_login}</span>
           {/* An access token can be revoked on GitHub's side at any time, and
               nothing tells us until a push fails with "invalid or expired".
-              This is the way out of that state without logging out. */}
-          <a href={githubLoginUrl("/publish")} className="ml-auto text-xs text-grey-400 hover:text-white/80 transition-colors shrink-0">
-            Reconnect
-          </a>
+              Manage it where it was connected, not in the middle of a form. */}
+          <Link to="/settings#github" className="ml-auto text-xs text-grey-400 hover:text-white/80 transition-colors shrink-0">
+            Manage
+          </Link>
         </div>
       ) : oauthEnabled ? (
-        <div className="space-y-2">
-          {/* ?next=/publish brings them straight back here with the form intact,
-              and the current session rides along so GitHub is attached to the
-              account they're already signed into. */}
-          <a href={githubLoginUrl("/publish")} className="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-2xl bg-black/40 hover:bg-black/60 border border-white/15 text-white font-semibold transition-all text-sm">
-            <Github size={17} /> {user?.has_github ? "Reconnect GitHub to publish" : "Sign in with GitHub to publish"}
-          </a>
-          <p className="text-xs text-grey-400 text-center">
+        // Connecting GitHub is an account setting, not a publish step: it is
+        // done once and reused by every push afterwards, and putting an OAuth
+        // round-trip inside this form means leaving the site with a chosen ZIP
+        // and typed repo name that no redirect back can restore. Send them to
+        // the one place that owns the connection instead.
+        <div className="px-4 py-3.5 rounded-2xl bg-amber-500/[0.08] border border-amber-500/25 space-y-2">
+          <div className="flex items-center gap-2 text-sm text-white">
+            <Github size={16} className="text-amber-300" />
             {user?.has_github
               // has_github without github_connected means the identity is on the
               // account but this session holds no push token — signing back in
-              // with a password does exactly that. Say so, or "connect" looks
-              // like it didn't work the first time.
-              ? "Your sign-in this time didn't include GitHub access. One click re-authorises pushing — no token to paste."
-              : "You'll approve it on GitHub, then we create the repo and push on your behalf. No token to paste."}
+              // with a password does exactly that. Say so, or it reads as though
+              // the connection they already made came undone.
+              ? "This sign-in doesn't include GitHub push access"
+              : "GitHub isn't connected yet"}
+          </div>
+          <p className="text-xs text-grey-400">
+            Connect it once in{" "}
+            <Link to="/settings#github" className="text-brand-300 hover:text-brand-200 underline underline-offset-2">
+              Settings → Connected accounts
+            </Link>
+            , then come back and push. Nothing to paste — you approve it on GitHub.
           </p>
         </div>
       ) : (
