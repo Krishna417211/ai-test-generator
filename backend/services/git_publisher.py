@@ -15,6 +15,7 @@ Flow:
   8. PATCH /git/refs/heads/{branch}    → fast-forward the branch to it
 """
 
+import time
 import base64
 import asyncio
 import logging
@@ -125,9 +126,35 @@ class GitPublisher:
     async def _get_owner(self, client: httpx.AsyncClient) -> str:
         r = await client.get(f"{BASE_API}/user", headers=self._headers)
         if r.status_code == 401:
-            raise GitPublishError("GitHub token is invalid or expired.")
+            raise GitPublishError(
+                "GitHub token is invalid or expired. Disconnect and reconnect "
+                "GitHub to get a fresh one."
+            )
+        if r.status_code == 403:
+            raise GitPublishError(self._forbidden_reason(r))
         if r.status_code != 200:
             raise GitPublishError(self._msg(r, "Could not authenticate with GitHub"))
+
+        # Check the granted scopes here, on the first call, rather than
+        # discovering the problem half-way through a publish. GitHub reports what
+        # the token can actually do in X-OAuth-Scopes; a token without 'repo'
+        # cannot create or push a repository, and failing now says so precisely
+        # instead of surfacing an opaque 403 after we've started.
+        #
+        # The header is only sent for OAuth/classic tokens. Fine-grained PATs and
+        # GitHub App installation tokens omit it, so an ABSENT header must not be
+        # treated as "no scopes" — we simply can't tell, and proceeding lets the
+        # request itself be the judge.
+        granted = r.headers.get("x-oauth-scopes")
+        if granted is not None:
+            have = {s.strip() for s in granted.split(",") if s.strip()}
+            if "repo" not in have:
+                raise GitPublishError(
+                    "This GitHub token can't create repositories — it is missing "
+                    f"the 'repo' scope (it has: {granted.strip() or 'none'}). "
+                    "Disconnect and reconnect GitHub to re-grant access."
+                )
+
         login = r.json().get("login")
         if not login:
             raise GitPublishError("Could not resolve GitHub username from token.")
@@ -150,10 +177,7 @@ class GitPublisher:
                 "(or the name is invalid). Pick a different name."
             )
         if r.status_code == 403:
-            raise GitPublishError(
-                "GitHub rejected the request (403). The token needs the 'repo' scope "
-                "to create and push repositories."
-            )
+            raise GitPublishError(self._forbidden_reason(r))
         if r.status_code not in (200, 201):
             raise GitPublishError(self._msg(r, "Failed to create repository"))
         data = r.json()
@@ -263,3 +287,64 @@ class GitPublisher:
         except Exception:
             detail = resp.text[:200]
         return f"{prefix} (HTTP {resp.status_code}): {detail}".strip()
+
+    @staticmethod
+    def _forbidden_reason(resp: httpx.Response) -> str:
+        """Say why GitHub actually returned 403, instead of guessing.
+
+        A 403 here used to be reported as "the token needs the 'repo' scope" no
+        matter what caused it, which is unactionable when the real reason was
+        something else — and actively misleading when the token's scopes were
+        fine all along. GitHub tells us far more than that:
+
+          • X-OAuth-Scopes lists what the token was actually granted, so a scope
+            problem can be stated as fact ("has: public_repo") rather than
+            guessed at.
+          • X-RateLimit-Remaining: 0 means a rate limit, not a permission problem.
+          • The JSON body's `message` covers everything else — SAML SSO
+            authorization, blocked accounts, org policy, secondary rate limits.
+        """
+        try:
+            detail = (resp.json() or {}).get("message", "") or ""
+        except Exception:
+            detail = ""
+        low = detail.lower()
+
+        if resp.headers.get("x-ratelimit-remaining") == "0" or "rate limit" in low:
+            reset = resp.headers.get("x-ratelimit-reset", "")
+            when = ""
+            if reset.isdigit():
+                mins = max(0, int((int(reset) - time.time()) // 60))
+                when = f" It resets in about {mins} minute{'s' if mins != 1 else ''}."
+            return f"GitHub rate-limited the request (403).{when} Wait and try again."
+
+        if "saml" in low or "sso" in low:
+            return (
+                "GitHub refused the request (403) because the organisation requires "
+                "SAML SSO authorization for this token. Open your GitHub settings → "
+                "Applications, and authorize the token for that organisation."
+            )
+
+        granted = (resp.headers.get("x-oauth-scopes") or "").strip()
+        if granted:
+            have = {s.strip() for s in granted.split(",") if s.strip()}
+            if "repo" not in have:
+                return (
+                    f"GitHub refused the request (403). This token is missing the "
+                    f"'repo' scope — it currently has: {granted or 'none'}. "
+                    "Disconnect and reconnect GitHub to re-grant access."
+                )
+            # Scopes are fine, so the cause is something else — say so plainly
+            # rather than sending the user to re-check a scope that's already set.
+            return (
+                f"GitHub refused the request (403) even though the token has the "
+                f"required scope (has: {granted}). GitHub said: "
+                f"{detail or 'no reason given'}."
+            )
+
+        return (
+            "GitHub refused the request (403). "
+            + (f"GitHub said: {detail}" if detail else
+               "No reason was given — the token may lack the 'repo' scope, or the "
+               "account/organisation may be blocking it.")
+        )

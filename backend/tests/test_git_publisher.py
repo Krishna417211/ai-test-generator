@@ -135,3 +135,91 @@ class TestGitPublisher:
 
         with pytest.raises(GitPublishError, match="invalid or expired"):
             asyncio.run(GitPublisher("ghp_bad").publish("myrepo", {"a.txt": "hi"}))
+
+
+class TestForbiddenReason:
+    """A 403 used to always be reported as "the token needs the 'repo' scope",
+    whatever the real cause — unactionable when it was something else, and
+    misleading when the scopes were fine. GitHub tells us the actual reason;
+    these pin that we report it."""
+
+    def _resp(self, *, headers=None, message="", status=403):
+        return httpx.Response(
+            status, headers=headers or {}, json={"message": message},
+            request=httpx.Request("POST", "https://api.github.com/user/repos"),
+        )
+
+    def test_rate_limit_is_named_as_such(self):
+        r = self._resp(headers={"x-ratelimit-remaining": "0"},
+                       message="API rate limit exceeded")
+        msg = GitPublisher("t")._forbidden_reason(r)
+        assert "rate-limited" in msg
+        assert "repo' scope" not in msg          # must NOT blame scopes
+
+    def test_saml_sso_is_named(self):
+        r = self._resp(message="Resource protected by organization SAML enforcement")
+        msg = GitPublisher("t")._forbidden_reason(r)
+        assert "SAML SSO" in msg and "authorize" in msg.lower()
+
+    def test_missing_repo_scope_states_what_it_has(self):
+        r = self._resp(headers={"x-oauth-scopes": "gist, read:org"})
+        msg = GitPublisher("t")._forbidden_reason(r)
+        assert "missing the 'repo' scope" in msg
+        assert "gist, read:org" in msg           # says what it actually has
+
+    def test_scopes_present_does_not_blame_scopes(self):
+        r = self._resp(headers={"x-oauth-scopes": "repo, gist"},
+                       message="Repository creation disabled")
+        msg = GitPublisher("t")._forbidden_reason(r)
+        assert "required scope" in msg
+        assert "Repository creation disabled" in msg   # surfaces GitHub's reason
+
+
+class TestScopePreflight:
+    """The scope problem is caught on the first call, not half-way through."""
+
+    def _client(self, monkeypatch, user_headers):
+        real_client = httpx.AsyncClient
+
+        def handler(request):
+            return httpx.Response(200, headers=user_headers,
+                                  json={"login": "tester"})
+
+        def fake(*a, **k):
+            return real_client(transport=httpx.MockTransport(handler), timeout=5)
+        monkeypatch.setattr(git_publisher.httpx, "AsyncClient", fake)
+        return fake
+
+    def test_token_without_repo_scope_is_refused_early(self, monkeypatch):
+        fake = self._client(monkeypatch, {"x-oauth-scopes": "gist, read:org"})
+        p = GitPublisher("t")
+
+        async def go():
+            async with fake() as c:
+                return await p._get_owner(c)
+
+        with pytest.raises(GitPublishError) as e:
+            asyncio.run(go())
+        assert "missing" in str(e.value) and "repo" in str(e.value)
+
+    def test_token_with_repo_scope_passes(self, monkeypatch):
+        fake = self._client(monkeypatch, {"x-oauth-scopes": "repo, gist"})
+        p = GitPublisher("t")
+
+        async def go():
+            async with fake() as c:
+                return await p._get_owner(c)
+
+        assert asyncio.run(go()) == "tester"
+
+    def test_absent_scope_header_is_not_treated_as_no_scopes(self, monkeypatch):
+        """Fine-grained PATs and App tokens omit X-OAuth-Scopes. We can't tell
+        what they can do, so we must NOT refuse them — let the request decide."""
+        fake = self._client(monkeypatch, {})
+        p = GitPublisher("t")
+
+        async def go():
+            async with fake() as c:
+                return await p._get_owner(c)
+
+        assert asyncio.run(go()) == "tester"
