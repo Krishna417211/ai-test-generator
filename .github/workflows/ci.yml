@@ -131,6 +131,23 @@ jobs:
           # reads them from /var/data/testra.env, which only the box can see.
           REMOTE=$(cat <<REMOTE_EOF
           set -euo pipefail
+          # Reclaim disk FIRST — before the checkout, the login, and the pull.
+          # Everything below writes to the root volume, and under 'set -e' the
+          # first write to fail aborts the script; a deploy that cannot clean up
+          # until step four is a deploy that never cleans up once the volume is
+          # actually full. This ordering is what lets a wedged instance recover
+          # from a plain redeploy instead of needing a hand on the box.
+          #
+          # -a, not the bare prune this replaced: images are tagged by commit SHA,
+          # so a retired release is still tagged, never dangling, and a plain
+          # 'docker image prune -f' collects nothing at all. The running
+          # containers are still up here, so the live release keeps its images;
+          # older ones remain in ECR if a rollback needs to re-pull them.
+          # Tolerant of failure on purpose — a prune hiccup must not be the thing
+          # that blocks the release it was meant to make room for.
+          docker image prune -af || true
+          docker container prune -f || true
+          df -h / || true
           cd /opt/testra
           # Match the compose file to the images being deployed.
           git fetch --depth 1 origin ${SHA}
@@ -151,15 +168,6 @@ jobs:
           # ${BACKEND_IMAGE} etc. interpolate), which means bash also treats
           # backticks as command substitution — a pair of them in a comment made
           # the shell try to run its contents and log a syntax error mid-deploy.
-          # Reclaim space BEFORE pulling, not after. Images are tagged by commit
-          # SHA, so every release leaves a full backend+web image set behind that
-          # is never dangling — plain 'docker image prune -f' reclaims nothing and
-          # the volume fills. -a drops every image no container references; the
-          # live containers are still up at this point, so the running release is
-          # never touched. Rollback images stay available in ECR to re-pull.
-          docker image prune -af
-          docker container prune -f
-          df -h / /var/lib/docker /var/data || true
           docker compose -f deploy/docker-compose.prod.yml --profile zap pull || true
           docker compose -f deploy/docker-compose.prod.yml --profile zap up -d --remove-orphans
           docker image prune -f
