@@ -111,6 +111,18 @@ class TestConnectingFromAnExistingSession:
         resp = _round_trip(client, monkeypatch, params="next=/publish")
         assert _query(resp)["next"] == "/publish"
 
+    def test_a_fragment_survives_the_round_trip(self, client, monkeypatch):
+        """Connecting GitHub starts in Settings and must come back to the card
+        that sent them — which is addressed by fragment (/settings#github).
+
+        The fragment has to be carried *inside* the next parameter, encoded: a
+        literal '#' in the redirect Location would be the browser's own fragment
+        and the frontend would never see it as part of `next`.
+        """
+        resp = _round_trip(client, monkeypatch, params="next=/settings%23github")
+        assert _query(resp)["next"] == "/settings#github"
+        assert "%23" in resp.headers["location"]
+
     def test_an_identity_already_bound_elsewhere_is_not_moved(self, client, monkeypatch):
         """Signing in as a GitHub account that belongs to another user resolves
         to *that* user. Linking must not let a button press steal an identity."""
