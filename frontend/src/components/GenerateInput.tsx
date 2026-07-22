@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Github, Upload, ArrowRight, Lock, Loader2 } from "lucide-react";
 import { validateZip, getAuthConfig } from "../utils/api";
 import { formatBytes } from "../utils/format";
+import { useAuth } from "../context/AuthContext";
 
 interface Props {
   onAnalyze: (input: { type: "url"; url: string; token?: string } | { type: "zip"; file: File }) => void;
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export default function GenerateInput({ onAnalyze, loading, error }: Props) {
+  const { user, refresh } = useAuth();
+  const githubConnected = Boolean(user?.github_connected);
   const [mode, setMode] = useState<"url" | "zip">("url");
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
@@ -23,8 +26,10 @@ export default function GenerateInput({ onAnalyze, loading, error }: Props) {
   const [dismissed, setDismissed] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Picks up the server's upload cap so validateZip can use it.
-  useEffect(() => { getAuthConfig().catch(() => {}); }, []);
+  // Picks up the server's upload cap so validateZip can use it, and the
+  // session-derived github_connected flag (a password login's response can't
+  // carry it — only /api/auth/me knows).
+  useEffect(() => { getAuthConfig().catch(() => {}); refresh().catch(() => {}); }, []);
   useEffect(() => { if (error) setDismissed(false); }, [error]);
 
   const selectFile = (f: File | undefined) => {
@@ -84,10 +89,19 @@ export default function GenerateInput({ onAnalyze, loading, error }: Props) {
                   className="w-full pl-10 pr-4 py-3.5 rounded-xl bg-black/30 border border-grey-700 text-white placeholder:text-grey-400 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm"
                 />
               </div>
-              <button onClick={() => setShowToken(!showToken)} className="flex items-center gap-1.5 text-xs text-grey-500 hover:text-grey-400 transition-colors">
-                <Lock size={12} /> {showToken ? "Hide" : "Private repo?"} Add GitHub token
-              </button>
-              {showToken && (
+              {/* Signed in with GitHub? Private repos already work — the server
+                  reads them with the session's token. Offering a PAT box here
+                  would ask for a credential we hold a better one for. */}
+              {githubConnected ? (
+                <p className="flex items-center gap-1.5 text-xs text-emerald-300/80">
+                  <Github size={12} /> Private repos included — signed in as {user?.github_login}.
+                </p>
+              ) : (
+                <button onClick={() => setShowToken(!showToken)} className="flex items-center gap-1.5 text-xs text-grey-500 hover:text-grey-400 transition-colors">
+                  <Lock size={12} /> {showToken ? "Hide" : "Private repo?"} Add GitHub token
+                </button>
+              )}
+              {showToken && !githubConnected && (
                 <input
                   type="password"
                   value={token}

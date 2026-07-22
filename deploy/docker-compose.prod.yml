@@ -104,17 +104,24 @@ services:
   # This is what makes enabling active scanning safe without knowing the instance
   # size in advance.
   #
-  # ZAP_API_KEY comes from /var/data/testra.env when set; the default only exists
-  # so interpolation can't fail. The API is bound to the internal compose network
-  # with no ports: mapping, so it is never reachable from the internet either way.
+  # The api.key below and the backend's ZAP_API_KEY above are the *same*
+  # interpolation with the *same* default, which is what guarantees the two
+  # containers agree. Change one and you must change the other.
+  #
+  # Note there is deliberately no env_file here. ZAP needs one secret — its own
+  # API key — and giving a third-party image the file holding our LLM keys, SMTP
+  # password and session secret buys nothing: it reads the key from the command
+  # line, and anything else in that file would only widen what a compromised
+  # scanner container could reach.
   zap:
     image: ghcr.io/zaproxy/zaproxy:stable
     restart: unless-stopped
     profiles: ["zap"]
-    env_file:
-      - /var/data/testra.env
     environment:
       JAVA_OPTS: "-Xmx512m"
+      # Only so the healthcheck below can quote it without repeating the
+      # interpolation a third time.
+      ZAP_KEY: ${ZAP_API_KEY:-testra-internal-zap}
     mem_limit: 1g
     command: >
       zap.sh -daemon -host 0.0.0.0 -port 8090
@@ -122,3 +129,19 @@ services:
       -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
     expose:
       - "8090"
+
+    # ZAP takes about a minute to answer after a start, and it is memory-capped
+    # above — so "did it come up, and is it still up?" is a question an operator
+    # will actually need answered. With this, `docker compose ps` says
+    # healthy/unhealthy instead of just "running", and an OOM-restart loop is
+    # visible at a glance rather than only as scans quietly going passive.
+    # python3 rather than curl: the ZAP image ships its own python tooling
+    # (zap-baseline.py and friends), so it is certain to be there, while curl is
+    # not something to bet a health signal on.
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import os,urllib.request; urllib.request.urlopen('http://localhost:8090/JSON/core/view/version/?apikey='+os.environ.get('ZAP_KEY','')).read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s

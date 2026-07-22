@@ -60,12 +60,41 @@ GROQ_API_KEY_1=your_key_here
 ### 3. Run with Docker Compose (recommended)
 
 ```bash
-docker-compose up
+docker compose up
 ```
 
 Frontend: http://localhost:5173  
 Backend API: http://localhost:8000  
 API docs: http://localhost:8000/docs
+
+**With active vulnerability scanning** (starts an OWASP ZAP daemon alongside):
+
+```bash
+docker compose --profile zap up
+```
+
+ZAP takes about a minute to answer after it starts — the backend waits for it
+rather than quietly falling back to the passive audit. Without the profile,
+active scans degrade to the passive configuration audit and say so.
+`GET /api/scan/capabilities` reports whether it's ready, and why not if it isn't.
+
+### 3a. Publishing to GitHub
+
+Publishing pushes to a repo on your behalf, so the app needs GitHub access. It
+asks for that with **Sign in with GitHub** — no Personal Access Token to paste.
+Create an OAuth App at <https://github.com/settings/developers> with the callback
+URL `http://localhost:8000/api/auth/github/callback`, and put the credentials in
+`backend/.env`:
+
+```env
+GITHUB_CLIENT_ID=Ov23li...
+GITHUB_CLIENT_SECRET=...
+```
+
+Already signed in with a password? The publish page's *Sign in with GitHub*
+button attaches GitHub to that same account and brings you straight back — you
+keep your session, history and plan. (Without these two values the server has no
+OAuth app to send you to, and the page falls back to asking for a token.)
 
 ### 3b. Run manually
 

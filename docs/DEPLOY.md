@@ -200,6 +200,25 @@ At minimum, for the app to function: one LLM provider key, `SESSION_SECRET`,
 (in production an unconfigured relay fails closed — signup verification and login
 OTP will refuse rather than silently skip).
 
+### Sign-in with GitHub (required for publishing)
+
+Publishing pushes to a repo on the user's behalf, which needs a GitHub access
+token. The product's answer is a GitHub sign-in. With `GITHUB_CLIENT_ID` /
+`GITHUB_CLIENT_SECRET` unset, `github_oauth_enabled` is `False` and the publish
+page falls back to asking each user for a Personal Access Token — which works,
+but is the experience the OAuth app exists to remove. **Set these before a demo.**
+
+1. <https://github.com/settings/developers> → *New OAuth App*
+2. Homepage URL: your `FRONTEND_URL` (e.g. `https://testra.example.com`)
+3. Authorization callback URL: **`<BACKEND_URL>/api/auth/github/callback`** —
+   it must match `BACKEND_URL` exactly, scheme and all, or GitHub refuses the
+   redirect with `redirect_uri_mismatch`.
+4. Put the client id and generated secret in `/var/data/testra.env`, then
+   `docker compose ... up -d` to restart the API.
+
+Verify with `curl -s $SITE_URL/api/auth/config | jq .github_oauth_enabled` — it
+must print `true`. That single field is what the publish page keys off.
+
 ## 5. Repository configuration
 
 **Settings → Environments → `staging`** (create it; add reviewers here if you
@@ -259,6 +278,49 @@ shows a contact link. That is the correct state for staging.
 
 See `backend/services/billing.py` for the design and `backend/.env.example` for
 the Stripe setup steps.
+
+## Active scanning (OWASP ZAP)
+
+The passive audit needs nothing. Active scanning — the one that actually proves
+XSS or injection — needs the ZAP sidecar, which CI starts with
+`--profile zap` (see `.github/workflows/ci.yml`). It is deliberately optional:
+if it isn't there, scans degrade to the passive audit and say so.
+
+**When "active scanning is unavailable", ask the server, don't guess:**
+
+```bash
+curl -s "$SITE_URL/api/scan/capabilities" -H "Authorization: Bearer <session>" | jq
+```
+
+`code` is the whole diagnosis:
+
+| `code` | What it means | Fix |
+|---|---|---|
+| `ok` | Ready. | — |
+| `not_configured` | `ZAP_ADDRESS` is empty in the API container. | It's set in `deploy/docker-compose.prod.yml`; the API is running an older image or a hand-rolled compose. Redeploy. |
+| `disabled` | `ZAP_ALLOW_ACTIVE` isn't true. | Same file, same fix. |
+| `unreachable` | The daemon isn't answering. | `docker compose ... ps zap` — not started (`--profile zap` missing), still booting (~1 min), or OOM-killed. |
+| `bad_key` | The daemon rejected our key. | `ZAP_API_KEY` differs between the two containers. Both interpolate the same variable, so this means one was edited alone. |
+
+On the instance:
+
+```bash
+cd /path/to/compose
+docker compose -f deploy/docker-compose.prod.yml --profile zap ps zap   # healthy?
+docker compose -f deploy/docker-compose.prod.yml --profile zap logs --tail=50 zap
+```
+
+**`unreachable` that never clears is almost always memory.** ZAP is a JVM
+capped at `mem_limit: 1g` (`-Xmx512m`), on a box also running the API and Caddy.
+On a 1 GB instance the kernel will OOM-kill it, `restart: unless-stopped` will
+bring it back, and it will be killed again — a loop that reads from outside as
+"active scanning never works". `docker inspect --format '{{.State.OOMKilled}}'`
+on the container confirms it. The fix is a larger instance (2 GB+), not a larger
+cap.
+
+A scan requested while ZAP is still booting now waits for it (up to ~75s) rather
+than silently downgrading, so a scan started right after a deploy still runs
+active.
 
 ## Known gaps
 
