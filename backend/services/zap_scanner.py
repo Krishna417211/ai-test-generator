@@ -139,14 +139,44 @@ class ZapScanner:
 
     def available(self) -> bool:
         """True if a daemon is configured and answers. Never raises."""
+        return self.availability() is None
+
+    def availability(self) -> Optional[str]:
+        """None if ZAP is usable, else a short reason it isn't. Never raises.
+
+        The reason matters. "Active scanning isn't available" with nothing after
+        it is unfalsifiable from the outside — it looks identical whether the
+        daemon is missing, still booting, or rejecting our API key, and that made
+        a simple key mismatch in production take far too long to identify. Each
+        of those has a different fix, so each gets named.
+        """
         if not self.address:
-            return False
+            return "no ZAP daemon is configured on the server"
         try:
             self._call("/JSON/core/view/version/")
-            return True
+            return None
+        except httpx.HTTPStatusError as e:
+            code = e.response.status_code
+            if code in (401, 403):
+                return ("the ZAP daemon rejected our API key — the backend and the "
+                        "daemon are configured with different ZAP_API_KEY values")
+            return f"the ZAP daemon answered HTTP {code}"
+        except httpx.RemoteProtocolError:
+            # ZAP does not answer 403 to a bad API key — it closes the connection
+            # without sending anything, which surfaces here as a protocol error.
+            # Measured against ZAP 2.17: a wrong key and a missing key both give
+            # "Empty reply from server", while a correct key returns 200. So a
+            # disconnect on this endpoint is, in practice, the key being wrong —
+            # which is exactly how this failed in production.
+            return ("the ZAP daemon rejected our API key (it closed the connection) "
+                    "— the backend and the daemon have different ZAP_API_KEY values")
+        except httpx.ConnectError:
+            return ("the ZAP daemon isn't reachable — it may not be running, or is "
+                    "still starting up (it takes about a minute)")
+        except httpx.TimeoutException:
+            return "the ZAP daemon timed out — it may still be starting up"
         except Exception as e:
-            logger.info(f"ZAP daemon not reachable at {self.address}: {e}")
-            return False
+            return f"the ZAP daemon could not be reached ({type(e).__name__})"
 
     # ── the scan ─────────────────────────────
 

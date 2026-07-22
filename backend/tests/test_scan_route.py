@@ -114,8 +114,8 @@ class TestActiveGating:
         class _Zap:
             def __init__(self, *a, **k):
                 pass
-            def available(self):
-                return True
+            def availability(self):
+                return None          # None == usable; see ZapScanner.availability
             async def scan(self, url, *, active=False, authorized=False, progress=None):
                 assert active and authorized
                 if progress:

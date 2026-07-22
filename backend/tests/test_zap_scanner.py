@@ -8,6 +8,7 @@ one — exactly the environments (CI, a dev box) where no daemon exists.
 """
 
 import os
+import httpx
 import asyncio
 
 import pytest
@@ -119,3 +120,45 @@ def test_live_scan_finds_alerts(monkeypatch):
     r = _run(z.scan(target, active=True, authorized=True))
     assert r.checks_run >= 1
     assert isinstance(r.findings, list)
+
+
+class TestAvailabilityReason:
+    """"Active scanning isn't available" with no reason is unfalsifiable from
+    outside: a missing daemon, one still booting, and a rejected API key all look
+    identical, yet each needs a different fix. A key mismatch between the backend
+    and the sidecar is exactly what broke this in production. Each cause is named."""
+
+    def test_unconfigured_says_so(self):
+        assert "no ZAP daemon is configured" in ZapScanner(address="", api_key="").availability()
+
+    def test_connect_error_suggests_not_running_or_booting(self, monkeypatch):
+        def boom(path, **kw):
+            raise httpx.ConnectError("refused")
+        z = ZapScanner(address="http://zap:8090", api_key="k")
+        monkeypatch.setattr(z, "_call", boom)
+        assert "isn't reachable" in z.availability()
+
+    def test_closed_connection_is_reported_as_key_mismatch(self, monkeypatch):
+        # ZAP answers a bad/missing API key by closing the connection, not with
+        # a 403 — measured against ZAP 2.17.
+        def boom(path, **kw):
+            raise httpx.RemoteProtocolError("Server disconnected")
+        z = ZapScanner(address="http://zap:8090", api_key="")
+        monkeypatch.setattr(z, "_call", boom)
+        msg = z.availability()
+        assert "API key" in msg and "ZAP_API_KEY" in msg
+
+    def test_403_is_reported_as_key_mismatch(self, monkeypatch):
+        def boom(path, **kw):
+            raise httpx.HTTPStatusError(
+                "forbidden", request=httpx.Request("GET", "http://zap/"),
+                response=httpx.Response(403, request=httpx.Request("GET", "http://zap/")))
+        z = ZapScanner(address="http://zap:8090", api_key="wrong")
+        monkeypatch.setattr(z, "_call", boom)
+        assert "rejected our API key" in z.availability()
+
+    def test_available_is_true_only_when_no_reason(self, monkeypatch):
+        z = ZapScanner(address="http://zap:8090", api_key="k")
+        monkeypatch.setattr(z, "_call", lambda path, **kw: {"version": "2.17.0"})
+        assert z.availability() is None
+        assert z.available() is True

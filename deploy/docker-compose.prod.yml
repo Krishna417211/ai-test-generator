@@ -35,6 +35,16 @@ services:
       # so neither value here can break a deploy or a request.
       ZAP_ADDRESS: http://zap:8090
       ZAP_ALLOW_ACTIVE: "true"
+      # MUST be the same expression as the zap service's api.key below. Both are
+      # interpolated from the same variable with the same default, so the two
+      # containers always agree.
+      #
+      # This is the bug that made active scanning report itself unavailable in
+      # production: ZAP booted requiring the default key, the backend was given
+      # no key at all, so every call was rejected, available() returned False and
+      # the scan silently fell back to the passive audit. Setting one side without
+      # the other is the failure mode — keep them together.
+      ZAP_API_KEY: ${ZAP_API_KEY:-testra-internal-zap}
 
     volumes:
       - /var/data/db:/data

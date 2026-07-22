@@ -1843,7 +1843,11 @@ async def scan_url(payload: ScanRequest, ctx: dict = Depends(require_user)):
                     400, "Active scanning sends attack traffic — confirm you own or "
                     "are authorized to test this site first.")
             zap = ZapScanner()
-            if settings.zap_allow_active and await asyncio.to_thread(zap.available):
+            if not settings.zap_allow_active:
+                why = "active scanning is switched off on this server"
+            else:
+                why = await asyncio.to_thread(zap.availability)
+            if why is None:
                 try:
                     result = await zap.scan(
                         payload.url, active=True, authorized=True, progress=progress)
@@ -1860,9 +1864,13 @@ async def scan_url(payload: ScanRequest, ctx: dict = Depends(require_user)):
                         "Active scanning stopped being available, so a passive "
                         "configuration audit was run instead.")
             else:
+                # Name the reason. "Isn't available" on its own is unfalsifiable
+                # from the outside and hides which of several different fixes is
+                # the right one — see ZapScanner.availability.
+                logger.warning(f"Active scan requested but unavailable: {why}")
                 scan_note = (
-                    "Active scanning isn't available right now, so a passive "
-                    "configuration audit was run instead.")
+                    f"Active scanning isn't available right now because {why}. "
+                    "A passive configuration audit was run instead.")
 
         if result is None:
             scanner = SecurityScanner()
