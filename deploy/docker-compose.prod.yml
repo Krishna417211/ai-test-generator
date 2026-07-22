@@ -29,11 +29,12 @@ services:
       # container, every account and paid plan would vanish on the next release.
       TESTGEN_DB: /data/testgen.db
       # Active vulnerability scanning talks to the ZAP sidecar over the internal
-      # compose network. The sidecar is opt-in (compose profile "zap", below) and
-      # is NOT started by default, so this address simply won't resolve until the
-      # profile is enabled — the backend then reports active scanning unavailable
-      # and falls back to the passive audit. Nothing here can block a deploy.
-      ZAP_ADDRESS: ${ZAP_ADDRESS:-}
+      # compose network (never exposed to the internet). If the sidecar isn't
+      # running — not started, still booting, or OOM-killed — the backend simply
+      # reports active scanning unavailable and falls back to the passive audit,
+      # so neither value here can break a deploy or a request.
+      ZAP_ADDRESS: http://zap:8090
+      ZAP_ALLOW_ACTIVE: "true"
 
     volumes:
       - /var/data/db:/data
@@ -81,23 +82,33 @@ services:
   # backend talks to it (no ports: — never reachable from the internet), and it
   # only ever runs a scan when a request is both authorized and enabled server-side.
   #
-  # OPT-IN. It sits behind the "zap" compose profile, so a normal
-  #   docker compose -f docker-compose.prod.yml up -d
-  # does NOT start it (and cannot be broken by it). To enable active scanning:
-  #   1. add ZAP_API_KEY=<random> and ZAP_ALLOW_ACTIVE=true to /var/data/testra.env
-  #   2. add ZAP_ADDRESS=http://zap:8090 there too (so the backend finds it)
-  #   3. deploy/run with the profile:  ... up -d --profile zap
-  # The :- default below is only so file interpolation never fails when the key
-  # is unset; the daemon isn't running in that case anyway.
+  # Started by CI with `--profile zap` (see ci.yml). It stays behind a profile so
+  # the file can still be run by hand without it, and so it can be switched off by
+  # dropping one flag rather than editing services.
+  #
+  # MEMORY IS CAPPED ON PURPOSE. ZAP is a JVM app that will happily grow until the
+  # box dies, and this instance also runs the API and Caddy. mem_limit is a hard
+  # ceiling the kernel enforces: if ZAP exceeds it, Docker OOM-kills *only this
+  # container*, the site stays up, and the backend degrades to passive scanning on
+  # its own. -Xmx keeps the JVM under that ceiling so it normally never gets there.
+  # This is what makes enabling active scanning safe without knowing the instance
+  # size in advance.
+  #
+  # ZAP_API_KEY comes from /var/data/testra.env when set; the default only exists
+  # so interpolation can't fail. The API is bound to the internal compose network
+  # with no ports: mapping, so it is never reachable from the internet either way.
   zap:
     image: ghcr.io/zaproxy/zaproxy:stable
     restart: unless-stopped
     profiles: ["zap"]
     env_file:
       - /var/data/testra.env
+    environment:
+      JAVA_OPTS: "-Xmx512m"
+    mem_limit: 1g
     command: >
       zap.sh -daemon -host 0.0.0.0 -port 8090
-      -config api.key=${ZAP_API_KEY:-unset}
+      -config api.key=${ZAP_API_KEY:-testra-internal-zap}
       -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
     expose:
       - "8090"
