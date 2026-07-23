@@ -2163,6 +2163,9 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
         selector_warnings=result.selector_warnings,
         summary=result.summary,
         validation=result.validation,
+        # A partial run downloads as a plausible-looking archive that cannot
+        # run, so the client has to be able to see it and say so.
+        failed_files=result.failed_files,
         grounding=result.grounding.as_dict(),
         selector_grounding=result.selector_grounding,
         fragility=result.fragility,

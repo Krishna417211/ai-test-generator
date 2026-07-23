@@ -335,12 +335,19 @@ class WriterAgent:
         # CI last, and only for a complete suite: the workflow runs the whole
         # suite, so shipping it next to missing files guarantees a red pipeline
         # on the first push.
-        if include_ci and self._failed_files:
+        #
+        # A suite with no test cases is the same failure wearing a different
+        # hat: if every spec failed and only page objects survived, the archive
+        # looks plausible but collects zero tests. Withhold CI for that too.
+        suite_incomplete = bool(self._failed_files) or test_count == 0
+        if include_ci and suite_incomplete:
             logger.warning(
-                f"Skipping CI workflow — {len(self._failed_files)} planned file(s) "
-                f"were never generated: {', '.join(self._failed_files[:5])}"
+                f"Skipping CI workflow — incomplete suite "
+                f"({len(self._failed_files)} planned file(s) never generated: "
+                f"{', '.join(self._failed_files[:5]) or 'none'}; test_count={test_count})"
             )
-        if include_ci and not self._failed_files:
+        ci_included = include_ci and not suite_incomplete
+        if ci_included:
             generated_files.append(GeneratedFile(
                 filename=".github/workflows/e2e-tests.yml",
                 content=scaffold.github_workflow(framework_key, target),
@@ -363,6 +370,9 @@ class WriterAgent:
                 files=generated_files,
                 project_summary=filter_result.project_summary,
                 testing_challenges=filter_result.testing_challenges,
+                ci_included=ci_included,
+                failed_files=self._failed_files,
+                test_count=test_count,
             ),
             description="Setup and running instructions for the generated test suite",
         ))
@@ -831,6 +841,10 @@ Generate comprehensive tests now:
                     spec, manifest, filter_result, framework_key, test_flows, base_url, language, tier
                 )
             except Exception as e:
+                # Log per file. Only the *last* error is kept for re-raising, so
+                # without this the first N failures of a run vanish and there is
+                # no way to tell a rate limit from a bad JSON response.
+                logger.warning(f"Planned file failed to generate: {spec['filename']} — {e!r}")
                 failed.append(spec["filename"])
                 last_error = e
                 continue
@@ -841,6 +855,7 @@ Generate comprehensive tests now:
                     description=spec.get("description", ""),
                 ))
             else:
+                logger.warning(f"Planned file came back empty: {spec['filename']}")
                 failed.append(spec["filename"])
 
         # Nothing usable — fall back to single-shot, which raises if it also fails
