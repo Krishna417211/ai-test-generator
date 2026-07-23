@@ -179,6 +179,41 @@ export default function ResultsStep({ result, onReset }: Props) {
         provenance={result.provenance}
       />
 
+      {/* Incomplete run. Ranked above selector warnings because it invalidates
+          the download outright: a suite missing its specs collects zero tests,
+          and one missing any planned file ships without CI. */}
+      {(!!result.failed_files?.length || result.test_count === 0) && (
+        <div className="rounded-xl border border-red-500/25 bg-red-500/5 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle size={14} className="text-red-400" />
+            <span className="text-sm font-semibold text-red-300">
+              Incomplete suite — don't run this as-is
+            </span>
+          </div>
+          <ul className="space-y-1.5">
+            {!!result.failed_files?.length && (
+              <li className="text-xs text-red-200/70">
+                {pluralize(result.failed_files.length, "planned file")} could not be
+                generated:{" "}
+                <span className="font-mono">{result.failed_files.slice(0, 5).join(", ")}</span>
+                {result.failed_files.length > 5 && ` +${result.failed_files.length - 5} more`}
+              </li>
+            )}
+            {result.test_count === 0 && (
+              <li className="text-xs text-red-200/70">
+                No test cases were produced — what's here is page objects and config
+                only, so the suite will collect 0 tests.
+              </li>
+            )}
+            <li className="text-xs text-red-200/50">
+              The CI pipeline was left out, since an incomplete suite can't pass it.
+              This usually means a provider rate limit mid-run — regenerating
+              normally produces the full suite.
+            </li>
+          </ul>
+        </div>
+      )}
+
       {/* Selector warnings */}
       {result.selector_warnings.length > 0 && (
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">

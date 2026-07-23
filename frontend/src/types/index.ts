@@ -149,6 +149,8 @@ export interface GenerateResponse {
   selector_warnings: string[];
   summary: string;
   validation?: FileValidation[];
+  /** Planned files the model never produced. Non-empty means a partial run. */
+  failed_files?: string[];
   grounding?: Grounding | null;
   selector_grounding?: SelectorGrounding | null;
   fragility?: Fragility | null;

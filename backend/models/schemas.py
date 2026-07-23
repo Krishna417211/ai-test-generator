@@ -259,6 +259,10 @@ class GenerateResponse(BaseModel):
     selector_warnings: list[str]
     summary: str
     validation: list[dict] = []              # per-file syntax-validity results
+    # Planned files the model never produced — a partial run. The publish path
+    # has always warned about these; the download path used to drop them, so a
+    # suite missing every spec file downloaded looking exactly like a whole one.
+    failed_files: list[str] = []
     grounding: Optional[Grounding] = None
     # Richer grounding with per-selector provenance (file:line) and, when a live
     # URL was given, live-DOM verification. See services/grounding.py.

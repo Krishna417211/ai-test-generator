@@ -385,6 +385,59 @@ class TestReadme:
         assert "BASE_URL" in self._readme("playwright_js")
 
 
+class TestReadmeReportsAnIncompleteSuite:
+    """Regression: a run that lost its spec files shipped a README promising a
+    CI workflow that wasn't in the archive, next to a suite that collects zero
+    tests. Nothing in the download said so, so a partial run was indis-
+    tinguishable from a complete one."""
+
+    def _readme(self, **kw):
+        defaults = dict(
+            framework_key="playwright_python",
+            language="python",
+            stack=STATIC,
+            target=plan_target(STATIC, "http://localhost:3000"),
+            files=[GeneratedFile("e2e/tests/pages/LoginPage.py", "x", "page object")],
+            project_summary="A shop.",
+            testing_challenges=[],
+        )
+        return scaffold.readme(**{**defaults, **kw})
+
+    def test_complete_suite_still_describes_ci(self):
+        readme = self._readme(ci_included=True, failed_files=[], test_count=4)
+        assert ".github/workflows/e2e-tests.yml" in readme
+        assert "incomplete" not in readme.lower()
+
+    def test_missing_planned_files_are_named(self):
+        readme = self._readme(
+            ci_included=False,
+            failed_files=["e2e/tests/specs/test_cart.py", "e2e/tests/specs/test_login.py"],
+            test_count=3,
+        )
+        assert "incomplete" in readme.lower()
+        assert "e2e/tests/specs/test_cart.py" in readme
+        assert "e2e/tests/specs/test_login.py" in readme
+
+    def test_zero_tests_is_called_out_even_when_nothing_failed(self):
+        """Every planned file can arrive and still leave no test cases if the
+        plan itself was only page objects — the archive looks whole and
+        collects nothing."""
+        readme = self._readme(ci_included=False, failed_files=[], test_count=0)
+        assert "No test cases were produced" in readme
+
+    def test_withheld_ci_is_not_advertised(self):
+        readme = self._readme(
+            ci_included=False, failed_files=["e2e/tests/specs/test_cart.py"], test_count=0
+        )
+        assert "No CI pipeline was included" in readme
+        assert "run this suite on every\npush" not in readme
+
+    def test_defaults_keep_the_old_behaviour_for_existing_callers(self):
+        readme = self._readme()
+        assert ".github/workflows/e2e-tests.yml" in readme
+        assert "⚠️ This suite is incomplete" not in readme
+
+
 # ─────────────────────────────────────────────
 # Suite placement (writer_agent)
 # ─────────────────────────────────────────────
