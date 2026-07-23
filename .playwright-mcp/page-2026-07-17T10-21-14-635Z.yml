@@ -1,0 +1,135 @@
+- generic [ref=f2e3]:
+  - banner [ref=f2e4]:
+    - navigation [ref=f2e6]:
+      - link "Testra" [ref=f2e7] [cursor=pointer]:
+        - /url: /dashboard
+      - generic [ref=f2e13]:
+        - link "3 left 2/5" [ref=f2e34] [cursor=pointer]:
+          - /url: /settings
+          - generic [ref=f2e36]:
+            - generic [ref=f2e37]: 3 left
+            - generic [ref=f2e38]: 2/5
+        - button "T tp-check2" [ref=f2e42] [cursor=pointer]:
+          - generic [ref=f2e43]: T
+          - generic [ref=f2e44]: tp-check2
+  - generic [ref=f2e48]:
+    - complementary [ref=f2e49]:
+      - generic [ref=f2e50]:
+        - generic [ref=f2e51]:
+          - generic [ref=f2e52]: T
+          - generic [ref=f2e53]:
+            - generic [ref=f2e54]: tp-check2
+            - generic [ref=f2e55]: tp-check2@example.com
+        - navigation [ref=f2e56]:
+          - link "Overview" [ref=f2e57] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Generate" [ref=f2e64] [cursor=pointer]:
+            - /url: /generate
+          - link "Publish" [ref=f2e68] [cursor=pointer]:
+            - /url: /publish
+          - link "Scan" [ref=f2e75] [cursor=pointer]:
+            - /url: /scan
+          - link "Status" [ref=f2e80] [cursor=pointer]:
+            - /url: /status
+          - link "Settings" [ref=f2e84] [cursor=pointer]:
+            - /url: /settings
+          - link "Profile" [ref=f2e89] [cursor=pointer]:
+            - /url: /profile
+    - main [ref=f2e95]:
+      - generic [ref=f2e125]:
+        - generic [ref=f2e126]:
+          - generic [ref=f2e128]:
+            - generic [ref=f2e129]: Input
+            - generic [ref=f2e137]:
+              - generic [ref=f2e138]: "2"
+              - generic [ref=f2e140]: Preview
+            - generic [ref=f2e143]:
+              - generic [ref=f2e144]: "3"
+              - generic [ref=f2e146]: Configure
+            - generic [ref=f2e149]:
+              - generic [ref=f2e150]: "4"
+              - generic [ref=f2e152]: Download
+          - generic [ref=f2e153]:
+            - generic [ref=f2e154]:
+              - generic [ref=f2e155]: What we checked
+              - generic [ref=f2e161]:
+                - generic [ref=f2e162]:
+                  - generic [ref=f2e163]: Written by
+                  - generic [ref=f2e174]: llama-3.3-70b-versatile
+                - paragraph [ref=f2e175]: Pro runs claude-opus-4-8 on this step.
+            - generic [ref=f2e176]:
+              - generic [ref=f2e177]:
+                - generic [ref=f2e178]:
+                  - text: React (Vite/CRA)
+                  - heading "Project Analysis" [level=3] [ref=f2e179]
+                - generic [ref=f2e180]:
+                  - generic [ref=f2e181]: "3"
+                  - generic [ref=f2e182]: UI files found
+              - paragraph [ref=f2e183]: This is a React application with a login feature. The app has a navigation bar with a link to the login page. The login component is rendered within the app shell.
+              - generic [ref=f2e184]: 197 tokens • 1 route detected
+            - generic [ref=f2e185]:
+              - generic [ref=f2e186]: Detected Routes
+              - generic [ref=f2e192]: /login
+            - generic [ref=f2e194]:
+              - generic [ref=f2e195]: Key Pages to Test
+              - generic [ref=f2e201]:
+                - generic [ref=f2e203]:
+                  - generic [ref=f2e204]:
+                    - generic [ref=f2e205]: src/App.jsx
+                    - generic [ref=f2e206]: high
+                  - paragraph [ref=f2e207]: The main application page
+                  - generic [ref=f2e208]: Clicking the login link in the nav bar should render the login component
+                - generic [ref=f2e211]:
+                  - generic [ref=f2e212]:
+                    - generic [ref=f2e213]: src/Login.jsx
+                    - generic [ref=f2e214]: high
+                  - paragraph [ref=f2e215]: The login page
+                  - generic [ref=f2e216]: Submitting the login form should trigger an authentication flow
+            - generic [ref=f2e218]:
+              - generic [ref=f2e219]: Testing Considerations
+              - list [ref=f2e223]:
+                - listitem [ref=f2e224]:
+                  - generic [ref=f2e225]: •
+                  - text: Testing the authentication flow without a backend API
+            - button "Configure Test Generation" [ref=f2e226] [cursor=pointer]
+        - generic [ref=f2e230]:
+          - generic [ref=f2e231]:
+            - generic [ref=f2e232]: LLM Providers
+            - generic [ref=f2e236]:
+              - generic [ref=f2e237]:
+                - generic [ref=f2e238]: Gemini 1.5 Flash
+                - generic [ref=f2e243]: 1/2 keys
+              - generic [ref=f2e244]:
+                - generic [ref=f2e245]: Groq LLaMA 3.1
+                - generic [ref=f2e250]: 2/2 keys
+              - generic [ref=f2e251]:
+                - generic [ref=f2e252]: Claude Haiku
+                - generic [ref=f2e257]: 1/1 keys
+          - generic [ref=f2e258]:
+            - generic [ref=f2e259]: Session
+            - generic [ref=f2e260]:
+              - generic [ref=f2e261]: Framework
+              - generic [ref=f2e262]: React (Vite/CRA)
+            - generic [ref=f2e263]:
+              - generic [ref=f2e264]: Files
+              - generic [ref=f2e265]: "3"
+            - generic [ref=f2e266]:
+              - generic [ref=f2e267]: Routes
+              - generic [ref=f2e268]: "1"
+            - generic [ref=f2e269]:
+              - generic [ref=f2e270]: Tokens
+              - generic [ref=f2e271]: "197"
+  - contentinfo [ref=f2e20]:
+    - generic [ref=f2e21]:
+      - generic [ref=f2e22]: Testra — free & open source
+      - generic [ref=f2e28]:
+        - link "Generate" [ref=f2e29] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f2e30] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f2e31] [cursor=pointer]:
+          - /url: /scan
+        - link "How it works" [ref=f2e32] [cursor=pointer]:
+          - /url: /how-it-works
+        - link "GitHub" [ref=f2e33] [cursor=pointer]:
+          - /url: https://github.com

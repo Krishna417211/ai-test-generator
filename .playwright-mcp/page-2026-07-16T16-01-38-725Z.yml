@@ -1,0 +1,70 @@
+- generic [ref=f9e28]:
+  - banner [ref=f9e29]:
+    - generic [ref=f9e30]:
+      - generic [ref=f9e31]:
+        - button [ref=f9e32] [cursor=pointer]
+        - generic [ref=f9e36]: Testra Admin
+      - generic [ref=f9e37]:
+        - generic [ref=f9e38]: admin@example.com
+        - link "Main app" [ref=f9e39] [cursor=pointer]:
+          - /url: /dashboard
+        - button "Sign out" [ref=f9e40] [cursor=pointer]
+  - main [ref=f9e47]:
+    - generic [ref=f9e48]:
+      - generic [ref=f9e49]:
+        - generic [ref=f9e50]:
+          - heading "Platform overview" [level=1] [ref=f9e51]
+          - paragraph [ref=f9e52]: Every account on this instance, not just yours.
+        - button "Refresh" [ref=f9e53] [cursor=pointer]
+      - generic [ref=f9e59]:
+        - generic [ref=f9e60]:
+          - generic [ref=f9e67]: "5"
+          - generic [ref=f9e68]: Accounts
+          - generic [ref=f9e69]: +5 this week
+        - generic [ref=f9e70]:
+          - generic [ref=f9e74]: "1"
+          - generic [ref=f9e75]: On Pro
+          - generic [ref=f9e76]: 20% of accounts
+        - generic [ref=f9e77]:
+          - generic [ref=f9e81]: "0"
+          - generic [ref=f9e82]: Suites generated
+          - generic [ref=f9e83]: 0 in the last 24h
+        - generic [ref=f9e84]:
+          - generic [ref=f9e89]: "0"
+          - generic [ref=f9e90]: Sites scanned
+      - generic [ref=f9e91]:
+        - generic [ref=f9e92]:
+          - generic [ref=f9e97]: "0"
+          - generic [ref=f9e98]: Repos published
+        - generic [ref=f9e99]:
+          - generic [ref=f9e104]: "2"
+          - generic [ref=f9e105]: Live sessions
+        - generic [ref=f9e106]:
+          - generic [ref=f9e111]: "1"
+          - generic [ref=f9e112]: Suspended
+        - generic [ref=f9e113]:
+          - generic [ref=f9e117]: 0%
+          - generic [ref=f9e118]: Generation failure rate
+          - generic [ref=f9e119]: 0 failures all time
+      - generic [ref=f9e120]:
+        - generic [ref=f9e121]:
+          - generic [ref=f9e122]:
+            - generic [ref=f9e123]: Activity
+            - paragraph [ref=f9e124]: The last 30 days
+          - generic [ref=f9e125]:
+            - generic [ref=f9e126]:
+              - generic [ref=f9e127]: Generate
+              - generic [ref=f9e129]: Publish
+              - generic [ref=f9e131]: Scan
+            - button "Table" [ref=f9e133] [cursor=pointer]
+        - generic [ref=f9e136]: Nothing yet. Generate a suite, publish a project, or scan a site and it'll chart here.
+      - generic [ref=f9e137]:
+        - generic [ref=f9e138]:
+          - generic [ref=f9e139]: By framework
+          - generic [ref=f9e140]: No suites generated yet.
+        - generic [ref=f9e141]:
+          - generic [ref=f9e142]: By language
+          - generic [ref=f9e143]: No suites generated yet.
+      - generic [ref=f9e144]:
+        - generic [ref=f9e145]: Recent failures
+        - generic [ref=f9e146]: Nothing has failed recently.

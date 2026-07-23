@@ -1,0 +1,128 @@
+- generic [ref=f3e3]:
+  - banner [ref=f3e4]:
+    - navigation [ref=f3e6]:
+      - link "Testra" [ref=f3e7] [cursor=pointer]:
+        - /url: /dashboard
+      - generic [ref=f3e13]:
+        - link "2 left 3/5" [ref=f3e34] [cursor=pointer]:
+          - /url: /settings
+          - generic [ref=f3e36]:
+            - generic [ref=f3e37]: 2 left
+            - generic [ref=f3e38]: 3/5
+        - button "T tp-check2" [ref=f3e42] [cursor=pointer]:
+          - generic [ref=f3e43]: T
+          - generic [ref=f3e44]: tp-check2
+  - generic [ref=f3e48]:
+    - complementary [ref=f3e49]:
+      - generic [ref=f3e50]:
+        - generic [ref=f3e51]:
+          - generic [ref=f3e52]: T
+          - generic [ref=f3e53]:
+            - generic [ref=f3e54]: tp-check2
+            - generic [ref=f3e55]: tp-check2@example.com
+        - navigation [ref=f3e56]:
+          - link "Overview" [ref=f3e57] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Generate" [ref=f3e64] [cursor=pointer]:
+            - /url: /generate
+          - link "Publish" [ref=f3e68] [cursor=pointer]:
+            - /url: /publish
+          - link "Scan" [ref=f3e75] [cursor=pointer]:
+            - /url: /scan
+          - link "Status" [ref=f3e80] [cursor=pointer]:
+            - /url: /status
+          - link "Settings" [ref=f3e84] [cursor=pointer]:
+            - /url: /settings
+          - link "Profile" [ref=f3e89] [cursor=pointer]:
+            - /url: /profile
+    - main [ref=f3e95]:
+      - generic [ref=f3e96]:
+        - generic [ref=f3e97]: Production security audit
+        - heading "Scan your deployed app" [level=1] [ref=f3e101]
+        - paragraph [ref=f3e102]: Find the misconfigurations that bite in production — HTTPS, security headers, cookies, CORS and exposed files — each with a concrete fix.
+      - generic [ref=f3e104]:
+        - paragraph [ref=f3e105]: Passive and non-intrusive — it inspects configuration and never attacks your site.
+        - textbox "https://your-app.com" [ref=f3e110]: https://example.com
+        - button "Scan for vulnerabilities" [ref=f3e111] [cursor=pointer]
+        - generic [ref=f3e118]:
+          - generic [ref=f3e119]:
+            - generic [ref=f3e120]:
+              - generic [ref=f3e121]: C
+              - generic [ref=f3e122]: 65/100
+            - generic [ref=f3e123]:
+              - generic [ref=f3e124]: https://example.com
+              - paragraph [ref=f3e125]: The overall risk level is moderate, with key vulnerabilities that need attention. Prioritize fixing the lack of Content-Security-Policy, HSTS, and Clickjacking protection, as these pose significant security risks. Fixing these will significantly improve the site's security posture. The site's core functionality and existing security controls are already in place, providing a solid foundation to build upon.
+          - generic [ref=f3e126]:
+            - generic [ref=f3e127]: What we checked
+            - generic [ref=f3e132]:
+              - generic [ref=f3e133]: Action plan
+              - generic [ref=f3e134]: AI-prioritised
+            - generic [ref=f3e136]:
+              - generic [ref=f3e137]:
+                - generic [ref=f3e138]: Written by
+                - generic [ref=f3e149]: llama-3.3-70b-versatile
+              - paragraph [ref=f3e150]: Pro runs claude-opus-4-8 on this step.
+          - generic [ref=f3e151]:
+            - generic [ref=f3e152]: 1 High
+            - generic [ref=f3e153]: 2 Medium
+            - generic [ref=f3e154]: 2 Low
+            - generic [ref=f3e155]: 1 Info
+          - generic [ref=f3e156]:
+            - generic [ref=f3e157]: 6 findings · tap any to see details & the fix
+            - button "High headers No Content-Security-Policy +" [ref=f3e161] [cursor=pointer]:
+              - generic [ref=f3e163]:
+                - generic [ref=f3e164]:
+                  - generic [ref=f3e165]: High
+                  - generic [ref=f3e166]: headers
+                - generic [ref=f3e167]: No Content-Security-Policy
+              - generic [ref=f3e168]: +
+            - button "Medium headers HSTS not set +" [ref=f3e170] [cursor=pointer]:
+              - generic [ref=f3e172]:
+                - generic [ref=f3e173]:
+                  - generic [ref=f3e174]: Medium
+                  - generic [ref=f3e175]: headers
+                - generic [ref=f3e176]: HSTS not set
+              - generic [ref=f3e177]: +
+            - button "Medium headers Clickjacking protection missing (X-Frame-Options) +" [ref=f3e179] [cursor=pointer]:
+              - generic [ref=f3e181]:
+                - generic [ref=f3e182]:
+                  - generic [ref=f3e183]: Medium
+                  - generic [ref=f3e184]: headers
+                - generic [ref=f3e185]: Clickjacking protection missing (X-Frame-Options)
+              - generic [ref=f3e186]: +
+            - button "Low headers MIME-sniffing not disabled (X-Content-Type-Options) +" [ref=f3e188] [cursor=pointer]:
+              - generic [ref=f3e190]:
+                - generic [ref=f3e191]:
+                  - generic [ref=f3e192]: Low
+                  - generic [ref=f3e193]: headers
+                - generic [ref=f3e194]: MIME-sniffing not disabled (X-Content-Type-Options)
+              - generic [ref=f3e195]: +
+            - button "Low headers No Referrer-Policy +" [ref=f3e197] [cursor=pointer]:
+              - generic [ref=f3e199]:
+                - generic [ref=f3e200]:
+                  - generic [ref=f3e201]: Low
+                  - generic [ref=f3e202]: headers
+                - generic [ref=f3e203]: No Referrer-Policy
+              - generic [ref=f3e204]: +
+            - button "Info headers No Permissions-Policy +" [ref=f3e206] [cursor=pointer]:
+              - generic [ref=f3e208]:
+                - generic [ref=f3e209]:
+                  - generic [ref=f3e210]: Info
+                  - generic [ref=f3e211]: headers
+                - generic [ref=f3e212]: No Permissions-Policy
+              - generic [ref=f3e213]: +
+          - paragraph [ref=f3e214]: This is a lightweight passive scan of configuration — a clean result isn't a substitute for a full penetration test.
+  - contentinfo [ref=f3e20]:
+    - generic [ref=f3e21]:
+      - generic [ref=f3e22]: Testra — free & open source
+      - generic [ref=f3e28]:
+        - link "Generate" [ref=f3e29] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f3e30] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f3e31] [cursor=pointer]:
+          - /url: /scan
+        - link "How it works" [ref=f3e32] [cursor=pointer]:
+          - /url: /how-it-works
+        - link "GitHub" [ref=f3e33] [cursor=pointer]:
+          - /url: https://github.com

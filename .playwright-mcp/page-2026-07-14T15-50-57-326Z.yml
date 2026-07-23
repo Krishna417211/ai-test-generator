@@ -1,0 +1,66 @@
+- generic [ref=f3e3]:
+  - banner [ref=f3e4]:
+    - navigation [ref=f3e6]:
+      - link "Testra" [ref=f3e7] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f3e33]:
+        - link "Generate" [ref=f3e34] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f3e37] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f3e43] [cursor=pointer]:
+          - /url: /scan
+        - link "Status" [ref=f3e47] [cursor=pointer]:
+          - /url: /status
+      - button "S shot" [ref=f3e51] [cursor=pointer]:
+        - generic [ref=f3e52]: S
+        - generic [ref=f3e53]: shot
+  - main [ref=f3e56]:
+    - dialog [ref=f3e59]:
+      - button "Close" [ref=f3e60] [cursor=pointer]
+      - generic [ref=f3e64]: Free limit reached
+      - heading "Upgrade to Testra Pro" [level=2] [ref=f3e67]
+      - paragraph [ref=f3e68]: You've used all 5 free generations this month. Your quota resets on August 1 — or go unlimited now.
+      - generic [ref=f3e69]:
+        - button "yearly Save $140 $100/year" [pressed] [ref=f3e70] [cursor=pointer]:
+          - generic [ref=f3e71]:
+            - generic [ref=f3e75]: yearly
+            - generic [ref=f3e76]: Save $140
+          - generic [ref=f3e77]: $100/year
+        - button "monthly $20/month" [ref=f3e78] [cursor=pointer]:
+          - generic [ref=f3e79]: monthly
+          - generic [ref=f3e82]: $20/month
+      - list [ref=f3e83]:
+        - listitem [ref=f3e84]: Unlimited test generations
+        - listitem [ref=f3e87]: Priority access when capacity is tight
+        - listitem [ref=f3e90]: Page Object Models + CI/CD pipelines
+        - listitem [ref=f3e93]: Private repo publishing
+      - alert [ref=f3e129]:
+        - generic [ref=f3e132]: Checkout isn't live yet — we can't take payments through the app right now.
+      - button "Upgrade — $100/yr" [ref=f3e96] [cursor=pointer]
+      - button "Not now — I'll wait for my quota to reset" [ref=f3e97] [cursor=pointer]
+    - generic [ref=f3e98]:
+      - generic [ref=f3e99]: AI test generation
+      - heading "Generate production E2E tests" [level=1] [ref=f3e102]
+      - paragraph [ref=f3e103]: Point at a GitHub repo or upload a ZIP. Two AI agents filter your code and write runnable tests with real selectors.
+    - generic [ref=f3e105]:
+      - generic [ref=f3e106]:
+        - button "GitHub URL" [ref=f3e107] [cursor=pointer]
+        - button "Upload ZIP" [ref=f3e111] [cursor=pointer]
+      - generic [ref=f3e115]:
+        - generic [ref=f3e116]:
+          - textbox "https://github.com/owner/repo" [ref=f3e121]
+          - button "Private repo? Add GitHub token" [ref=f3e122] [cursor=pointer]
+        - button "Analyze repository" [disabled] [ref=f3e126]
+  - contentinfo [ref=f3e20]:
+    - generic [ref=f3e21]:
+      - generic [ref=f3e22]: Testra — free & open source
+      - generic [ref=f3e28]:
+        - link "Generate" [ref=f3e29] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f3e30] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f3e31] [cursor=pointer]:
+          - /url: /scan
+        - link "GitHub" [ref=f3e32] [cursor=pointer]:
+          - /url: https://github.com

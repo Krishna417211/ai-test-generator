@@ -1,0 +1,44 @@
+- generic [ref=f1e3]:
+  - banner [ref=f1e4]:
+    - navigation [ref=f1e6]:
+      - link "Testra" [ref=f1e7] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f1e64]:
+        - link "Generate" [ref=f1e65] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f1e68] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f1e74] [cursor=pointer]:
+          - /url: /scan
+        - link "Status" [ref=f1e78] [cursor=pointer]:
+          - /url: /status
+      - button "K Krishna" [ref=f1e82] [cursor=pointer]:
+        - generic [ref=f1e83]: K
+        - generic [ref=f1e84]: Krishna
+  - main [ref=f1e87]:
+    - generic [ref=f1e88]:
+      - generic [ref=f1e89]: AI test generation
+      - heading "Generate production E2E tests" [level=1] [ref=f1e92]
+      - paragraph [ref=f1e93]: Point at a GitHub repo or upload a ZIP. Two AI agents filter your code and write runnable tests with real selectors.
+    - generic [ref=f1e95]:
+      - generic [ref=f1e96]:
+        - button "GitHub URL" [ref=f1e97] [cursor=pointer]
+        - button "Upload ZIP" [active] [ref=f1e101] [cursor=pointer]
+      - generic [ref=f1e105]:
+        - generic [ref=f1e125] [cursor=pointer]:
+          - paragraph [ref=f1e126]: Drop your repo ZIP here
+          - paragraph [ref=f1e127]: or click to browse
+        - generic [ref=f1e119]: Failed to fetch
+        - button "Analyze repository" [disabled] [ref=f1e116]
+  - contentinfo [ref=f1e44]:
+    - generic [ref=f1e45]:
+      - generic [ref=f1e46]: Testra — free & open source
+      - generic [ref=f1e52]:
+        - link "Generate" [ref=f1e53] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f1e54] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f1e55] [cursor=pointer]:
+          - /url: /scan
+        - link "GitHub" [ref=f1e56] [cursor=pointer]:
+          - /url: https://github.com

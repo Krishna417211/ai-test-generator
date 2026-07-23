@@ -1,0 +1,7 @@
+{
+  "tests/test_filter_agent.py::TestPromptIsNotCopyable::test_no_plausible_sample_values_in_prompt[\"/dashboard\"]": true,
+  "tests/test_scaffold.py::TestReadme::test_run_command_matches_the_framework[cypress_js-npx cypress run]": true,
+  "tests/test_progress.py::TestAnalyzeRoute::test_a_malformed_url_is_a_plain_400_and_never_streams": true,
+  "tests/test_scan_route.py::TestActiveGating::test_active_without_authorization_is_400": true,
+  "tests/test_zap_scanner.py::test_live_scan_finds_alerts": true
+}

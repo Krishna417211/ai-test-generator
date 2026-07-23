@@ -1,0 +1,276 @@
+[     248ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:21550
+[     336ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4426
+[     336ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4426
+[   39869ms] TypeError: label is not a function
+    at http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:98:99
+    at Array.map (<anonymous>)
+    at RankedBars (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:95:94)
+    at renderWithHooks (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:11548:26)
+    at updateFunctionComponent (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14582:28)
+    at beginWork (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:15924:22)
+    at HTMLUnknownElement.callCallback2 (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3674:22)
+    at Object.invokeGuardedCallbackDev (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3699:24)
+    at invokeGuardedCallback (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3733:39)
+    at beginWork$1 (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19765:15)
+[   39878ms] TypeError: label is not a function
+    at http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:98:99
+    at Array.map (<anonymous>)
+    at RankedBars (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:95:94)
+    at renderWithHooks (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:11548:26)
+    at updateFunctionComponent (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14582:28)
+    at beginWork (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:15924:22)
+    at HTMLUnknownElement.callCallback2 (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3674:22)
+    at Object.invokeGuardedCallbackDev (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3699:24)
+    at invokeGuardedCallback (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3733:39)
+    at beginWork$1 (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19765:15)
+[   39890ms] TypeError: label is not a function
+    at http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:98:99
+    at Array.map (<anonymous>)
+    at RankedBars (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:95:94)
+    at renderWithHooks (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:11548:26)
+    at updateFunctionComponent (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14582:28)
+    at beginWork (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:15924:22)
+    at HTMLUnknownElement.callCallback2 (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3674:22)
+    at Object.invokeGuardedCallbackDev (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3699:24)
+    at invokeGuardedCallback (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3733:39)
+    at beginWork$1 (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19765:15)
+[   39890ms] TypeError: label is not a function
+    at http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:98:99
+    at Array.map (<anonymous>)
+    at RankedBars (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:95:94)
+    at renderWithHooks (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:11548:26)
+    at updateFunctionComponent (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14582:28)
+    at beginWork (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:15924:22)
+    at HTMLUnknownElement.callCallback2 (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3674:22)
+    at Object.invokeGuardedCallbackDev (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3699:24)
+    at invokeGuardedCallback (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3733:39)
+    at beginWork$1 (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19765:15)
+[   39896ms] [ERROR] The above error occurred in the <RankedBars> component:
+
+    at RankedBars (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:78:3)
+    at div
+    at div
+    at main
+    at MotionDOMComponent (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:9368:40)
+    at Page (http://127.0.0.1:5183/src/components/Page.tsx:18:32)
+    at AdminOverview (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:156:27)
+    at AdminRoute (http://127.0.0.1:5183/src/components/AdminRoute.tsx:20:38)
+    at RenderedRoute (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4122:5)
+    at Outlet (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4528:26)
+    at div
+    at div
+    at div
+    at DashboardLayout (http://127.0.0.1:5183/src/components/DashboardLayout.tsx:25:20)
+    at ProtectedRoute (http://127.0.0.1:5183/src/components/ProtectedRoute.tsx:22:42)
+    at RenderedRoute (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4122:5)
+    at Routes (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4592:5)
+    at PopChildMeasure (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8494:23)
+    at PopChild (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8522:21)
+    at PresenceChild (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8574:24)
+    at AnimatePresence (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8661:26)
+    at AnimatedRoutes (http://127.0.0.1:5183/src/App.tsx:49:20)
+    at ErrorBoundary (http://127.0.0.1:5183/src/components/ErrorBoundary.tsx:6:16)
+    at div
+    at div
+    at AuthProvider (http://127.0.0.1:5183/src/context/AuthContext.tsx:22:32)
+    at Router (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4535:15)
+    at BrowserRouter (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:5273:5)
+    at App
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14031
+[   39896ms] [ERROR] Uncaught UI error: TypeError: label is not a function
+    at http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:98:99
+    at Array.map (<anonymous>)
+    at RankedBars (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:95:94)
+    at renderWithHooks (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:11548:26)
+    at updateFunctionComponent (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14582:28)
+    at beginWork (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:15924:22)
+    at beginWork$1 (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19753:22)
+    at performUnitOfWork (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19198:20)
+    at workLoopSync (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19137:13)
+    at renderRootSync (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19116:15) 
+    at RankedBars (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:78:3)
+    at div
+    at div
+    at main
+    at MotionDOMComponent (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:9368:40)
+    at Page (http://127.0.0.1:5183/src/components/Page.tsx:18:32)
+    at AdminOverview (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:156:27)
+    at AdminRoute (http://127.0.0.1:5183/src/components/AdminRoute.tsx:20:38)
+    at RenderedRoute (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4122:5)
+    at Outlet (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4528:26)
+    at div
+    at div
+    at div
+    at DashboardLayout (http://127.0.0.1:5183/src/components/DashboardLayout.tsx:25:20)
+    at ProtectedRoute (http://127.0.0.1:5183/src/components/ProtectedRoute.tsx:22:42)
+    at RenderedRoute (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4122:5)
+    at Routes (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4592:5)
+    at PopChildMeasure (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8494:23)
+    at PopChild (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8522:21)
+    at PresenceChild (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8574:24)
+    at AnimatePresence (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8661:26)
+    at AnimatedRoutes (http://127.0.0.1:5183/src/App.tsx:49:20)
+    at ErrorBoundary (http://127.0.0.1:5183/src/components/ErrorBoundary.tsx:6:16)
+    at div
+    at div
+    at AuthProvider (http://127.0.0.1:5183/src/context/AuthContext.tsx:22:32)
+    at Router (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4535:15)
+    at BrowserRouter (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:5273:5)
+    at App @ http://127.0.0.1:5183/src/components/ErrorBoundary.tsx:11
+[   39896ms] [ERROR] The above error occurred in the <RankedBars> component:
+
+    at RankedBars (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:78:3)
+    at div
+    at div
+    at main
+    at MotionDOMComponent (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:9368:40)
+    at Page (http://127.0.0.1:5183/src/components/Page.tsx:18:32)
+    at AdminOverview (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:156:27)
+    at AdminRoute (http://127.0.0.1:5183/src/components/AdminRoute.tsx:20:38)
+    at RenderedRoute (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4122:5)
+    at Outlet (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4528:26)
+    at div
+    at div
+    at div
+    at DashboardLayout (http://127.0.0.1:5183/src/components/DashboardLayout.tsx:25:20)
+    at ProtectedRoute (http://127.0.0.1:5183/src/components/ProtectedRoute.tsx:22:42)
+    at RenderedRoute (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4122:5)
+    at Routes (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4592:5)
+    at PopChildMeasure (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8494:23)
+    at PopChild (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8522:21)
+    at PresenceChild (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8574:24)
+    at AnimatePresence (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8661:26)
+    at AnimatedRoutes (http://127.0.0.1:5183/src/App.tsx:49:20)
+    at ErrorBoundary (http://127.0.0.1:5183/src/components/ErrorBoundary.tsx:6:16)
+    at div
+    at div
+    at AuthProvider (http://127.0.0.1:5183/src/context/AuthContext.tsx:22:32)
+    at Router (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4535:15)
+    at BrowserRouter (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:5273:5)
+    at App
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14031
+[   39897ms] [ERROR] Uncaught UI error: TypeError: label is not a function
+    at http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:98:99
+    at Array.map (<anonymous>)
+    at RankedBars (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:95:94)
+    at renderWithHooks (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:11548:26)
+    at updateFunctionComponent (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14582:28)
+    at beginWork (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:15924:22)
+    at beginWork$1 (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19753:22)
+    at performUnitOfWork (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19198:20)
+    at workLoopSync (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19137:13)
+    at renderRootSync (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19116:15) 
+    at RankedBars (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:78:3)
+    at div
+    at div
+    at main
+    at MotionDOMComponent (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:9368:40)
+    at Page (http://127.0.0.1:5183/src/components/Page.tsx:18:32)
+    at AdminOverview (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107575160:156:27)
+    at AdminRoute (http://127.0.0.1:5183/src/components/AdminRoute.tsx:20:38)
+    at RenderedRoute (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4122:5)
+    at Outlet (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4528:26)
+    at div
+    at div
+    at div
+    at DashboardLayout (http://127.0.0.1:5183/src/components/DashboardLayout.tsx:25:20)
+    at ProtectedRoute (http://127.0.0.1:5183/src/components/ProtectedRoute.tsx:22:42)
+    at RenderedRoute (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4122:5)
+    at Routes (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4592:5)
+    at PopChildMeasure (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8494:23)
+    at PopChild (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8522:21)
+    at PresenceChild (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8574:24)
+    at AnimatePresence (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8661:26)
+    at AnimatedRoutes (http://127.0.0.1:5183/src/App.tsx:49:20)
+    at ErrorBoundary (http://127.0.0.1:5183/src/components/ErrorBoundary.tsx:6:16)
+    at div
+    at div
+    at AuthProvider (http://127.0.0.1:5183/src/context/AuthContext.tsx:22:32)
+    at Router (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4535:15)
+    at BrowserRouter (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:5273:5)
+    at App @ http://127.0.0.1:5183/src/components/ErrorBoundary.tsx:11
+[   44544ms] ReferenceError: languageLabel is not defined
+    at AdminOverview (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107579779:401:18)
+    at renderWithHooks (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:11548:26)
+    at updateFunctionComponent (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14582:28)
+    at beginWork (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:15924:22)
+    at HTMLUnknownElement.callCallback2 (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3674:22)
+    at Object.invokeGuardedCallbackDev (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3699:24)
+    at invokeGuardedCallback (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3733:39)
+    at beginWork$1 (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19765:15)
+    at performUnitOfWork (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19198:20)
+    at workLoopSync (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19137:13)
+[   44548ms] ReferenceError: languageLabel is not defined
+    at AdminOverview (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107579779:401:18)
+    at renderWithHooks (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:11548:26)
+    at updateFunctionComponent (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14582:28)
+    at beginWork (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:15924:22)
+    at HTMLUnknownElement.callCallback2 (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3674:22)
+    at Object.invokeGuardedCallbackDev (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3699:24)
+    at invokeGuardedCallback (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3733:39)
+    at beginWork$1 (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19765:15)
+    at performUnitOfWork (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19198:20)
+    at workLoopSync (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19137:13)
+[   44550ms] [ERROR] The above error occurred in the <AdminOverview> component:
+
+    at AdminOverview (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107579779:156:27)
+    at AdminRoute (http://127.0.0.1:5183/src/components/AdminRoute.tsx:20:38)
+    at RenderedRoute (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4122:5)
+    at Outlet (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4528:26)
+    at div
+    at div
+    at div
+    at DashboardLayout (http://127.0.0.1:5183/src/components/DashboardLayout.tsx:25:20)
+    at ProtectedRoute (http://127.0.0.1:5183/src/components/ProtectedRoute.tsx:22:42)
+    at RenderedRoute (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4122:5)
+    at Routes (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4592:5)
+    at PopChildMeasure (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8494:23)
+    at PopChild (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8522:21)
+    at PresenceChild (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8574:24)
+    at AnimatePresence (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8661:26)
+    at AnimatedRoutes (http://127.0.0.1:5183/src/App.tsx:49:20)
+    at ErrorBoundary (http://127.0.0.1:5183/src/components/ErrorBoundary.tsx:6:16)
+    at div
+    at div
+    at AuthProvider (http://127.0.0.1:5183/src/context/AuthContext.tsx:22:32)
+    at Router (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4535:15)
+    at BrowserRouter (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:5273:5)
+    at App
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14031
+[   44551ms] [ERROR] Uncaught UI error: ReferenceError: languageLabel is not defined
+    at AdminOverview (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107579779:401:18)
+    at renderWithHooks (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:11548:26)
+    at updateFunctionComponent (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14582:28)
+    at beginWork (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:15924:22)
+    at beginWork$1 (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19753:22)
+    at performUnitOfWork (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19198:20)
+    at workLoopSync (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19137:13)
+    at renderRootSync (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19116:15)
+    at recoverFromConcurrentError (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:18736:28)
+    at performConcurrentWorkOnRoot (http://127.0.0.1:5183/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:18684:30) 
+    at AdminOverview (http://127.0.0.1:5183/src/pages/AdminOverview.tsx?t=1784107579779:156:27)
+    at AdminRoute (http://127.0.0.1:5183/src/components/AdminRoute.tsx:20:38)
+    at RenderedRoute (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4122:5)
+    at Outlet (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4528:26)
+    at div
+    at div
+    at div
+    at DashboardLayout (http://127.0.0.1:5183/src/components/DashboardLayout.tsx:25:20)
+    at ProtectedRoute (http://127.0.0.1:5183/src/components/ProtectedRoute.tsx:22:42)
+    at RenderedRoute (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4122:5)
+    at Routes (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4592:5)
+    at PopChildMeasure (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8494:23)
+    at PopChild (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8522:21)
+    at PresenceChild (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8574:24)
+    at AnimatePresence (http://127.0.0.1:5183/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8661:26)
+    at AnimatedRoutes (http://127.0.0.1:5183/src/App.tsx:49:20)
+    at ErrorBoundary (http://127.0.0.1:5183/src/components/ErrorBoundary.tsx:6:16)
+    at div
+    at div
+    at AuthProvider (http://127.0.0.1:5183/src/context/AuthContext.tsx:22:32)
+    at Router (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4535:15)
+    at BrowserRouter (http://127.0.0.1:5183/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:5273:5)
+    at App @ http://127.0.0.1:5183/src/components/ErrorBoundary.tsx:11

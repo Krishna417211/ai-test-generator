@@ -1,0 +1,125 @@
+- generic [ref=f9e3]:
+  - banner [ref=f9e4]:
+    - navigation [ref=f9e6]:
+      - link "Testra" [ref=f9e7] [cursor=pointer]:
+        - /url: /dashboard
+      - generic [ref=f9e13]:
+        - link "Resets Aug 1, 2026" [ref=f9e34] [cursor=pointer]:
+          - /url: /settings
+          - generic [ref=f9e36]:
+            - generic [ref=f9e37]: Resets
+            - generic [ref=f9e38]: Aug 1, 2026
+        - button "Q QA User 01" [ref=f9e42] [cursor=pointer]:
+          - generic [ref=f9e43]: Q
+          - generic [ref=f9e44]: QA User 01
+  - generic [ref=f9e48]:
+    - complementary [ref=f9e49]:
+      - generic [ref=f9e50]:
+        - generic [ref=f9e51]:
+          - generic [ref=f9e52]: Q
+          - generic [ref=f9e53]:
+            - generic [ref=f9e54]: QA User 01
+            - generic [ref=f9e55]: qa-user-01@testra.test
+        - navigation [ref=f9e56]:
+          - link "Overview" [ref=f9e57] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Generate" [ref=f9e64] [cursor=pointer]:
+            - /url: /generate
+          - link "Publish" [ref=f9e68] [cursor=pointer]:
+            - /url: /publish
+          - link "Scan" [ref=f9e75] [cursor=pointer]:
+            - /url: /scan
+          - link "Status" [ref=f9e80] [cursor=pointer]:
+            - /url: /status
+          - link "Settings" [ref=f9e84] [cursor=pointer]:
+            - /url: /settings
+          - link "Profile" [ref=f9e89] [cursor=pointer]:
+            - /url: /profile
+    - main [ref=f9e95]:
+      - generic [ref=f9e127]:
+        - generic [ref=f9e128]:
+          - generic [ref=f9e130]:
+            - generic [ref=f9e131]: Input
+            - generic [ref=f9e139]:
+              - generic [ref=f9e140]: "2"
+              - generic [ref=f9e142]: Preview
+            - generic [ref=f9e145]:
+              - generic [ref=f9e146]: "3"
+              - generic [ref=f9e148]: Configure
+            - generic [ref=f9e151]:
+              - generic [ref=f9e152]: "4"
+              - generic [ref=f9e154]: Download
+          - generic [ref=f9e155]:
+            - generic [ref=f9e156]:
+              - generic [ref=f9e157]: What we checked
+              - generic [ref=f9e163]:
+                - generic [ref=f9e164]:
+                  - generic [ref=f9e165]: Written by
+                  - generic [ref=f9e176]: llama-3.3-70b-versatile
+                - paragraph [ref=f9e177]: Pro runs claude-opus-4-8 on this step.
+            - generic [ref=f9e178]:
+              - generic [ref=f9e179]:
+                - generic [ref=f9e180]:
+                  - text: Static HTML/JS (multi-page)
+                  - heading "Project Analysis" [level=3] [ref=f9e181]
+                - generic [ref=f9e182]:
+                  - generic [ref=f9e183]: "1"
+                  - generic [ref=f9e184]: UI files found
+              - paragraph [ref=f9e185]: This is a simple static HTML/JS web project with a single index.html file. The project's purpose is unclear due to the limited file structure. It may serve as a starting point for a web application.
+              - generic [ref=f9e186]: 88 tokens • 0 routes detected
+            - generic [ref=f9e187]:
+              - generic [ref=f9e188]: Key Pages to Test
+              - generic [ref=f9e196]:
+                - generic [ref=f9e197]:
+                  - generic [ref=f9e198]: index.html
+                  - generic [ref=f9e199]: high
+                - paragraph [ref=f9e200]: The main entry point of the application
+                - generic [ref=f9e201]: Load the page and verify its content
+            - generic [ref=f9e203]:
+              - generic [ref=f9e204]: Testing Considerations
+              - list [ref=f9e208]:
+                - listitem [ref=f9e209]:
+                  - generic [ref=f9e210]: •
+                  - text: Limited information about the application's functionality
+            - button "Configure Test Generation" [ref=f9e211] [cursor=pointer]
+        - generic [ref=f9e215]:
+          - generic [ref=f9e216]:
+            - generic [ref=f9e217]: LLM Providers
+            - generic [ref=f9e221]:
+              - generic [ref=f9e222]:
+                - generic [ref=f9e223]: Gemini 1.5 Flash
+                - generic [ref=f9e228]: 1/2 keys
+              - generic [ref=f9e229]:
+                - generic [ref=f9e230]: Groq LLaMA 3.1
+                - generic [ref=f9e235]: 2/2 keys
+              - generic [ref=f9e236]:
+                - generic [ref=f9e237]: Claude Haiku
+                - generic [ref=f9e242]: 1/1 keys
+          - generic [ref=f9e243]:
+            - generic [ref=f9e244]: Session
+            - generic [ref=f9e245]:
+              - generic [ref=f9e246]: Framework
+              - generic [ref=f9e247]: Static HTML/JS (multi-page)
+            - generic [ref=f9e248]:
+              - generic [ref=f9e249]: Files
+              - generic [ref=f9e250]: "1"
+            - generic [ref=f9e251]:
+              - generic [ref=f9e252]: Routes
+              - generic [ref=f9e253]: "0"
+            - generic [ref=f9e254]:
+              - generic [ref=f9e255]: Tokens
+              - generic [ref=f9e256]: "88"
+  - contentinfo [ref=f9e20]:
+    - generic [ref=f9e21]:
+      - generic [ref=f9e22]: Testra — free & open source
+      - generic [ref=f9e28]:
+        - link "Generate" [ref=f9e29] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f9e30] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f9e31] [cursor=pointer]:
+          - /url: /scan
+        - link "How it works" [ref=f9e32] [cursor=pointer]:
+          - /url: /how-it-works
+        - link "GitHub" [ref=f9e33] [cursor=pointer]:
+          - /url: https://github.com

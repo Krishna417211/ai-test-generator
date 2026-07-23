@@ -1,0 +1,141 @@
+- generic [ref=f1e3]:
+  - banner [ref=f1e4]:
+    - navigation [ref=f1e6]:
+      - link "Testra" [ref=f1e7] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f1e13]:
+        - link "Log in" [ref=f1e14] [cursor=pointer]:
+          - /url: /login
+        - link "Sign up" [ref=f1e15] [cursor=pointer]:
+          - /url: /signup
+  - main [ref=f1e17]:
+    - generic [ref=f1e18]:
+      - generic [ref=f1e19]: How it works
+      - heading "What actually happens when you press go" [level=1] [ref=f1e24]
+      - paragraph [ref=f1e25]: Every step of all three flows — in plain English, with the API behind it. No black box.
+    - tablist "Testra flows" [ref=f1e26]:
+      - tab "Generate 8 steps" [selected] [ref=f1e27] [cursor=pointer]:
+        - text: Generate
+        - generic [ref=f1e30]: 8 steps
+      - tab "Publish 7 steps" [ref=f1e31] [cursor=pointer]:
+        - text: Publish
+        - generic [ref=f1e37]: 7 steps
+      - tab "Scan 6 steps" [ref=f1e38] [cursor=pointer]:
+        - text: Scan
+        - generic [ref=f1e42]: 6 steps
+    - generic [ref=f1e43]:
+      - generic [ref=f1e44]: "Where each step runs:"
+      - generic [ref=f1e45]: You
+      - generic [ref=f1e49]: Testra server
+      - generic [ref=f1e53]: AI model
+      - generic [ref=f1e64]: GitHub
+    - generic [ref=f1e69]:
+      - generic [ref=f1e70]:
+        - heading "From a repo URL to a running test suite" [level=2] [ref=f1e71]
+        - paragraph [ref=f1e72]: Two AI agents, but only after a free pass that costs you nothing. You see what we found before a single test is written.
+      - list [ref=f1e73]:
+        - listitem [ref=f1e74]:
+          - generic [ref=f1e75]: "1"
+          - generic [ref=f1e76]:
+            - generic [ref=f1e77]:
+              - heading "You point us at your code" [level=3] [ref=f1e78]
+              - generic [ref=f1e79]: You
+            - paragraph [ref=f1e83]: A GitHub URL — public or private — or a ZIP you drop in. Nothing is cloned to disk; we read the file tree and pull the files straight into memory, 15 at a time.
+            - generic [ref=f1e84]:
+              - code [ref=f1e85]: POST /api/analyze
+              - code [ref=f1e86]: POST /api/upload-zip
+              - code [ref=f1e87]: services/github_service.py
+        - listitem [ref=f1e88]:
+          - generic [ref=f1e89]: "2"
+          - generic [ref=f1e90]:
+            - generic [ref=f1e91]:
+              - heading "We throw away everything that isn't UI" [level=3] [ref=f1e92]
+              - generic [ref=f1e93]: Testra server
+            - paragraph [ref=f1e97]: No AI in this step — it runs on our server in milliseconds and costs nothing. We keep the files a browser actually renders, score each one 1–10 for how much it matters, and detect your stack. Files too big for the budget get summarized rather than dropped.
+            - code [ref=f1e99]: services/file_extractor.py
+        - listitem [ref=f1e100]:
+          - generic [ref=f1e101]: "3"
+          - generic [ref=f1e102]:
+            - generic [ref=f1e103]:
+              - heading "Agent 1 reads the project" [level=3] [ref=f1e104]
+              - generic [ref=f1e105]: AI model
+            - paragraph [ref=f1e116]: "The first model call. It answers in strict JSON: what this app is, its key pages, its routes, and the parts that will be awkward to test. If nothing in your repo renders in a browser, we stop here and say so rather than inventing a login page you don't have."
+            - generic [ref=f1e117]:
+              - code [ref=f1e118]: agents/filter_agent.py
+              - code [ref=f1e119]: FilterAgent → JSON mode
+        - listitem [ref=f1e120]:
+          - generic [ref=f1e121]: "4"
+          - generic [ref=f1e122]:
+            - generic [ref=f1e123]:
+              - heading "You get a preview, and a job is saved" [level=3] [ref=f1e124]
+              - generic [ref=f1e125]: Testra server
+            - paragraph [ref=f1e129]: That analysis is what you see on screen — your chance to check we understood the project before spending a credit. The job goes into SQLite, so it survives a restart and a deploy.
+            - generic [ref=f1e130]:
+              - code [ref=f1e131]: services/store.py
+              - code [ref=f1e132]: job_id
+        - listitem [ref=f1e133]:
+          - generic [ref=f1e134]: "5"
+          - generic [ref=f1e135]:
+            - generic [ref=f1e136]:
+              - heading "You watch it write, live" [level=3] [ref=f1e137]
+              - generic [ref=f1e138]: AI model
+            - paragraph [ref=f1e149]: Tests stream back token by token over SSE, so there's something to look at instead of a spinner. The output is cached against the job — when you confirm, we reuse it instead of paying for the same generation twice.
+            - generic [ref=f1e150]:
+              - code [ref=f1e151]: "GET /api/stream/{job_id}"
+              - code [ref=f1e152]: text/event-stream
+        - listitem [ref=f1e153]:
+          - generic [ref=f1e154]: "6"
+          - generic [ref=f1e155]:
+            - generic [ref=f1e156]:
+              - heading "Agent 2 writes the suite — grounded, not guessed" [level=3] [ref=f1e157]
+              - generic [ref=f1e158]: AI model
+            - paragraph [ref=f1e169]: Before prompting, we pull the real selectors out of your source (ids, data-testid, names) and hand them to the model, then generate each file in its own call so a big suite can't truncate. Every selector it wrote is checked back against your code, and anything invented gets flagged.
+            - generic [ref=f1e170]:
+              - code [ref=f1e171]: "POST /api/generate/{job_id}"
+              - code [ref=f1e172]: agents/writer_agent.py
+              - code [ref=f1e173]: self-heal loop
+        - listitem [ref=f1e174]:
+          - generic [ref=f1e175]: "7"
+          - generic [ref=f1e176]:
+            - generic [ref=f1e177]:
+              - heading "We add the parts that make it runnable" [level=3] [ref=f1e178]
+              - generic [ref=f1e179]: Testra server
+            - paragraph [ref=f1e183]: Config, dependency manifest, CI pipelines and a README are templated, not asked of an LLM — there's one correct answer per framework and a model only adds risk. It all lands in e2e/, so it can't overwrite your app's own package.json.
+            - generic [ref=f1e184]:
+              - code [ref=f1e185]: agents/scaffold.py
+              - code [ref=f1e186]: e2e/
+              - code [ref=f1e187]: .github/workflows/e2e-tests.yml
+        - listitem [ref=f1e188]:
+          - generic [ref=f1e189]: "8"
+          - generic [ref=f1e190]:
+            - generic [ref=f1e191]:
+              - heading "You download it and run it" [level=3] [ref=f1e192]
+              - generic [ref=f1e193]: You
+            - paragraph [ref=f1e197]: Zipped in your browser — the files never make a second trip. Set BASE_URL to point the same suite at staging or prod; leave it unset and the config boots your app for you.
+            - generic [ref=f1e198]:
+              - code [ref=f1e199]: utils/download.ts
+              - code [ref=f1e200]: JSZip
+      - link "Generate tests" [ref=f1e202] [cursor=pointer]:
+        - /url: /generate
+    - generic [ref=f1e221]:
+      - heading "Every AI step above shares one router" [level=3] [ref=f1e222]
+      - paragraph [ref=f1e223]: We never depend on a single provider. Each call tries Gemini first, then Groq, then Claude, rotating through multiple keys per provider and benching any key that gets rate-limited until it cools off. That's why a busy afternoon doesn't turn into a failed generation — and if every provider really is exhausted, you're told it's our outage and your credit is refunded, never charged.
+      - generic [ref=f1e224]:
+        - code [ref=f1e225]: services/llm_router.py
+        - code [ref=f1e226]: Gemini → Groq → Claude
+        - code [ref=f1e227]: per-key cooldown on 429
+        - code [ref=f1e228]: GET /api/status
+  - contentinfo [ref=f1e229]:
+    - generic [ref=f1e230]:
+      - generic [ref=f1e231]: Testra — free & open source
+      - generic [ref=f1e237]:
+        - link "Generate" [ref=f1e238] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f1e239] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f1e240] [cursor=pointer]:
+          - /url: /scan
+        - link "How it works" [ref=f1e241] [cursor=pointer]:
+          - /url: /how-it-works
+        - link "GitHub" [ref=f1e242] [cursor=pointer]:
+          - /url: https://github.com

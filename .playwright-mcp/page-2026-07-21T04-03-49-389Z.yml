@@ -1,0 +1,38 @@
+- generic [ref=f7e3]:
+  - banner [ref=f7e4]:
+    - navigation [ref=f7e6]:
+      - link "Testra" [ref=f7e7] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f7e13]:
+        - link "Log in" [ref=f7e14] [cursor=pointer]:
+          - /url: /login
+        - link "Sign up" [ref=f7e15] [cursor=pointer]:
+          - /url: /signup
+  - main [ref=f7e62]:
+    - generic [ref=f7e63]:
+      - generic [ref=f7e64]:
+        - heading "Check your email" [level=1] [ref=f7e69]
+        - paragraph [ref=f7e70]: We sent a 6-digit code to q*********@testra.test.
+      - generic [ref=f7e71]:
+        - generic [ref=f7e72]:
+          - textbox "6-digit login code" [active] [ref=f7e73]:
+            - /placeholder: "000000"
+          - button "Verify and log in" [disabled] [ref=f7e74]
+        - paragraph [ref=f7e77]:
+          - text: The code expires shortly.
+          - button "Start over" [ref=f7e78] [cursor=pointer]
+          - text: to get a new one.
+  - contentinfo [ref=f7e41]:
+    - generic [ref=f7e42]:
+      - generic [ref=f7e43]: Testra — free & open source
+      - generic [ref=f7e49]:
+        - link "Generate" [ref=f7e50] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f7e51] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f7e52] [cursor=pointer]:
+          - /url: /scan
+        - link "How it works" [ref=f7e53] [cursor=pointer]:
+          - /url: /how-it-works
+        - link "GitHub" [ref=f7e54] [cursor=pointer]:
+          - /url: https://github.com

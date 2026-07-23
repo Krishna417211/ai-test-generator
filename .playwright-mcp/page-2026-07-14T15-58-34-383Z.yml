@@ -1,0 +1,35 @@
+- generic [ref=f5e3]:
+  - banner [ref=f5e4]:
+    - navigation [ref=f5e6]:
+      - link "Testra" [ref=f5e7] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f5e13]:
+        - link "Log in" [ref=f5e14] [cursor=pointer]:
+          - /url: /login
+        - link "Sign up" [ref=f5e15] [cursor=pointer]:
+          - /url: /signup
+  - main [ref=f5e17]:
+    - generic [ref=f5e18]:
+      - generic [ref=f5e19]:
+        - heading "Welcome back" [level=1] [ref=f5e20]
+        - paragraph [ref=f5e21]: Log in to generate, publish, and scan.
+      - generic [ref=f5e23]:
+        - textbox "you@email.com" [ref=f5e28]
+        - textbox "Your password" [ref=f5e33]
+        - button "Log in" [disabled] [ref=f5e34]
+      - paragraph [ref=f5e37]:
+        - text: New here?
+        - link "Create an account" [ref=f5e38] [cursor=pointer]:
+          - /url: /signup
+  - contentinfo [ref=f5e39]:
+    - generic [ref=f5e40]:
+      - generic [ref=f5e41]: Testra — free & open source
+      - generic [ref=f5e47]:
+        - link "Generate" [ref=f5e48] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f5e49] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f5e50] [cursor=pointer]:
+          - /url: /scan
+        - link "GitHub" [ref=f5e51] [cursor=pointer]:
+          - /url: https://github.com

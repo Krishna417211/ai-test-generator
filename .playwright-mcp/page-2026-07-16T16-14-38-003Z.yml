@@ -1,0 +1,120 @@
+- generic [ref=f15e4]:
+  - banner [ref=f15e5]:
+    - generic [ref=f15e6]:
+      - generic [ref=f15e7]:
+        - button [ref=f15e8] [cursor=pointer]
+        - generic [ref=f15e12]: Testra Admin
+      - generic [ref=f15e13]:
+        - generic [ref=f15e14]: admin@example.com
+        - link "Main app" [ref=f15e15] [cursor=pointer]:
+          - /url: /dashboard
+        - button "Sign out" [ref=f15e16] [cursor=pointer]
+  - main [ref=f15e23]:
+    - generic [ref=f15e24]:
+      - generic [ref=f15e25]:
+        - generic [ref=f15e26]:
+          - heading "Users" [level=1] [ref=f15e27]
+          - paragraph [ref=f15e28]: 7 accounts on this instance
+        - button "Refresh" [ref=f15e29] [cursor=pointer]
+      - textbox "Search users" [ref=f15e36]:
+        - /placeholder: Search by email, name, or GitHub handle…
+      - generic [ref=f15e214]:
+        - generic [ref=f15e215]: Suspended 6 of 6 accounts.
+        - button "Dismiss" [ref=f15e219] [cursor=pointer]
+      - generic [ref=f15e37]:
+        - group "Sort accounts" [ref=f15e38]:
+          - generic [ref=f15e39]: Sort
+          - button "Joined" [pressed] [ref=f15e40] [cursor=pointer]
+          - button "Email" [ref=f15e43] [cursor=pointer]
+          - button "Name" [ref=f15e44] [cursor=pointer]
+          - button "Plan" [ref=f15e45] [cursor=pointer]
+          - button "Status" [ref=f15e46] [cursor=pointer]
+          - button "Verified" [ref=f15e47] [cursor=pointer]
+        - generic [ref=f15e86] [cursor=pointer]:
+          - checkbox "Select all accounts on this page" [ref=f15e87]
+          - text: Select page
+      - generic [ref=f15e100]:
+        - generic [ref=f15e102]:
+          - checkbox "Select leo@example.com" [ref=f15e104]
+          - button "L Leo Suspended leo@example.com 0 gen · 0 scan Joined Jul 16, 2026" [ref=f15e223] [cursor=pointer]:
+            - generic [ref=f15e106]: L
+            - generic [ref=f15e107]:
+              - generic [ref=f15e108]:
+                - generic [ref=f15e109]: Leo
+                - generic [ref=f15e224]: Suspended
+              - generic [ref=f15e110]: leo@example.com
+            - generic [ref=f15e114]:
+              - generic [ref=f15e115]: 0 gen · 0 scan
+              - generic [ref=f15e116]: Joined Jul 16, 2026
+        - generic [ref=f15e118]:
+          - checkbox "Select mia@example.com" [ref=f15e120]
+          - button "M Mia Suspended mia@example.com 0 gen · 0 scan Joined Jul 16, 2026" [ref=f15e225] [cursor=pointer]:
+            - generic [ref=f15e122]: M
+            - generic [ref=f15e123]:
+              - generic [ref=f15e124]:
+                - generic [ref=f15e125]: Mia
+                - generic [ref=f15e226]: Suspended
+              - generic [ref=f15e126]: mia@example.com
+            - generic [ref=f15e130]:
+              - generic [ref=f15e131]: 0 gen · 0 scan
+              - generic [ref=f15e132]: Joined Jul 16, 2026
+        - generic [ref=f15e134]:
+          - checkbox "Select adam@example.com" [ref=f15e136]
+          - button "A Adam Suspended adam@example.com 0 gen · 0 scan Joined Jul 16, 2026" [ref=f15e227] [cursor=pointer]:
+            - generic [ref=f15e138]: A
+            - generic [ref=f15e139]:
+              - generic [ref=f15e140]:
+                - generic [ref=f15e141]: Adam
+                - generic [ref=f15e228]: Suspended
+              - generic [ref=f15e142]: adam@example.com
+            - generic [ref=f15e146]:
+              - generic [ref=f15e147]: 0 gen · 0 scan
+              - generic [ref=f15e148]: Joined Jul 16, 2026
+        - generic [ref=f15e150]:
+          - checkbox "Select zoe@example.com" [ref=f15e152]
+          - button "Z Zoe Suspended zoe@example.com 0 gen · 0 scan Joined Jul 16, 2026" [ref=f15e229] [cursor=pointer]:
+            - generic [ref=f15e154]: Z
+            - generic [ref=f15e155]:
+              - generic [ref=f15e156]:
+                - generic [ref=f15e157]: Zoe
+                - generic [ref=f15e230]: Suspended
+              - generic [ref=f15e158]: zoe@example.com
+            - generic [ref=f15e162]:
+              - generic [ref=f15e163]: 0 gen · 0 scan
+              - generic [ref=f15e164]: Joined Jul 16, 2026
+        - generic [ref=f15e166]:
+          - checkbox "admin@example.com is an admin and can't be selected" [disabled] [ref=f15e168]
+          - button "A Admin User Admin admin@example.com 0 gen · 0 scan Joined Jul 16, 2026" [ref=f15e169] [cursor=pointer]:
+            - generic [ref=f15e170]: A
+            - generic [ref=f15e171]:
+              - generic [ref=f15e172]:
+                - generic [ref=f15e173]: Admin User
+                - generic [ref=f15e174]: Admin
+              - generic [ref=f15e175]: admin@example.com
+            - generic [ref=f15e179]:
+              - generic [ref=f15e180]: 0 gen · 0 scan
+              - generic [ref=f15e181]: Joined Jul 16, 2026
+        - generic [ref=f15e183]:
+          - checkbox "Select old0@x.com" [ref=f15e185]
+          - button "O Old0 Suspended old0@x.com 0 gen · 0 scan Joined Jul 8, 2026" [ref=f15e231] [cursor=pointer]:
+            - generic [ref=f15e187]: O
+            - generic [ref=f15e188]:
+              - generic [ref=f15e189]:
+                - generic [ref=f15e190]: Old0
+                - generic [ref=f15e232]: Suspended
+              - generic [ref=f15e191]: old0@x.com
+            - generic [ref=f15e195]:
+              - generic [ref=f15e196]: 0 gen · 0 scan
+              - generic [ref=f15e197]: Joined Jul 8, 2026
+        - generic [ref=f15e199]:
+          - checkbox "Select old1@x.com" [ref=f15e201]
+          - button "O Old1 Suspended old1@x.com 0 gen · 0 scan Joined Jul 6, 2026" [ref=f15e233] [cursor=pointer]:
+            - generic [ref=f15e203]: O
+            - generic [ref=f15e204]:
+              - generic [ref=f15e205]:
+                - generic [ref=f15e206]: Old1
+                - generic [ref=f15e234]: Suspended
+              - generic [ref=f15e207]: old1@x.com
+            - generic [ref=f15e211]:
+              - generic [ref=f15e212]: 0 gen · 0 scan
+              - generic [ref=f15e213]: Joined Jul 6, 2026

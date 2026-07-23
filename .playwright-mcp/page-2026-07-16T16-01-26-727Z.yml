@@ -1,0 +1,11 @@
+- main [ref=f9e3]:
+  - generic [ref=f9e4]:
+    - generic [ref=f9e5]:
+      - heading "Admin sign-in" [level=1] [ref=f9e9]
+      - paragraph [ref=f9e10]: This console manages every account on this instance.
+    - generic [ref=f9e11]:
+      - generic [ref=f9e12]:
+        - textbox "Admin email" [active] [ref=f9e17]
+        - textbox "Password" [ref=f9e22]
+        - button "Sign in" [disabled] [ref=f9e23]
+      - paragraph [ref=f9e26]: Admin access is granted in the server's configuration, not from this page.

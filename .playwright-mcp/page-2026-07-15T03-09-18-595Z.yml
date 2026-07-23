@@ -1,0 +1,22 @@
+- generic [ref=f14e4]:
+  - banner [ref=f14e5]:
+    - navigation [ref=f14e7]:
+      - link "Testra" [ref=f14e8] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f14e14]:
+        - link "Log in" [ref=f14e15] [cursor=pointer]:
+          - /url: /login
+        - link "Sign up" [ref=f14e16] [cursor=pointer]:
+          - /url: /signup
+  - contentinfo [ref=f14e21]:
+    - generic [ref=f14e22]:
+      - generic [ref=f14e23]: Testra — free & open source
+      - generic [ref=f14e29]:
+        - link "Generate" [ref=f14e30] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f14e31] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f14e32] [cursor=pointer]:
+          - /url: /scan
+        - link "GitHub" [ref=f14e33] [cursor=pointer]:
+          - /url: https://github.com

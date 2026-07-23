@@ -1,0 +1,90 @@
+- generic [ref=f4e3]:
+  - banner [ref=f4e4]:
+    - navigation [ref=f4e6]:
+      - link "Testra" [ref=f4e7] [cursor=pointer]:
+        - /url: /dashboard
+      - generic [ref=f4e13]:
+        - link "5 left 0/5" [ref=f4e68] [cursor=pointer]:
+          - /url: /settings
+          - generic [ref=f4e70]:
+            - generic [ref=f4e71]: 5 left
+            - generic [ref=f4e72]: 0/5
+        - button "D Demo" [ref=f4e75] [cursor=pointer]:
+          - generic [ref=f4e76]: D
+          - generic [ref=f4e77]: Demo
+  - generic [ref=f4e80]:
+    - button "Menu" [ref=f4e82] [cursor=pointer]
+    - main [ref=f4e86]:
+      - generic [ref=f4e87]:
+        - generic [ref=f4e88]:
+          - generic [ref=f4e89]:
+            - heading "Welcome back, Demo" [level=1] [ref=f4e90]
+            - paragraph [ref=f4e91]: Nothing here yet — pick a place to start below.
+          - generic [ref=f4e92]: Free
+        - generic [ref=f4e93]:
+          - generic [ref=f4e94]:
+            - generic [ref=f4e98]: "0"
+            - generic [ref=f4e99]: Suites generated
+          - generic [ref=f4e100]:
+            - generic [ref=f4e107]: "0"
+            - generic [ref=f4e108]: Tests written
+          - generic [ref=f4e109]:
+            - generic [ref=f4e114]: "0"
+            - generic [ref=f4e115]: Repos published
+          - generic [ref=f4e116]:
+            - generic [ref=f4e121]: "0"
+            - generic [ref=f4e122]: Sites scanned
+        - generic [ref=f4e123]:
+          - generic [ref=f4e124]:
+            - generic [ref=f4e125]:
+              - generic [ref=f4e126]: Activity
+              - paragraph [ref=f4e127]: The last 30 days
+            - generic [ref=f4e128]:
+              - generic [ref=f4e129]:
+                - generic [ref=f4e130]: Generate
+                - generic [ref=f4e132]: Publish
+                - generic [ref=f4e134]: Scan
+              - button "Table" [ref=f4e136] [cursor=pointer]
+          - generic [ref=f4e139]: Nothing yet. Generate a suite, publish a project, or scan a site and it'll chart here.
+        - generic [ref=f4e140]:
+          - generic [ref=f4e141]:
+            - generic [ref=f4e142]: Recent activity
+            - generic [ref=f4e144]: Your generates, publishes, and scans will appear here as you go.
+          - generic [ref=f4e145]:
+            - generic [ref=f4e146]:
+              - generic [ref=f4e147]: Plan & usage
+              - generic [ref=f4e152]:
+                - generic [ref=f4e153]: 0 of 5
+                - generic [ref=f4e154]: Resets Aug 1, 2026
+              - paragraph [ref=f4e156]: 5 generations left this month.
+              - link "Manage plan" [ref=f4e157] [cursor=pointer]:
+                - /url: /settings
+            - generic [ref=f4e161]:
+              - generic [ref=f4e162]: Quick actions
+              - link "Generate tests Point at a repo, get an E2E suite" [ref=f4e163] [cursor=pointer]:
+                - /url: /generate
+                - generic [ref=f4e167]:
+                  - generic [ref=f4e168]: Generate tests
+                  - generic [ref=f4e169]: Point at a repo, get an E2E suite
+              - link "Publish a project Push to a new GitHub repo with CI" [ref=f4e173] [cursor=pointer]:
+                - /url: /publish
+                - generic [ref=f4e180]:
+                  - generic [ref=f4e181]: Publish a project
+                  - generic [ref=f4e182]: Push to a new GitHub repo with CI
+              - link "Scan a site Audit a deployed URL for issues" [ref=f4e186] [cursor=pointer]:
+                - /url: /scan
+                - generic [ref=f4e191]:
+                  - generic [ref=f4e192]: Scan a site
+                  - generic [ref=f4e193]: Audit a deployed URL for issues
+  - contentinfo [ref=f4e41]:
+    - generic [ref=f4e42]:
+      - generic [ref=f4e43]: Testra — free & open source
+      - generic [ref=f4e49]:
+        - link "Generate" [ref=f4e50] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f4e51] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f4e52] [cursor=pointer]:
+          - /url: /scan
+        - link "GitHub" [ref=f4e53] [cursor=pointer]:
+          - /url: https://github.com

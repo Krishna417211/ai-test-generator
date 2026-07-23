@@ -1,0 +1,113 @@
+- generic [ref=f7e3]:
+  - banner [ref=f7e4]:
+    - navigation [ref=f7e6]:
+      - link "Testra" [ref=f7e7] [cursor=pointer]:
+        - /url: /dashboard
+      - generic [ref=f7e13]:
+        - link "Resets Aug 1, 2026" [ref=f7e79] [cursor=pointer]:
+          - /url: /settings
+          - generic [ref=f7e81]:
+            - generic [ref=f7e82]: Resets
+            - generic [ref=f7e83]: Aug 1, 2026
+        - button "Q QA User 01" [ref=f7e87] [cursor=pointer]:
+          - generic [ref=f7e88]: Q
+          - generic [ref=f7e89]: QA User 01
+  - generic [ref=f7e93]:
+    - complementary [ref=f7e94]:
+      - generic [ref=f7e95]:
+        - generic [ref=f7e96]:
+          - generic [ref=f7e97]: Q
+          - generic [ref=f7e98]:
+            - generic [ref=f7e99]: QA User 01
+            - generic [ref=f7e100]: qa-user-01@testra.test
+        - navigation [ref=f7e101]:
+          - link "Overview" [ref=f7e102] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Generate" [ref=f7e109] [cursor=pointer]:
+            - /url: /generate
+          - link "Publish" [ref=f7e113] [cursor=pointer]:
+            - /url: /publish
+          - link "Scan" [ref=f7e120] [cursor=pointer]:
+            - /url: /scan
+          - link "Status" [ref=f7e125] [cursor=pointer]:
+            - /url: /status
+          - link "Settings" [ref=f7e129] [cursor=pointer]:
+            - /url: /settings
+          - link "Profile" [ref=f7e134] [cursor=pointer]:
+            - /url: /profile
+    - main [ref=f7e140]:
+      - generic [ref=f7e141]:
+        - generic [ref=f7e142]:
+          - generic [ref=f7e143]:
+            - heading "Welcome back, QA" [level=1] [ref=f7e144]
+            - paragraph [ref=f7e145]: Nothing here yet — pick a place to start below.
+          - generic [ref=f7e146]: Free
+        - generic [ref=f7e147]:
+          - generic [ref=f7e148]:
+            - generic [ref=f7e152]: "0"
+            - generic [ref=f7e153]: Suites generated
+          - generic [ref=f7e154]:
+            - generic [ref=f7e161]: "0"
+            - generic [ref=f7e162]: Tests written
+          - generic [ref=f7e163]:
+            - generic [ref=f7e168]: "0"
+            - generic [ref=f7e169]: Repos published
+          - generic [ref=f7e170]:
+            - generic [ref=f7e175]: "0"
+            - generic [ref=f7e176]: Sites scanned
+        - generic [ref=f7e177]:
+          - generic [ref=f7e178]:
+            - generic [ref=f7e179]:
+              - generic [ref=f7e180]: Activity
+              - paragraph [ref=f7e181]: The last 30 days
+            - generic [ref=f7e182]:
+              - generic [ref=f7e183]:
+                - generic [ref=f7e184]: Generate
+                - generic [ref=f7e186]: Publish
+                - generic [ref=f7e188]: Scan
+              - button "Table" [ref=f7e190] [cursor=pointer]
+          - generic [ref=f7e193]: Nothing yet. Generate a suite, publish a project, or scan a site and it'll chart here.
+        - generic [ref=f7e194]:
+          - generic [ref=f7e195]:
+            - generic [ref=f7e196]: Recent activity
+            - generic [ref=f7e198]: Your generates, publishes, and scans will appear here as you go.
+          - generic [ref=f7e199]:
+            - generic [ref=f7e200]:
+              - generic [ref=f7e201]: Plan & usage
+              - generic [ref=f7e206]:
+                - generic [ref=f7e207]: 5 of 5
+                - generic [ref=f7e208]: Resets Aug 1, 2026
+              - paragraph [ref=f7e211]: You're out of generations this month.
+              - link "Manage plan" [ref=f7e212] [cursor=pointer]:
+                - /url: /settings
+            - generic [ref=f7e216]:
+              - generic [ref=f7e217]: Quick actions
+              - link "Generate tests Point at a repo, get an E2E suite" [ref=f7e218] [cursor=pointer]:
+                - /url: /generate
+                - generic [ref=f7e222]:
+                  - generic [ref=f7e223]: Generate tests
+                  - generic [ref=f7e224]: Point at a repo, get an E2E suite
+              - link "Publish a project Push to a new GitHub repo with CI" [ref=f7e228] [cursor=pointer]:
+                - /url: /publish
+                - generic [ref=f7e235]:
+                  - generic [ref=f7e236]: Publish a project
+                  - generic [ref=f7e237]: Push to a new GitHub repo with CI
+              - link "Scan a site Audit a deployed URL for issues" [ref=f7e241] [cursor=pointer]:
+                - /url: /scan
+                - generic [ref=f7e246]:
+                  - generic [ref=f7e247]: Scan a site
+                  - generic [ref=f7e248]: Audit a deployed URL for issues
+  - contentinfo [ref=f7e41]:
+    - generic [ref=f7e42]:
+      - generic [ref=f7e43]: Testra — free & open source
+      - generic [ref=f7e49]:
+        - link "Generate" [ref=f7e50] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f7e51] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f7e52] [cursor=pointer]:
+          - /url: /scan
+        - link "How it works" [ref=f7e53] [cursor=pointer]:
+          - /url: /how-it-works
+        - link "GitHub" [ref=f7e54] [cursor=pointer]:
+          - /url: https://github.com

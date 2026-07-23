@@ -1,0 +1,104 @@
+- generic [ref=f24e4]:
+  - banner [ref=f24e5]:
+    - navigation [ref=f24e7]:
+      - link "Testra" [ref=f24e8] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f24e34]:
+        - link "Generate" [ref=f24e35] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f24e38] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f24e44] [cursor=pointer]:
+          - /url: /scan
+        - link "Status" [ref=f24e48] [cursor=pointer]:
+          - /url: /status
+      - button "K Krishna" [ref=f24e52] [cursor=pointer]:
+        - generic [ref=f24e53]: K
+        - generic [ref=f24e54]: Krishna
+  - main [ref=f24e101]:
+    - generic [ref=f24e102]:
+      - generic [ref=f24e103]:
+        - generic [ref=f24e104]: K
+        - generic [ref=f24e105]:
+          - generic [ref=f24e106]:
+            - heading "Krishna" [level=1] [ref=f24e107]
+            - generic [ref=f24e108]: Free
+          - paragraph [ref=f24e109]: krishnapriya@procap.ai
+          - paragraph [ref=f24e110]: Member since Jul 15, 2026
+      - generic [ref=f24e111]:
+        - generic [ref=f24e112]:
+          - generic [ref=f24e116]: "0"
+          - generic [ref=f24e117]: Suites generated
+        - generic [ref=f24e118]:
+          - generic [ref=f24e125]: "0"
+          - generic [ref=f24e126]: Tests written
+        - generic [ref=f24e127]:
+          - generic [ref=f24e132]: "2"
+          - generic [ref=f24e133]: Sites scanned
+        - generic [ref=f24e134]:
+          - generic [ref=f24e139]: "0"
+          - generic [ref=f24e140]: Repos published
+      - generic [ref=f24e141]:
+        - generic [ref=f24e142]: Plan & usage
+        - generic [ref=f24e147]:
+          - generic [ref=f24e148]: 3 of 5 generations used
+          - generic [ref=f24e149]: Resets Aug 1, 2026
+        - paragraph [ref=f24e152]: You're on the free plan — no payment on file.
+      - generic [ref=f24e153]:
+        - generic [ref=f24e154]: Test suites
+        - generic [ref=f24e155]: No suites yet. Generate one and it'll show up here.
+      - generic [ref=f24e156]:
+        - generic [ref=f24e157]: Security scans (2)
+        - generic [ref=f24e158]:
+          - generic [ref=f24e159]:
+            - generic [ref=f24e160]:
+              - generic [ref=f24e161]: D
+              - generic [ref=f24e162]:
+                - generic [ref=f24e163]: example.com
+                - generic [ref=f24e164]: 52/100 · 6 findings
+            - generic [ref=f24e165]: 4 mins ago
+          - generic [ref=f24e166]:
+            - generic [ref=f24e167]:
+              - generic [ref=f24e168]: D
+              - generic [ref=f24e169]:
+                - generic [ref=f24e170]: nurons.me/home
+                - generic [ref=f24e171]: 52/100 · 6 findings
+            - generic [ref=f24e172]: 4 mins ago
+      - generic [ref=f24e173]:
+        - generic [ref=f24e174]: Published repos
+        - generic [ref=f24e175]: Nothing published yet. Push a project and it'll show up here.
+      - generic [ref=f24e176]:
+        - heading "Want a better experience? Go Pro" [level=2] [ref=f24e177]
+        - paragraph [ref=f24e178]: You get 5 generations a month on Free. Pro removes the cap.
+        - generic [ref=f24e179]:
+          - button "yearly Save $140 $100/yr" [pressed] [ref=f24e180] [cursor=pointer]:
+            - generic [ref=f24e181]:
+              - generic [ref=f24e185]: yearly
+              - generic [ref=f24e186]: Save $140
+            - generic [ref=f24e187]:
+              - text: $100
+              - generic [ref=f24e188]: /yr
+          - button "monthly $20/mo" [ref=f24e189] [cursor=pointer]:
+            - generic [ref=f24e190]: monthly
+            - generic [ref=f24e193]:
+              - text: $20
+              - generic [ref=f24e194]: /mo
+        - list [ref=f24e195]:
+          - listitem [ref=f24e196]: Unlimited test generations
+          - listitem [ref=f24e199]: Priority access when capacity is tight
+          - listitem [ref=f24e202]: Page Object Models + CI/CD pipelines
+          - listitem [ref=f24e205]: Private repo publishing
+        - generic [ref=f24e208]: Checkout isn't live yet — payments aren't connected to this app right now.
+        - button "Upgrade to Pro — $100/yr" [disabled] [ref=f24e212]
+  - contentinfo [ref=f24e21]:
+    - generic [ref=f24e22]:
+      - generic [ref=f24e23]: Testra — free & open source
+      - generic [ref=f24e29]:
+        - link "Generate" [ref=f24e30] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f24e31] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f24e32] [cursor=pointer]:
+          - /url: /scan
+        - link "GitHub" [ref=f24e33] [cursor=pointer]:
+          - /url: https://github.com

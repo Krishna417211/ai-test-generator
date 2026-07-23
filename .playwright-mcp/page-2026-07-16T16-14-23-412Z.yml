@@ -1,0 +1,29 @@
+- generic [ref=f15e4]:
+  - banner [ref=f15e5]:
+    - generic [ref=f15e6]:
+      - generic [ref=f15e7]:
+        - button [ref=f15e8] [cursor=pointer]
+        - generic [ref=f15e12]: Testra Admin
+      - generic [ref=f15e13]:
+        - generic [ref=f15e14]: admin@example.com
+        - link "Main app" [ref=f15e15] [cursor=pointer]:
+          - /url: /dashboard
+        - button "Sign out" [ref=f15e16] [cursor=pointer]
+  - main [ref=f15e23]:
+    - generic [ref=f15e24]:
+      - generic [ref=f15e25]:
+        - generic [ref=f15e26]:
+          - heading "Users" [level=1] [ref=f15e27]
+          - paragraph [ref=f15e28]: … on this instance
+        - button "Refresh" [ref=f15e29] [cursor=pointer]
+      - textbox "Search users" [ref=f15e36]:
+        - /placeholder: Search by email, name, or GitHub handle…
+      - group "Sort accounts" [ref=f15e38]:
+        - generic [ref=f15e39]: Sort
+        - button "Joined" [pressed] [ref=f15e40] [cursor=pointer]
+        - button "Email" [ref=f15e43] [cursor=pointer]
+        - button "Name" [ref=f15e44] [cursor=pointer]
+        - button "Plan" [ref=f15e45] [cursor=pointer]
+        - button "Status" [ref=f15e46] [cursor=pointer]
+        - button "Verified" [ref=f15e47] [cursor=pointer]
+      - generic "Loading users" [ref=f15e49]

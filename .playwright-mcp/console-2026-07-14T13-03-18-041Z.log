@@ -1,0 +1,148 @@
+[     230ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:21550
+[     412ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=1047a167:4426
+[     412ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=1047a167:4426
+[     435ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:8000/api/auth/me:0
+[     436ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:8000/api/auth/me:0
+[    9434ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:8000/api/publish-zip:0
+[   21311ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:8000/api/publish-zip:0
+[ 1023940ms] Error: useAuth must be used within AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1784007158911:67:19)
+    at NavBar (http://localhost:5173/src/components/NavBar.tsx?t=1784007158911:30:28)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:15914:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3674:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3699:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3733:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19765:15)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19198:20)
+[ 1023983ms] Error: useAuth must be used within AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1784007158911:67:19)
+    at NavBar (http://localhost:5173/src/components/NavBar.tsx?t=1784007158911:30:28)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:15914:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3674:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3699:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3733:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19765:15)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19198:20)
+[ 1024004ms] [ERROR] The above error occurred in the <NavBar> component:
+
+    at NavBar (http://localhost:5173/src/components/NavBar.tsx?t=1784007158911:30:28)
+    at div
+    at AuthProvider (http://localhost:5173/src/context/AuthContext.tsx?t=1784035221844:21:32)
+    at Router (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=1047a167:4535:15)
+    at BrowserRouter (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=1047a167:5273:5)
+    at App
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/node_modules/.vite/deps/chunk-HEXJB2BD.js?v=92dab8e4:49446
+[ 1024014ms] Error: useAuth must be used within AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1784007158911:67:19)
+    at NavBar (http://localhost:5173/src/components/NavBar.tsx?t=1784007158911:30:28)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:15914:22)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19753:22)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19198:20)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19137:13)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19116:15)
+    at recoverFromConcurrentError (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:18736:28)
+[ 1024144ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:8000/api/auth/me:0
+[ 1024145ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:8000/api/auth/me:0
+[ 1024527ms] [LOG] THREE.WebGLRenderer: Context Lost. @ http://localhost:5173/node_modules/.vite/deps/chunk-HEXJB2BD.js?v=92dab8e4:33782
+[ 1162419ms] Error: useAuth must be used within AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1784035221844:67:19)
+    at NavBar (http://localhost:5173/src/components/NavBar.tsx?t=1784035221844:30:28)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:15914:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3674:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3699:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3733:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19765:15)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19198:20)
+[ 1162432ms] Error: useAuth must be used within AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1784035221844:67:19)
+    at NavBar (http://localhost:5173/src/components/NavBar.tsx?t=1784035221844:30:28)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:15914:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3674:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3699:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3733:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19765:15)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19198:20)
+[ 1162461ms] [ERROR] The above error occurred in the <NavBar> component:
+
+    at NavBar (http://localhost:5173/src/components/NavBar.tsx?t=1784035221844:30:28)
+    at div
+    at AuthProvider (http://localhost:5173/src/context/AuthContext.tsx?t=1784035360303:21:32)
+    at Router (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=1047a167:4535:15)
+    at BrowserRouter (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=1047a167:5273:5)
+    at App
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/node_modules/.vite/deps/chunk-HEXJB2BD.js?v=92dab8e4:49446
+[ 1162467ms] Error: useAuth must be used within AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1784035221844:67:19)
+    at NavBar (http://localhost:5173/src/components/NavBar.tsx?t=1784035221844:30:28)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:15914:22)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19753:22)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19198:20)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19137:13)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19116:15)
+    at recoverFromConcurrentError (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:18736:28)
+[ 1162667ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:8000/api/auth/me:0
+[ 1162668ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:8000/api/auth/me:0
+[ 1162977ms] [LOG] THREE.WebGLRenderer: Context Lost. @ http://localhost:5173/node_modules/.vite/deps/chunk-HEXJB2BD.js?v=92dab8e4:33782
+[ 1175001ms] Error: useAuth must be used within AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1784035360303:67:19)
+    at NavBar (http://localhost:5173/src/components/NavBar.tsx?t=1784035360303:30:28)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:15914:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3674:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3699:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3733:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19765:15)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19198:20)
+[ 1175017ms] Error: useAuth must be used within AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1784035360303:67:19)
+    at NavBar (http://localhost:5173/src/components/NavBar.tsx?t=1784035360303:30:28)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:15914:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3674:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3699:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:3733:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19765:15)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19198:20)
+[ 1175028ms] [ERROR] The above error occurred in the <NavBar> component:
+
+    at NavBar (http://localhost:5173/src/components/NavBar.tsx?t=1784035360303:30:28)
+    at div
+    at AuthProvider (http://localhost:5173/src/context/AuthContext.tsx?t=1784035372905:21:32)
+    at Router (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=1047a167:4535:15)
+    at BrowserRouter (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=1047a167:5273:5)
+    at App
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/node_modules/.vite/deps/chunk-HEXJB2BD.js?v=92dab8e4:49446
+[ 1175033ms] Error: useAuth must be used within AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1784035360303:67:19)
+    at NavBar (http://localhost:5173/src/components/NavBar.tsx?t=1784035360303:30:28)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:15914:22)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19753:22)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19198:20)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19137:13)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:19116:15)
+    at recoverFromConcurrentError (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=92dab8e4:18736:28)
+[ 1175124ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:8000/api/auth/me:0
+[ 1175124ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:8000/api/auth/me:0
+[ 1175543ms] [LOG] THREE.WebGLRenderer: Context Lost. @ http://localhost:5173/node_modules/.vite/deps/chunk-HEXJB2BD.js?v=92dab8e4:33782
