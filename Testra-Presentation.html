@@ -1,0 +1,1030 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Testra — Project Presentation</title>
+</head>
+<body>
+
+<style>
+  :root {
+    --ground:   #EFF2F6;
+    --surface:  #FFFFFF;
+    --surface-2:#E5EAF1;
+    --ink:      #131822;
+    --ink-soft: #3C4757;
+    --muted:    #616D7E;
+    --line:     #CFD7E2;
+    --accent:   #2436C8;
+    --accent-soft: #E2E6FA;
+    --copper:   #9E4E19;
+    --copper-soft: #F6E7DA;
+    --pass:     #10704F;
+    --warn:     #8C6100;
+    --fail:     #A62F22;
+    --mono: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:   #0D1117;
+      --surface:  #151C26;
+      --surface-2:#1E2733;
+      --ink:      #E8ECF2;
+      --ink-soft: #C2CBD8;
+      --muted:    #8B98A9;
+      --line:     #2C3746;
+      --accent:   #8B9BFF;
+      --accent-soft: #1C2540;
+      --copper:   #E0955C;
+      --copper-soft: #2B2118;
+      --pass:     #4FC49A;
+      --warn:     #E0B44A;
+      --fail:     #EE8172;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:   #0D1117;
+    --surface:  #151C26;
+    --surface-2:#1E2733;
+    --ink:      #E8ECF2;
+    --ink-soft: #C2CBD8;
+    --muted:    #8B98A9;
+    --line:     #2C3746;
+    --accent:   #8B9BFF;
+    --accent-soft: #1C2540;
+    --copper:   #E0955C;
+    --copper-soft: #2B2118;
+    --pass:     #4FC49A;
+    --warn:     #E0B44A;
+    --fail:     #EE8172;
+  }
+  :root[data-theme="light"] {
+    --ground:   #EFF2F6;
+    --surface:  #FFFFFF;
+    --surface-2:#E5EAF1;
+    --ink:      #131822;
+    --ink-soft: #3C4757;
+    --muted:    #616D7E;
+    --line:     #CFD7E2;
+    --accent:   #2436C8;
+    --accent-soft: #E2E6FA;
+    --copper:   #9E4E19;
+    --copper-soft: #F6E7DA;
+    --pass:     #10704F;
+    --warn:     #8C6100;
+    --fail:     #A62F22;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── deck shell ─────────────────────────────────────────── */
+  .deck {
+    height: 100dvh;
+    overflow-y: auto;
+    scroll-snap-type: y mandatory;
+    scroll-behavior: smooth;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .deck { scroll-behavior: auto; }
+  }
+
+  .slide {
+    min-height: 100dvh;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: clamp(2.2rem, 5vw, 4.5rem) clamp(1.2rem, 6vw, 6rem) clamp(3.4rem, 6vw, 5rem);
+    border-bottom: 1px solid var(--line);
+  }
+  .slide > .inner {
+    width: 100%;
+    max-width: 1080px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(1rem, 2.2vw, 1.7rem);
+  }
+
+  /* ── type ───────────────────────────────────────────────── */
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: .7rem;
+  }
+  .eyebrow::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+  .eyebrow.copper { color: var(--copper); }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(2.4rem, 7.5vw, 5.2rem);
+    line-height: 1.02;
+    letter-spacing: -.035em;
+    margin: 0;
+    text-wrap: balance;
+    font-weight: 600;
+  }
+  h2 {
+    font-family: var(--mono);
+    font-size: clamp(1.5rem, 3.6vw, 2.5rem);
+    line-height: 1.12;
+    letter-spacing: -.028em;
+    margin: 0;
+    text-wrap: balance;
+    font-weight: 600;
+  }
+  h3 {
+    font-family: var(--mono);
+    font-size: 1rem;
+    letter-spacing: -.01em;
+    margin: 0;
+    font-weight: 600;
+  }
+  p { margin: 0; line-height: 1.62; color: var(--ink-soft); max-width: 68ch; }
+  .lede { font-size: clamp(1.02rem, 1.9vw, 1.3rem); color: var(--ink-soft); }
+  .small { font-size: .88rem; color: var(--muted); }
+  strong { color: var(--ink); font-weight: 650; }
+  code, .mono { font-family: var(--mono); }
+  code {
+    font-size: .87em;
+    background: var(--surface-2);
+    padding: .1em .38em;
+    border-radius: 3px;
+    color: var(--ink);
+  }
+
+  /* the plain-language aside — the one serif voice in the deck */
+  .plain {
+    font-family: var(--serif);
+    font-size: clamp(1.04rem, 2vw, 1.32rem);
+    line-height: 1.55;
+    color: var(--ink);
+    border-left: 3px solid var(--copper);
+    padding: .1rem 0 .1rem 1.1rem;
+    max-width: 60ch;
+    font-style: italic;
+  }
+  .plain b { font-style: normal; font-weight: 600; }
+
+  /* ── layout helpers ─────────────────────────────────────── */
+  .cols { display: grid; gap: clamp(.8rem, 1.6vw, 1.3rem); }
+  .c2 { grid-template-columns: repeat(auto-fit, minmax(255px, 1fr)); }
+  .c3 { grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); }
+  .c4 { grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); }
+  .split { display: grid; grid-template-columns: 1fr; gap: clamp(1rem, 2.4vw, 2.2rem); }
+  @media (min-width: 880px) { .split { grid-template-columns: 1.05fr .95fr; align-items: start; } }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 1rem 1.05rem;
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+  }
+  .card p { font-size: .92rem; }
+  .card .tag {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .stat { display: flex; flex-direction: column; gap: .25rem; }
+  .stat .n {
+    font-family: var(--mono);
+    font-size: clamp(1.9rem, 4.4vw, 3rem);
+    font-weight: 600;
+    letter-spacing: -.04em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .l { font-size: .8rem; color: var(--muted); line-height: 1.35; }
+
+  /* ── code block ─────────────────────────────────────────── */
+  pre {
+    margin: 0;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: .9rem 1rem;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: clamp(.74rem, 1.35vw, .86rem);
+    line-height: 1.65;
+    color: var(--ink);
+  }
+  pre .cm { color: var(--muted); }
+  pre .kw { color: var(--accent); font-weight: 600; }
+  pre .st { color: var(--copper); }
+
+  .scroller { overflow-x: auto; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: .84rem;
+    font-family: var(--mono);
+  }
+  th, td {
+    text-align: left;
+    padding: .42rem .7rem;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  th {
+    font-size: .68rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pos { color: var(--fail); }
+  .neg { color: var(--pass); }
+
+  /* ── pipeline / flow ────────────────────────────────────── */
+  .flow { display: flex; flex-direction: column; gap: .5rem; }
+  .step {
+    display: grid;
+    grid-template-columns: 2.1rem 1fr;
+    gap: .85rem;
+    align-items: start;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: .75rem .9rem;
+  }
+  .step .k {
+    font-family: var(--mono);
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--surface);
+    background: var(--accent);
+    border-radius: 3px;
+    height: 1.6rem;
+    display: grid;
+    place-items: center;
+    font-variant-numeric: tabular-nums;
+  }
+  :root[data-theme="dark"] .step .k, :root[data-theme="dark"] .pill.solid { color: #0D1117; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .step .k,
+    :root:not([data-theme="light"]) .pill.solid { color: #0D1117; }
+  }
+  .step h3 { font-size: .93rem; }
+  .step p { font-size: .87rem; }
+
+  .pill {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: .7rem;
+    letter-spacing: .05em;
+    padding: .2rem .5rem;
+    border-radius: 3px;
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+  .pill.solid { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+  .pill.pass { color: var(--pass); border-color: var(--pass); }
+  .pill.warn { color: var(--warn); border-color: var(--warn); }
+  .pill.fail { color: var(--fail); border-color: var(--fail); }
+  .pills { display: flex; flex-wrap: wrap; gap: .4rem; }
+
+  ul.plainlist { margin: 0; padding-left: 1.1rem; line-height: 1.6; color: var(--ink-soft); font-size: .93rem; max-width: 66ch; }
+  ul.plainlist li { margin-bottom: .35rem; }
+  ul.plainlist li::marker { color: var(--accent); }
+
+  /* ── sigmoid figure ─────────────────────────────────────── */
+  .figure {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+  }
+  .figure figcaption { font-size: .8rem; color: var(--muted); line-height: 1.5; }
+  svg { display: block; width: 100%; height: auto; }
+
+  .barrow { display: grid; grid-template-columns: minmax(88px, 1fr) 2.4fr 3.1rem; align-items: center; gap: .6rem; font-family: var(--mono); font-size: .76rem; }
+  .barrow .track { height: 9px; background: var(--surface-2); border-radius: 2px; position: relative; overflow: hidden; }
+  .barrow .fill { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
+  .barrow .v { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+
+  /* ── rail ───────────────────────────────────────────────── */
+  .rail {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    height: 2.4rem;
+    display: flex;
+    align-items: center;
+    gap: .9rem;
+    padding: 0 clamp(1rem, 4vw, 2.5rem);
+    background: color-mix(in srgb, var(--ground) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: .72rem;
+    color: var(--muted);
+    z-index: 20;
+  }
+  .rail .bar { flex: 1; height: 2px; background: var(--line); position: relative; }
+  .rail .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); width: 0; transition: width .25s ease; }
+  .rail .idx { font-variant-numeric: tabular-nums; letter-spacing: .06em; }
+  .rail .hint { display: none; }
+  @media (min-width: 700px) { .rail .hint { display: inline; } }
+
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .titlegrid { display: flex; flex-direction: column; gap: 1.6rem; }
+  .kv { display: flex; flex-wrap: wrap; gap: .35rem 1.6rem; font-family: var(--mono); font-size: .78rem; color: var(--muted); }
+  .kv b { color: var(--ink); font-weight: 600; }
+</style>
+
+<div class="deck" id="deck">
+
+  <!-- 1 ─────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner titlegrid">
+      <div class="eyebrow">Project Presentation · 2026</div>
+      <h1>Testra</h1>
+      <p class="lede" style="max-width:44ch">Paste a GitHub link. Get a complete, grounded, ready-to-run test suite for your website — written by two AI agents and checked by two machine-learning models.</p>
+      <div class="pills">
+        <span class="pill solid">FastAPI + React</span>
+        <span class="pill">Two-agent LLM pipeline</span>
+        <span class="pill">Logistic regression</span>
+        <span class="pill">Selector grounding</span>
+        <span class="pill">622 automated tests</span>
+      </div>
+      <div class="kv">
+        <span>Backend <b>Python 3.11–3.13</b></span>
+        <span>Frontend <b>React · TypeScript · Vite</b></span>
+        <span>Store <b>SQLite</b></span>
+        <span>Ship <b>Docker · Caddy · AWS</b></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 ─────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">01 · The problem</div>
+      <h2>Websites break quietly. Somebody has to keep clicking.</h2>
+      <div class="split">
+        <div style="display:flex;flex-direction:column;gap:1.1rem">
+          <p class="plain">Imagine a big toy shop. Every morning someone must check that every door opens, every button beeps, and every price tag is right. Doing that <b>by hand</b> takes hours — and one tired morning, they miss the broken door.</p>
+          <p>That checking is called <strong>end-to-end (E2E) testing</strong>. Real teams write it as code: a robot opens the website, clicks <code>#login-btn</code>, types a password, and confirms the dashboard appears. It is genuinely valuable and genuinely tedious, so it is the first thing teams skip.</p>
+        </div>
+        <div class="cols c2">
+          <div class="card"><span class="tag">Cost</span><h3>Days per suite</h3><p>Writing tests for a mid-size app by hand is a multi-day job, repeated whenever the UI changes.</p></div>
+          <div class="card"><span class="tag">Skill</span><h3>Specialist knowledge</h3><p>Good tests need Page Object Models, stable locators, CI wiring — not just "click here".</p></div>
+          <div class="card"><span class="tag">Trap</span><h3>AI that invents</h3><p>Ask a chatbot for tests and it happily writes <code>#submit-button</code> — a button that never existed.</p></div>
+          <div class="card"><span class="tag">Decay</span><h3>Brittle locators</h3><p><code>div &gt; div:nth-child(3)</code> works today and shatters the moment someone adds a wrapper.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 ─────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">02 · The idea</div>
+      <h2>Testra reads your code, then writes the checking robot for you.</h2>
+      <p class="plain">You give Testra the <b>address of your project</b>. It reads the pages like a careful new teammate, notices every button and box that a person could touch, and writes the little robot that will click them all — forever, for free, in seconds.</p>
+      <div class="cols c3">
+        <div class="card"><span class="tag">In</span><h3>A GitHub URL or a ZIP</h3><p>Public repo, private repo (signed in with GitHub), or a folder you drag in.</p></div>
+        <div class="card"><span class="tag">Out</span><h3>A runnable suite</h3><p>Page Object Model classes, spec files, config, dependency manifest, and CI pipelines — zipped or pushed straight to a new repo.</p></div>
+        <div class="card"><span class="tag">Proof</span><h3>Evidence, not vibes</h3><p>Every selector is traced back to the line of source it came from, and graded for how likely it is to break later.</p></div>
+      </div>
+      <div class="pills">
+        <span class="pill solid">Playwright</span><span class="pill solid">Cypress</span><span class="pill solid">Selenium</span>
+        <span class="pill">TypeScript</span><span class="pill">JavaScript</span><span class="pill">Python</span><span class="pill">Java</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 ─────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">03 · The journey</div>
+      <h2>What a user actually does — six screens, about a minute.</h2>
+      <div class="flow">
+        <div class="step"><span class="k">1</span><div><h3>Paste</h3><p>A GitHub URL on <code>/generate</code>, or drop a ZIP. Testra fetches the files through the GitHub API.</p></div></div>
+        <div class="step"><span class="k">2</span><div><h3>Analyze</h3><p>The repo is filtered from thousands of files down to the few dozen that a user can actually see and click. A live flowchart streams each phase as it happens — <code>18 of 240 files kept · React</code>.</p></div></div>
+        <div class="step"><span class="k">3</span><div><h3>Configure</h3><p>Pick framework and language, name the flows you care about ("login, then add to cart"), and optionally give a live URL you own.</p></div></div>
+        <div class="step"><span class="k">4</span><div><h3>Watch</h3><p>Tests stream back token by token over Server-Sent Events. Nothing is hidden behind a spinner.</p></div></div>
+        <div class="step"><span class="k">5</span><div><h3>Trust</h3><p>The Trust Panel shows the verified-selector rate, per-selector provenance (<code>LoginForm.tsx:42</code>), and an A–F durability grade.</p></div></div>
+        <div class="step"><span class="k">6</span><div><h3>Take it</h3><p>Download a ZIP, or publish directly to a new GitHub repository — CI pipeline included, green on first run.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 ─────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">04 · The map</div>
+      <h2>How the system is put together.</h2>
+      <pre><span class="cm">┌─────────────────┐   POST /api/analyze    ┌──────────────────────────────┐</span>
+<span class="cm">│</span>  React + Vite   <span class="cm">│</span> ─────────────────────▶ <span class="cm">│</span>   FastAPI  <span class="st">main.py</span>           <span class="cm">│</span>
+<span class="cm">│</span>  TypeScript UI  <span class="cm">│</span> ◀───────────────────── <span class="cm">│</span>   request-id · CORS · rate   <span class="cm">│</span>
+<span class="cm">└────────┬────────┘   job_id + analysis   <span class="cm">└──────────────┬───────────────┘</span>
+         <span class="cm">│</span>                                              <span class="cm">│</span>
+         <span class="cm">│</span>  GET /api/stream/{job_id}  (SSE)             ▼
+         <span class="cm">│</span>                            <span class="cm">┌──────────────────────────────┐</span>
+         <span class="cm">│</span>                            <span class="cm">│</span> <span class="kw">AGENT 1 · FilterAgent</span>        <span class="cm">│</span>
+         <span class="cm">│</span>                            <span class="cm">│</span>  FileExtractor (no LLM)      <span class="cm">│</span>
+         <span class="cm">│</span>                            <span class="cm">│</span>  + <span class="st">importance_model.py</span> (ML) <span class="cm">│</span>
+         <span class="cm">│</span>                            <span class="cm">│</span>  + structured project read   <span class="cm">│</span>
+         <span class="cm">│</span>                            <span class="cm">└──────────────┬───────────────┘</span>
+         <span class="cm">│</span>  POST /api/generate/{id}                  <span class="cm">│</span> FilterResult
+         <span class="cm">│</span>                                           ▼
+         <span class="cm">│</span>                            <span class="cm">┌──────────────────────────────┐</span>
+         <span class="cm">└───────────────────────────▶</span><span class="cm">│</span> <span class="kw">AGENT 2 · WriterAgent</span>        <span class="cm">│</span>
+                                      <span class="cm">│</span>  ground → write → validate   <span class="cm">│</span>
+                                      <span class="cm">│</span>  → self-heal → grade         <span class="cm">│</span>
+                                      <span class="cm">└──────┬─────────────────┬─────┘</span>
+                   <span class="cm">┌─────────────────────────┘</span>                 <span class="cm">│</span>
+                   ▼                                           ▼
+       <span class="cm">┌───────────────────────┐</span>                   <span class="cm">┌────────────────────────┐</span>
+       <span class="cm">│</span> <span class="kw">LLMRouter</span>             <span class="cm">│</span>  Gemini→Groq→     <span class="cm">│</span> <span class="kw">JobStore</span> (SQLite)     <span class="cm">│</span>
+       <span class="cm">│</span> key rotation, 429     <span class="cm">│</span>  Claude           <span class="cm">│</span> survives restarts      <span class="cm">│</span>
+       <span class="cm">│</span> cooldown, JSON mode   <span class="cm">│</span>                   <span class="cm">│</span> pruned after 24h       <span class="cm">│</span>
+       <span class="cm">└───────────────────────┘</span>                   <span class="cm">└────────────────────────┘</span></pre>
+      <p class="small">The frontend is a single-page React app (20 routes, 29 components). The backend is one FastAPI service — roughly 20,000 lines of Python across 22 services, 3 agents and 45 API endpoints — with SQLite for durable jobs, sessions, quota and audit.</p>
+    </div>
+  </section>
+
+  <!-- 6 ─────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">05 · Stage one</div>
+      <h2>Before any AI runs, a cheap filter does the boring work.</h2>
+      <div class="split">
+        <div style="display:flex;flex-direction:column;gap:1rem">
+          <p class="plain">A big project is like a whole school. Testra only wants the <b>rooms children walk into</b> — not the boiler room, not the store cupboard. It walks the corridors first and marks the doors worth checking.</p>
+          <p><code>services/file_extractor.py</code> is 658 lines of pure, local, no-cost logic. It keeps only browser-facing files, detects the tech stack (React, Vue, Next, Nuxt, Angular, Svelte, Django, Flask, FastAPI, Rails, Laravel and their template engines), scores every surviving file <strong>1 to 10</strong> for importance, and fits the winners into a <strong>600,000-token budget</strong>.</p>
+          <p>When the repo overflows the budget, low-scoring files are <strong>summarized</strong> — ids, classes and routes extracted — rather than dropped. The model keeps its context; it just loses the prose.</p>
+        </div>
+        <div class="figure">
+          <figcaption><strong>The hand-written score ladder</strong> — <code>score_file()</code></figcaption>
+          <div class="scroller"><table>
+            <thead><tr><th>Score</th><th>What it matches</th></tr></thead>
+            <tbody>
+              <tr><td class="num">10</td><td>Routers &amp; entrypoints — <code>App.jsx</code>, <code>urls.py</code></td></tr>
+              <tr><td class="num">9</td><td><code>pages/</code> <code>views/</code> <code>screens/</code></td></tr>
+              <tr><td class="num">8</td><td>Layouts · auth · forms · checkout · cart</td></tr>
+              <tr><td class="num">7</td><td><code>templates/</code> <code>partials/</code></td></tr>
+              <tr><td class="num">6</td><td><code>components/</code> <code>features/</code></td></tr>
+              <tr><td class="num">5</td><td>Config files</td></tr>
+              <tr><td class="num">4</td><td>Everything else that survived</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 ─────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow copper">06 · Why that isn't enough</div>
+      <h2>Those rules are good guesses. They are also frozen forever.</h2>
+      <p class="lede">The ladder says <code>pages/</code> is a 9 and <code>components/</code> is a 6. But in <em>this</em> codebase, the pages may be thin two-line shells and every real button may live in <code>features/</code>. A hand-written rule can never notice that, because it only ever looks at the <strong>path</strong> — never at what is actually inside the file.</p>
+      <div class="cols c2">
+        <div class="card" style="border-left:3px solid var(--fail)">
+          <span class="tag">Rules only see the name</span>
+          <h3><code>pages/About.tsx</code> → 9</h3>
+          <p>Forty words of static text. Nothing to click. Nothing a test could ever assert. Still scored 9 and sent to the model at full length.</p>
+        </div>
+        <div class="card" style="border-left:3px solid var(--pass)">
+          <span class="tag">The body tells the truth</span>
+          <h3><code>features/Checkout.tsx</code> → 6</h3>
+          <p>Three forms, nine inputs, a <code>data-testid</code> on every control. The single most testable file in the repo — ranked below the About page.</p>
+        </div>
+      </div>
+      <p class="plain">So Testra <b>learns</b> instead of guessing. It looks inside each file, counts what it finds, and trains a small model to predict: <i>would a test ever actually target this file?</i></p>
+    </div>
+  </section>
+
+  <!-- 8 ─────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow copper">07 · Logistic regression · the idea</div>
+      <h2>A machine that answers one yes-or-no question, with a number.</h2>
+      <div class="split">
+        <div style="display:flex;flex-direction:column;gap:1.05rem">
+          <p class="plain">Think of a <b>scorecard for choosing a football team</b>. "Can they run fast?" — add 3 points. "Can they kick?" — add 4. "Do they get tired quickly?" — take away 2. Add it all up, and if the total is high, you pick them.</p>
+          <p><strong>Logistic regression is exactly that scorecard</strong>, with one extra trick: at the end it squashes the total into a number between <strong>0 and 1</strong>, so it reads as a confidence rather than a random score. 0.9 means "almost certainly yes". 0.1 means "almost certainly no".</p>
+          <p>And the points on the card aren't chosen by a person. The machine <strong>works them out itself</strong> from examples — that is the "learning" part.</p>
+        </div>
+        <div class="figure">
+          <figcaption><strong>Where it lives</strong></figcaption>
+          <pre style="border-left-color:var(--copper)">backend/services/<span class="kw">importance_model.py</span>
+<span class="cm">226 lines · zero dependencies</span>
+
+<span class="cm"># no numpy. no sklearn.</span>
+<span class="kw">import</span> json, math, os, re</pre>
+          <ul class="plainlist" style="margin-top:.4rem">
+            <li><strong>Honest.</strong> Every weight is a named number on a named feature, written to readable JSON. Nothing hides in a binary blob.</li>
+            <li><strong>Free.</strong> No training stack shipped to production for one small model.</li>
+            <li><strong>Re-fittable.</strong> The same <code>fit()</code> retrains on real outcomes later.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 ─────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow copper">08 · Step 1 of 4 — features</div>
+      <h2>Turn a messy file into 17 plain numbers.</h2>
+      <p>A model cannot read code. So <code>extract_features()</code> converts every file into exactly seventeen numbers, each between 0 and 1. Some are yes/no (1 or 0). Some are counts, squashed into range so one enormous file can't dominate. No parsing, no LLM, pure regex — microseconds per file.</p>
+      <div class="scroller"><table>
+        <thead><tr><th>Feature</th><th>Question it asks</th><th>Kind</th></tr></thead>
+        <tbody>
+          <tr><td>is_router</td><td>Is this the app's front door?</td><td>0 / 1</td></tr>
+          <tr><td>in_pages_dir</td><td>Does it live in pages, app, views, screens?</td><td>0 / 1</td></tr>
+          <tr><td>in_components_dir</td><td>components, containers, features?</td><td>0 / 1</td></tr>
+          <tr><td>in_layouts_dir</td><td>layout, layouts?</td><td>0 / 1</td></tr>
+          <tr><td>has_auth_keyword</td><td>auth, login, signup, checkout, cart, form in the path?</td><td>0 / 1</td></tr>
+          <tr><td>is_config</td><td>Is it a config file?</td><td>0 / 1</td></tr>
+          <tr><td>is_test_file</td><td>Is it already a test? (low value as a <em>target</em>)</td><td>0 / 1</td></tr>
+          <tr><td>is_style_or_asset</td><td>CSS, SVG, PNG, font?</td><td>0 / 1</td></tr>
+          <tr><td>ext_component</td><td>.tsx / .jsx / .vue / .svelte?</td><td>0 / 1</td></tr>
+          <tr><td>path_depth</td><td>How deeply buried is it? (÷5, capped)</td><td>0 → 1</td></tr>
+          <tr><td>n_ids</td><td>How many <code>id=</code> anchors inside? (÷8, capped)</td><td>0 → 1</td></tr>
+          <tr><td>n_testids</td><td>How many <code>data-testid</code> / <code>data-cy</code>? (÷8)</td><td>0 → 1</td></tr>
+          <tr><td>n_forms</td><td>How many <code>&lt;form&gt;</code> elements? (÷3)</td><td>0 → 1</td></tr>
+          <tr><td>n_buttons</td><td>Buttons and <code>role="button"</code>? (÷8)</td><td>0 → 1</td></tr>
+          <tr><td>n_inputs</td><td>input / select / textarea? (÷8)</td><td>0 → 1</td></tr>
+          <tr><td>has_onclick</td><td>Any click handler at all?</td><td>0 / 1</td></tr>
+          <tr><td>size_small</td><td>Under 300 characters — probably not the real screen</td><td>0 / 1</td></tr>
+        </tbody>
+      </table></div>
+      <p class="small">The <code>FEATURES</code> list <em>is</em> the contract: the weight vector is aligned to its order, so adding a feature means retraining.</p>
+    </div>
+  </section>
+
+  <!-- 10 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow copper">09 · Step 2 of 4 — the maths</div>
+      <h2>Multiply, add, squash.</h2>
+      <div class="split">
+        <div style="display:flex;flex-direction:column;gap:1rem">
+          <p class="plain">Each of the seventeen numbers gets multiplied by its own "how much does this matter" number, called a <b>weight</b>. Add them all together, plus one starting number called the <b>bias</b>. That gives you <b>z</b> — which could be anything, like −4 or +9.</p>
+          <p>Then the <strong>sigmoid</strong> function bends that raw total onto a 0-to-1 line. Very negative → near 0. Zero → exactly 0.5. Very positive → near 1. That curve is what turns a scorecard into a probability.</p>
+          <pre><span class="kw">def</span> predict_proba(self, features):
+    z = self.bias + <span class="kw">sum</span>(
+        self.weights[f] * features[f]
+        <span class="kw">for</span> f <span class="kw">in</span> FEATURES
+    )
+    <span class="kw">return</span> 1.0 / (1.0 + math.exp(-z))   <span class="cm"># σ(z)</span></pre>
+          <p>Finally the probability is mapped back onto the 1–10 scale the rest of the app already speaks: <code>round(1 + p × 9)</code>. p=0.92 becomes a 9. p=0.06 becomes a 2.</p>
+        </div>
+        <div class="figure">
+          <figcaption><strong>σ(z) = 1 / (1 + e<sup>−z</sup>)</strong> — the squashing curve. Any total in, a confidence out.</figcaption>
+          <svg viewBox="0 0 320 200" role="img" aria-label="Sigmoid curve rising from near zero at minus six to near one at plus six, passing through 0.5 at z equals zero">
+            <g stroke="var(--line)" stroke-width="1">
+              <line x1="30" y1="20" x2="310" y2="20"/>
+              <line x1="30" y1="95" x2="310" y2="95"/>
+              <line x1="30" y1="170" x2="310" y2="170"/>
+              <line x1="170" y1="14" x2="170" y2="176" stroke-dasharray="3 3"/>
+            </g>
+            <text x="8" y="24" fill="var(--muted)" font-size="10" font-family="ui-monospace, monospace">1.0</text>
+            <text x="8" y="99" fill="var(--muted)" font-size="10" font-family="ui-monospace, monospace">0.5</text>
+            <text x="8" y="174" fill="var(--muted)" font-size="10" font-family="ui-monospace, monospace">0.0</text>
+            <text x="34" y="188" fill="var(--muted)" font-size="10" font-family="ui-monospace, monospace">z = −6</text>
+            <text x="152" y="188" fill="var(--muted)" font-size="10" font-family="ui-monospace, monospace">0</text>
+            <text x="272" y="188" fill="var(--muted)" font-size="10" font-family="ui-monospace, monospace">+6</text>
+            <path d="M30 169.3 L53 168.2 L76 165.9 L99 161.2 L122 152 L145 135.4 L157 122.6 L164 113.6 L170 95 L176 76.4 L183 67.4 L195 54.6 L218 38 L241 28.8 L264 24.1 L287 21.8 L310 20.7"
+                  fill="none" stroke="var(--copper)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="170" cy="95" r="4" fill="var(--copper)"/>
+          </svg>
+          <figcaption class="small">At z = 0 the model is perfectly undecided: 0.5. The steep middle is where small changes in evidence move the answer most.</figcaption>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow copper">10 · Step 3 of 4 — learning</div>
+      <h2>Gradient descent: guess, measure the miss, nudge, repeat.</h2>
+      <div class="split">
+        <div style="display:flex;flex-direction:column;gap:1rem">
+          <p class="plain">Playing "warmer, colder". The model starts with every weight at <b>zero</b> — it knows nothing. It guesses. We tell it how wrong it was. It nudges every weight a little in the direction that would have been less wrong. Then it does that <b>400 times</b>.</p>
+          <ul class="plainlist">
+            <li><strong>err = prediction − truth.</strong> Guessed 0.8 on a file that should be 1? The miss is −0.2 — a small nudge. Guessed 0.9 on a file that should be 0? The miss is +0.9 — a big correction.</li>
+            <li><strong>The nudge is scaled by the feature.</strong> A feature that was 0 for this file gets no blame at all. Only what was actually present moves.</li>
+            <li><strong>Learning rate <code>lr = 0.3</code></strong> is the step size. Too big and it overshoots forever; too small and it never arrives.</li>
+            <li><strong>L2 <code>1e-3</code></strong> gently shrinks every weight toward zero each step, so no single feature is allowed to become a dictator. This is how the model is stopped from memorising its training set.</li>
+          </ul>
+        </div>
+        <pre><span class="kw">def</span> fit(self, samples, *, epochs=<span class="st">400</span>, lr=<span class="st">0.3</span>, l2=<span class="st">1e-3</span>):
+    <span class="cm"># every weight starts at zero: no opinions yet</span>
+    <span class="kw">for</span> f <span class="kw">in</span> FEATURES: self.weights.setdefault(f, 0.0)
+    n = <span class="kw">len</span>(samples)
+
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="kw">range</span>(epochs):
+        grad  = {f: 0.0 <span class="kw">for</span> f <span class="kw">in</span> FEATURES}
+        gbias = 0.0
+
+        <span class="cm"># 1 · how wrong were we, on every example?</span>
+        <span class="kw">for</span> feats, label <span class="kw">in</span> samples:
+            err = self.predict_proba(feats) - label
+            <span class="kw">for</span> f <span class="kw">in</span> FEATURES:
+                grad[f] += err * feats.get(f, 0.0)
+            gbias += err
+
+        <span class="cm"># 2 · nudge, and shrink (L2) so nothing runs away</span>
+        <span class="kw">for</span> f <span class="kw">in</span> FEATURES:
+            self.weights[f] -= lr * (grad[f]/n + l2*self.weights[f])
+        self.bias -= lr * (gbias/n)
+
+    self.trained_on = n
+    <span class="kw">return</span> self</pre>
+      </div>
+      <p class="small">Full-batch gradient descent, no minibatching, no momentum, no Adam. Small data and a seventeen-weight model — nothing fancier earns its complexity here.</p>
+    </div>
+  </section>
+
+  <!-- 12 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow copper">11 · Step 4 of 4 — labels</div>
+      <h2>Where do the right answers come from? Weak supervision.</h2>
+      <div class="split">
+        <div style="display:flex;flex-direction:column;gap:1rem">
+          <p class="plain">To learn, the model needs examples where somebody already knows the answer. Nobody is going to hand-label ten thousand files. So Testra writes a <b>rough answer key</b> — cheap, imperfect, and honest about being imperfect.</p>
+          <p><code>weak_label()</code> says <strong>1</strong> when a file is UI-facing <em>and</em> carries something a test could hold on to; <strong>0</strong> for configs, styles, assets, existing tests, and anything with no interactive surface at all.</p>
+          <p>This is deliberately called <em>weak</em>. It is a prior to bootstrap from — designed to be replaced. Once the self-heal loop and the benchmark harness have run, the labels can be re-fit on <strong>real signal</strong>: which files actually produced verified, low-fragility selectors.</p>
+        </div>
+        <pre><span class="kw">def</span> weak_label(path, content) -> <span class="kw">int</span>:
+    f = extract_features(path, content)
+
+    <span class="cm"># never a test target</span>
+    <span class="kw">if</span> f[<span class="st">"is_config"</span>] <span class="kw">or</span> f[<span class="st">"is_style_or_asset"</span>] \
+                       <span class="kw">or</span> f[<span class="st">"is_test_file"</span>]:
+        <span class="kw">return</span> 0
+
+    interactive = (f[<span class="st">"n_forms"</span>] + f[<span class="st">"n_buttons"</span>]
+                 + f[<span class="st">"n_inputs"</span>] + f[<span class="st">"n_testids"</span>]
+                 + f[<span class="st">"has_onclick"</span>])
+
+    ui_facing = (f[<span class="st">"is_router"</span>] <span class="kw">or</span> f[<span class="st">"in_pages_dir"</span>]
+              <span class="kw">or</span> f[<span class="st">"in_components_dir"</span>]
+              <span class="kw">or</span> f[<span class="st">"has_auth_keyword"</span>])
+
+    <span class="kw">return</span> 1 <span class="kw">if</span> (ui_facing <span class="kw">and</span> interactive > 0) <span class="kw">else</span> 0</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- 13 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow copper">12 · Shipping the model</div>
+      <h2>Readable weights, and a model that is allowed to be absent.</h2>
+      <div class="split">
+        <div style="display:flex;flex-direction:column;gap:1rem">
+          <p>Training writes a plain JSON file — <code>importance_model.json</code> — that any human can open and argue with. There is no pickle, no <code>.h5</code>, no vendor format.</p>
+          <pre>{
+  <span class="st">"weights"</span>: { <span class="st">"n_testids"</span>: 2.41,
+               <span class="st">"is_config"</span>: -1.87, ... },
+  <span class="st">"bias"</span>: -0.42,
+  <span class="st">"trained_on"</span>: 8412,
+  <span class="st">"features"</span>: [ ...17 names, in order... ]
+}</pre>
+          <p class="plain">And here is the safest part: if that file <b>isn't there</b>, nothing breaks. Testra just goes back to the old ladder of rules. The clever thing is allowed to be missing.</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:1rem">
+          <div class="figure">
+            <figcaption><strong>Graceful degradation</strong> — the model is an upgrade, never a dependency</figcaption>
+            <pre style="border-left-color:var(--pass)"><span class="cm"># loaded once at import — None if no artifact</span>
+_ACTIVE = ImportanceModel.load()
+
+<span class="kw">def</span> learned_score(path, content, fallback):
+    m = _ACTIVE
+    <span class="kw">return</span> (m.score_1_to_10(path, content)
+            <span class="kw">if</span> m <span class="kw">is not</span> <span class="kw">None</span> <span class="kw">else</span> fallback)</pre>
+          </div>
+          <div class="cols c2">
+            <div class="card"><span class="tag">Cost</span><h3>Loaded once</h3><p>Module-level, so the extractor pays the load cost a single time — not once per file.</p></div>
+            <div class="card"><span class="tag">Safety</span><h3>Try/except on load</h3><p>A corrupt artifact returns <code>None</code>, which means "use the heuristic", not "crash the request".</p></div>
+          </div>
+          <p class="small">Covered by <code>tests/test_importance_model.py</code>: feature extraction, sigmoid bounds, that <code>fit</code> actually separates positives from negatives, JSON round-trips, and that a missing artifact falls back cleanly.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 14 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">13 · The second model</div>
+      <h2>Fragility: which selectors will break <em>next month</em>?</h2>
+      <p class="lede">Validation catches selectors that are wrong <strong>today</strong>. This catches the ones that are right today and brittle tomorrow. It is a <strong>linear weighted scorer</strong> — the same shape as logistic regression, but with weights set by hand from the well-known locator hierarchy rather than fit by gradient descent. The weights are stored as <em>data</em>, so the benchmark harness can re-fit them from real break data later.</p>
+      <div class="split">
+        <div class="figure">
+          <figcaption><strong>FEATURE_WEIGHTS</strong> — positive adds risk, negative removes it. Bias starts at 0.35, because a featureless selector is medium risk, not zero risk.</figcaption>
+          <div class="barrow"><span>absolute_xpath</span><span class="track"><i class="fill" style="left:50%;width:47.5%;background:var(--fail)"></i></span><span class="v">+0.95</span></div>
+          <div class="barrow"><span>nth_child</span><span class="track"><i class="fill" style="left:50%;width:35%;background:var(--fail)"></i></span><span class="v">+0.70</span></div>
+          <div class="barrow"><span>hashed_class</span><span class="track"><i class="fill" style="left:50%;width:32.5%;background:var(--fail)"></i></span><span class="v">+0.65</span></div>
+          <div class="barrow"><span>bare_tag</span><span class="track"><i class="fill" style="left:50%;width:27.5%;background:var(--fail)"></i></span><span class="v">+0.55</span></div>
+          <div class="barrow"><span>deep_chain</span><span class="track"><i class="fill" style="left:50%;width:22.5%;background:var(--fail)"></i></span><span class="v">+0.45</span></div>
+          <div class="barrow"><span>index_access</span><span class="track"><i class="fill" style="left:50%;width:20%;background:var(--fail)"></i></span><span class="v">+0.40</span></div>
+          <div class="barrow"><span>long_class_chain</span><span class="track"><i class="fill" style="left:50%;width:15%;background:var(--fail)"></i></span><span class="v">+0.30</span></div>
+          <div class="barrow"><span>text_match</span><span class="track"><i class="fill" style="left:50%;width:12.5%;background:var(--warn)"></i></span><span class="v">+0.25</span></div>
+          <div class="barrow"><span>stable_id</span><span class="track"><i class="fill" style="left:32.5%;width:17.5%;background:var(--pass)"></i></span><span class="v">−0.35</span></div>
+          <div class="barrow"><span>aria_label</span><span class="track"><i class="fill" style="left:27.5%;width:22.5%;background:var(--pass)"></i></span><span class="v">−0.45</span></div>
+          <div class="barrow"><span>role</span><span class="track"><i class="fill" style="left:22.5%;width:27.5%;background:var(--pass)"></i></span><span class="v">−0.55</span></div>
+          <div class="barrow"><span>test_id</span><span class="track"><i class="fill" style="left:7.5%;width:42.5%;background:var(--pass)"></i></span><span class="v">−0.85</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:1rem">
+          <p class="plain">A good handle is one that <b>won't move</b>. "The button labelled Log in" survives a redesign. "The third box inside the second box" does not.</p>
+          <p>Every selector gets a risk score 0.0 → 1.0, a grade, and a <em>reason</em> attached. The suite gets one letter from the mean.</p>
+          <div class="pills">
+            <span class="pill pass">A &lt; 0.25</span><span class="pill pass">B &lt; 0.40</span>
+            <span class="pill warn">C &lt; 0.55</span><span class="pill fail">D &lt; 0.70</span><span class="pill fail">F ≥ 0.70</span>
+          </div>
+          <div class="cols c2">
+            <div class="card"><span class="tag">Why not an LLM</span><h3>Shape, not meaning</h3><p>Brittleness is a small, stable function of a selector's <em>shape</em>. A linear scorer does that cheaply, deterministically, with a reason per score — and zero token cost.</p></div>
+            <div class="card"><span class="tag">Honest naming</span><h3>Risk, not probability</h3><p>It is called a risk estimate because that is what it is. It is never dressed up as a measured probability.</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 15 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">14 · Two models, side by side</div>
+      <h2>One is learned. One is knowledge, written down.</h2>
+      <div class="scroller"><table>
+        <thead><tr><th></th><th>importance_model.py</th><th>fragility.py</th></tr></thead>
+        <tbody>
+          <tr><td>Question</td><td>Is this file worth testing?</td><td>Will this selector break later?</td></tr>
+          <tr><td>Family</td><td>Logistic regression (classifier)</td><td>Linear weighted scorer</td></tr>
+          <tr><td>Inputs</td><td>17 features from path + body</td><td>12 features from selector shape</td></tr>
+          <tr><td>Output</td><td>σ(z) ∈ (0,1) → score 1–10</td><td>risk ∈ [0,1] → grade A–F</td></tr>
+          <tr><td>Weights from</td><td class="neg">Gradient descent on data</td><td class="pos">Hand-set from locator guidance</td></tr>
+          <tr><td>Labels</td><td>Weak supervision → real outcomes</td><td>None (yet — re-fittable)</td></tr>
+          <tr><td>Regularization</td><td>L2, λ = 1e-3</td><td>—</td></tr>
+          <tr><td>Runs</td><td>Before the LLM (file selection)</td><td>After the LLM (suite grading)</td></tr>
+          <tr><td>If absent</td><td>Falls back to heuristic ladder</td><td>Always present — it is code</td></tr>
+        </tbody>
+      </table></div>
+      <p class="plain">Both are the same idea in the end: <b>multiply each clue by how much it matters, add it up, decide.</b> The difference is only who chose the numbers — a person, or the data.</p>
+    </div>
+  </section>
+
+  <!-- 16 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">15 · The agents</div>
+      <h2>Two AI agents, each with exactly one job.</h2>
+      <div class="split">
+        <div class="card" style="border-left:3px solid var(--accent)">
+          <span class="tag">Agent 1 · agents/filter_agent.py</span>
+          <h3>The reader</h3>
+          <p>Runs the extractor, then asks the LLM — in strict JSON mode — for a structured reading of the project: a summary, the key pages, the routes, and the testing challenges it can foresee.</p>
+          <p class="small">Output is a <code>FilterResult</code>, serialized into SQLite so the job survives a server restart.</p>
+        </div>
+        <div class="card" style="border-left:3px solid var(--accent)">
+          <span class="tag">Agent 2 · agents/writer_agent.py</span>
+          <h3>The writer</h3>
+          <p>Builds a grounding list of <strong>real selectors</strong> pulled from the actual source, injects it into the prompt, plans the file list, then generates <strong>each file in its own call</strong> so a large suite can't be truncated mid-way. Finally it validates every selector it wrote and flags anything it can't find.</p>
+          <p class="small">The model writes page objects and specs — nothing else. Everything that makes them <em>runnable</em> comes from the scaffold; everything that makes them <em>trustworthy</em> comes from grounding.</p>
+        </div>
+      </div>
+      <p class="plain">One agent <b>reads the school and draws the map</b>. The other <b>walks the map and writes the checklist</b>. Splitting them means neither has to be brilliant at both.</p>
+    </div>
+  </section>
+
+  <!-- 17 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">16 · The trust pipeline</div>
+      <h2>Grounding: prove every selector points at something real.</h2>
+      <p class="lede">This is the failure the product exists to prevent — a suite that looks perfect and dies on the first run because the model invented a button. Four components attack it, and <strong>none of them execute the generated code</strong>. They reason about it statically.</p>
+      <div class="cols c2">
+        <div class="card"><span class="tag">Evidence A</span><h3>Source grounding</h3><p>Extracts every anchor that genuinely exists in your repo — ids, test-ids, classes, form names, ARIA roles, accessible labels, link and button text — each carrying <strong>provenance</strong>: the file and line it was declared on. The UI cites <code>LoginForm.tsx:42</code> instead of asking you to trust it.</p></div>
+        <div class="card"><span class="tag">Evidence B</span><h3>DOM grounding</h3><p>If you give a live URL you own, the deployed page's real HTML is fetched through the security scanner's SSRF-guarded, non-executing path. Stronger evidence, because it is literally what the browser will see.</p></div>
+        <div class="card"><span class="tag">Repair</span><h3>The self-heal loop</h3><p>Selectors that missed are fed <em>back</em> to the model together with the real anchors that do exist — so the fix is a grounded substitution, not another guess.</p></div>
+        <div class="card"><span class="tag">Shape</span><h3>Static validation</h3><p>Python compiled with <code>py_compile</code>, JavaScript checked with <code>node --check</code>, TypeScript structurally verified for balanced brackets and non-truncation.</p></div>
+      </div>
+      <p class="plain">The rule of the whole project: <b>never claim more than you measured.</b> Testra says "this selector provably resolves" — it never says "these tests will pass", because it never ran them.</p>
+    </div>
+  </section>
+
+  <!-- 18 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">17 · Measurement</div>
+      <h2>A demo convinces one person. A benchmark convinces a room.</h2>
+      <div class="split">
+        <div style="display:flex;flex-direction:column;gap:1rem">
+          <p><code>services/benchmark.py</code> runs the grounding and fragility analysis across a whole set of <em>(repo, generated suite)</em> cases and prints a markdown leaderboard.</p>
+          <ul class="plainlist">
+            <li><strong>Verified-selector rate</strong> — of every selector the model wrote, the fraction that provably resolves. Pooled and per-repo.</li>
+            <li><strong>Fragility grade distribution</strong> — so a suite can't score well by grounding everything to <code>nth-child</code>.</li>
+            <li><strong>Honest denominators</strong> — a case that grounded nothing counts as <em>no measurable rate</em>, not a free 100%.</li>
+          </ul>
+          <pre>$ python -m services.benchmark cases.json</pre>
+        </div>
+        <div class="cols c2">
+          <div class="card stat"><span class="n">622</span><span class="l">automated backend tests across 26 suites</span></div>
+          <div class="card stat"><span class="n">3</span><span class="l">Python versions in CI — 3.11, 3.12, 3.13</span></div>
+          <div class="card stat"><span class="n">45</span><span class="l">API endpoints, every one typed with Pydantic</span></div>
+          <div class="card stat"><span class="n">0</span><span class="l">ML dependencies — no numpy, no sklearn</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 19 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">18 · Never go down</div>
+      <h2>The LLM router: three providers, many keys, one queue.</h2>
+      <div class="split">
+        <div style="display:flex;flex-direction:column;gap:1rem">
+          <p class="plain">Like having three friends who can help with homework. Ask the first. If they're busy, ask the second. If everyone's busy, wait a minute and try the first again — and always <b>say honestly which friend answered</b>.</p>
+          <p>948 lines handling provider priority, round-robin key rotation, per-key cooldown on a 429, forced JSON output per provider, and <code>ContextVar</code>-scoped status so concurrent streams never cross-talk.</p>
+          <div class="cols c2">
+            <div class="card"><span class="tag">Free tier</span><h3>Capacity first</h3><p>Gemini → Groq → Claude. Gemini's huge context swallows big repos; Groq is fastest.</p></div>
+            <div class="card"><span class="tag">Pro tier</span><h3>Quality first</h3><p>Claude → Gemini → Groq. Paying for Opus and then serving from Flash because Flash was listed first would make the upgrade a lie.</p></div>
+          </div>
+        </div>
+        <div class="figure">
+          <figcaption><strong>Model table</strong> — and the integrity check around it</figcaption>
+          <div class="scroller"><table>
+            <thead><tr><th>Provider</th><th>Free</th><th>Pro</th><th>Cooldown</th></tr></thead>
+            <tbody>
+              <tr><td>Gemini</td><td>2.0-flash</td><td>2.0-flash</td><td class="num">60s</td></tr>
+              <tr><td>Groq</td><td>llama-3.3-70b</td><td>llama-3.3-70b</td><td class="num">30s</td></tr>
+              <tr><td>Claude</td><td>haiku-4-5</td><td class="neg">opus-4-8</td><td class="num">120s</td></tr>
+            </tbody>
+          </table></div>
+          <figcaption><code>upgrade_would_change_model()</code> is <em>derived</em> from this table, not hardcoded. If Pro ever stops buying a genuinely stronger model, the upsell in the UI turns itself off — the claim can't outlive the fact.</figcaption>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 20 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">19 · Runnable, not just written</div>
+      <h2>The scaffold: everything the LLM shouldn't be asked to guess.</h2>
+      <div class="split">
+        <div style="display:flex;flex-direction:column;gap:1rem">
+          <p>Dependency manifests, framework config, GitHub Actions and GitLab CI, and the README are <strong>templated</strong>, not generated — there is exactly one correct answer per framework, and asking a model for it only introduces variance.</p>
+          <p class="small">This module exists because the alternative failed silently for every single user: the CI template ran <code>npm ci</code> while nothing ever emitted a <code>package.json</code>. The pipeline could not pass on <em>any</em> repo, and neither half knew about the other. The install step and the manifest it installs are now written by the same module.</p>
+        </div>
+        <div class="cols c2">
+          <div class="card"><span class="tag">Invariant 1</span><h3>The suite owns <code>e2e/</code></h3><p>Never the repo root. A React app already has a <code>package.json</code> there; writing ours over it would destroy the manifest of the app under test.</p></div>
+          <div class="card"><span class="tag">Invariant 2</span><h3><code>BASE_URL</code> wins, then a local webServer</h3><p>One variable points the same suite at staging or prod. Unset, the config boots the app — so a fresh clone and CI both work with no arguments.</p></div>
+        </div>
+      </div>
+      <p class="plain">The AI writes the <b>clever part</b>. The templates write the <b>boring part</b>. That's why the pipeline is green the first time you run it.</p>
+    </div>
+  </section>
+
+  <!-- 21 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">20 · Beyond tests</div>
+      <h2>Security scanning, publishing, accounts, admin.</h2>
+      <div class="cols c2">
+        <div class="card"><span class="tag">services/security_scanner.py · 1,187 lines</span><h3>Passive production scan</h3><p>Point it at a URL you own and it audits <em>configuration</em>: HTTPS + HSTS, CSP, X-Frame-Options, cookie flags, CORS misconfiguration, version disclosure, mixed content, and a short curated list of files that should never be public (<code>.env</code>, <code>.git/config</code>). It sends no attack payloads and brute-forces nothing.</p></div>
+        <div class="card"><span class="tag">services/zap_scanner.py</span><h3>Active scanning, opt-in</h3><p><code>docker compose --profile zap up</code> starts an OWASP ZAP daemon. Without it, scans degrade to the passive audit <em>and say so</em> — <code>/api/scan/capabilities</code> reports whether it's ready and why not.</p></div>
+        <div class="card"><span class="tag">SSRF guard</span><h3>Refuses to be a weapon</h3><p>localhost, private ranges and link-local addresses are blocked — <strong>including across redirect hops</strong>. A scope gate blocks third-party sites the user plainly does not own.</p></div>
+        <div class="card"><span class="tag">services/git_publisher.py</span><h3>Publish to GitHub</h3><p>Sign in with GitHub — no Personal Access Token to paste — and Testra creates the repo and pushes the suite. Tokens are encrypted at rest.</p></div>
+        <div class="card"><span class="tag">auth · billing · quota</span><h3>Real accounts</h3><p>Email + password with verification and OTP, Google OAuth, GitHub OAuth, session revocation, monthly generation quota, Free and Pro plans with a Stripe webhook.</p></div>
+        <div class="card"><span class="tag">services/admin.py</span><h3>The one privileged role</h3><p>Admins live in an <code>ADMIN_EMAILS</code> config allowlist, <strong>not</strong> a <code>users.role</code> column — so there is no row to write to escalate and no promote endpoint to abuse. Non-admins get <strong>404, not 403</strong>: a 403 would confirm the console exists.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 22 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">21 · Honesty</div>
+      <h2>What Testra does <em>not</em> claim.</h2>
+      <p class="lede">The project ships a model card. "Validated" means the file passed a <strong>static syntax check</strong> — nothing more. It does not mean the tests were executed, that the selectors resolve against your running app, or that the assertions pass.</p>
+      <div class="cols c2">
+        <div class="card" style="border-left:3px solid var(--warn)"><span class="tag">Known limit</span><h3>Regex-based extraction</h3><p>Anchor extraction can miss dynamic classes (<code>className={styles.x}</code>) and CSS-in-JS, so both false positives and false negatives are possible. AST-based extraction is on the roadmap.</p></div>
+        <div class="card" style="border-left:3px solid var(--warn)"><span class="tag">Known limit</span><h3>Very large repos</h3><p>Low-priority files are summarized rather than sent verbatim, which can reduce selector accuracy. Retrieval-based context selection is on the roadmap.</p></div>
+        <div class="card" style="border-left:3px solid var(--warn)"><span class="tag">Known limit</span><h3>Output ceilings</h3><p>Extremely large suites can hit provider output-token limits. Narrow the scope and regenerate.</p></div>
+        <div class="card" style="border-left:3px solid var(--warn)"><span class="tag">Known limit</span><h3>Run-to-run variance</h3><p>Quality depends on whichever free provider was available. The provenance report always says which model actually answered.</p></div>
+      </div>
+      <p class="plain">Saying <b>"I checked this much, and no further"</b> is not a weakness in the project. It is the feature that makes the rest of it believable.</p>
+    </div>
+  </section>
+
+  <!-- 23 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">22 · In one breath</div>
+      <h2>Testra turns a repository into a trustworthy test suite — and shows its working at every step.</h2>
+      <div class="cols c4">
+        <div class="card stat"><span class="n">2</span><span class="l">AI agents — one reads, one writes</span></div>
+        <div class="card stat"><span class="n">2</span><span class="l">ML models — one learned, one encoded</span></div>
+        <div class="card stat"><span class="n">17</span><span class="l">features in the logistic regression</span></div>
+        <div class="card stat"><span class="n">3</span><span class="l">LLM providers, rotated automatically</span></div>
+      </div>
+      <div class="cols c2">
+        <div class="card"><span class="tag">The engineering thesis</span><h3>Prefer the small explainable thing</h3><p>A 226-line logistic regression with named weights beats a dependency-heavy black box when the model is small, the data is thin, and someone will one day need to ask <em>why did it score that file a 9?</em></p></div>
+        <div class="card"><span class="tag">The product thesis</span><h3>Trust is the feature</h3><p>Anyone can generate test-shaped text. Testra generates test-shaped text and then hands you the evidence — provenance, verified rate, durability grade — for exactly how much of it you should believe.</p></div>
+      </div>
+      <p class="plain">A robot that checks your website, written by a robot that read your website — and a receipt showing exactly what was checked, and what wasn't.</p>
+      <div class="kv">
+        <span>Slides <b>23</b></span><span>Use <b>← →</b> or scroll</span><span>Companion <b>Project Report</b></span>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<div class="rail">
+  <span class="idx" id="idx">01 / 23</span>
+  <span class="bar"><i id="barfill"></i></span>
+  <span class="hint">← → to move · Home to restart</span>
+</div>
+
+<script>
+  (function () {
+    var deck = document.getElementById('deck');
+    var slides = Array.prototype.slice.call(deck.querySelectorAll('.slide'));
+    var idx = document.getElementById('idx');
+    var fill = document.getElementById('barfill');
+    var current = 0;
+
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+    function render() {
+      idx.textContent = pad(current + 1) + ' / ' + pad(slides.length);
+      fill.style.width = ((current + 1) / slides.length * 100) + '%';
+    }
+
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) {
+          var i = slides.indexOf(e.target);
+          if (i > -1) { current = i; render(); }
+        }
+      });
+    }, { root: deck, threshold: 0.55 });
+    slides.forEach(function (s) { io.observe(s); });
+
+    function go(i) {
+      i = Math.max(0, Math.min(slides.length - 1, i));
+      slides[i].scrollIntoView({ block: 'start' });
+    }
+
+    document.addEventListener('keydown', function (e) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); go(current + 1); }
+      else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(current - 1); }
+      else if (e.key === 'Home') { e.preventDefault(); go(0); }
+      else if (e.key === 'End') { e.preventDefault(); go(slides.length - 1); }
+    });
+
+    render();
+  })();
+</script>
+
+</body>
+</html>

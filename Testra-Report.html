@@ -1,0 +1,851 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Testra — Project Report</title>
+</head>
+<body>
+
+<style>
+  :root {
+    --ground:   #EFF2F6;
+    --surface:  #FFFFFF;
+    --surface-2:#E5EAF1;
+    --ink:      #131822;
+    --ink-soft: #3C4757;
+    --muted:    #616D7E;
+    --line:     #CFD7E2;
+    --accent:   #2436C8;
+    --copper:   #9E4E19;
+    --pass:     #10704F;
+    --warn:     #8C6100;
+    --fail:     #A62F22;
+    --mono: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:   #0D1117; --surface:  #151C26; --surface-2:#1E2733;
+      --ink:      #E8ECF2; --ink-soft: #C2CBD8; --muted:    #8B98A9;
+      --line:     #2C3746; --accent:   #8B9BFF; --copper:   #E0955C;
+      --pass:     #4FC49A; --warn:     #E0B44A; --fail:     #EE8172;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:   #0D1117; --surface:  #151C26; --surface-2:#1E2733;
+    --ink:      #E8ECF2; --ink-soft: #C2CBD8; --muted:    #8B98A9;
+    --line:     #2C3746; --accent:   #8B9BFF; --copper:   #E0955C;
+    --pass:     #4FC49A; --warn:     #E0B44A; --fail:     #EE8172;
+  }
+  :root[data-theme="light"] {
+    --ground:   #EFF2F6; --surface:  #FFFFFF; --surface-2:#E5EAF1;
+    --ink:      #131822; --ink-soft: #3C4757; --muted:    #616D7E;
+    --line:     #CFD7E2; --accent:   #2436C8; --copper:   #9E4E19;
+    --pass:     #10704F; --warn:     #8C6100; --fail:     #A62F22;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink-soft);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: clamp(1.5rem, 4vw, 3.5rem) clamp(1.1rem, 4vw, 2.5rem) 6rem;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: clamp(1.5rem, 3vw, 3rem);
+  }
+  @media (min-width: 1000px) {
+    .wrap { grid-template-columns: 215px minmax(0, 1fr); align-items: start; }
+  }
+
+  /* ── table of contents ──────────────────────────────────── */
+  nav.toc {
+    position: static;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    border-radius: 5px;
+    padding: 1rem .9rem;
+  }
+  @media (min-width: 1000px) {
+    nav.toc { position: sticky; top: clamp(1.5rem, 4vw, 3.5rem); max-height: calc(100dvh - 6rem); overflow-y: auto; }
+  }
+  nav.toc h2 {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 .7rem;
+    font-weight: 600;
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .1rem; counter-reset: toc; }
+  nav.toc a {
+    display: block;
+    font-family: var(--mono);
+    font-size: .76rem;
+    line-height: 1.4;
+    padding: .3rem .35rem;
+    border-radius: 3px;
+    color: var(--muted);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+  }
+  nav.toc a::before { counter-increment: toc; content: counter(toc, decimal-leading-zero) "  "; color: var(--line); }
+  nav.toc a:hover { color: var(--ink); background: var(--surface-2); }
+  nav.toc a.on { color: var(--accent); border-left-color: var(--accent); background: var(--surface-2); }
+
+  /* ── document ───────────────────────────────────────────── */
+  main { min-width: 0; display: flex; flex-direction: column; gap: clamp(2rem, 4vw, 3.2rem); }
+
+  header.doc { display: flex; flex-direction: column; gap: 1rem; padding-bottom: 1.6rem; border-bottom: 2px solid var(--ink); }
+  header.doc .eyebrow {
+    font-family: var(--mono); font-size: .7rem; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--accent);
+  }
+  h1 {
+    font-family: var(--mono); font-weight: 600;
+    font-size: clamp(2rem, 5.5vw, 3.4rem); line-height: 1.03;
+    letter-spacing: -.035em; margin: 0; color: var(--ink); text-wrap: balance;
+  }
+  .subtitle { font-family: var(--serif); font-size: clamp(1.05rem, 2.2vw, 1.35rem); line-height: 1.5; color: var(--ink-soft); max-width: 58ch; margin: 0; }
+  .meta { display: flex; flex-wrap: wrap; gap: .3rem 1.6rem; font-family: var(--mono); font-size: .75rem; color: var(--muted); }
+  .meta b { color: var(--ink); font-weight: 600; }
+
+  section { display: flex; flex-direction: column; gap: 1rem; scroll-margin-top: 1.5rem; }
+  h2 {
+    font-family: var(--mono); font-weight: 600; color: var(--ink);
+    font-size: clamp(1.25rem, 2.8vw, 1.75rem); line-height: 1.18;
+    letter-spacing: -.028em; margin: 0; text-wrap: balance;
+    padding-top: .9rem; border-top: 1px solid var(--line);
+    display: flex; gap: .8rem; align-items: baseline;
+  }
+  h2 .num { font-size: .72rem; letter-spacing: .1em; color: var(--accent); flex: none; padding-top: .2rem; }
+  h3 {
+    font-family: var(--mono); font-weight: 600; color: var(--ink);
+    font-size: 1rem; letter-spacing: -.01em; margin: .5rem 0 0;
+  }
+  h4 { font-family: var(--mono); font-weight: 600; color: var(--ink); font-size: .88rem; margin: 0; }
+  p { margin: 0; max-width: 74ch; }
+  strong { color: var(--ink); font-weight: 650; }
+  code {
+    font-family: var(--mono); font-size: .86em;
+    background: var(--surface-2); padding: .1em .38em; border-radius: 3px; color: var(--ink);
+  }
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .plain {
+    font-family: var(--serif); font-style: italic;
+    font-size: 1.08rem; line-height: 1.55; color: var(--ink);
+    border-left: 3px solid var(--copper); padding: .15rem 0 .15rem 1.05rem;
+    max-width: 62ch;
+  }
+  .plain b { font-style: normal; font-weight: 600; }
+  .plain .lbl {
+    display: block; font-family: var(--mono); font-style: normal;
+    font-size: .64rem; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--copper); margin-bottom: .3rem;
+  }
+
+  pre {
+    margin: 0; background: var(--surface); border: 1px solid var(--line);
+    border-left: 3px solid var(--accent); border-radius: 4px;
+    padding: .85rem 1rem; overflow-x: auto;
+    font-family: var(--mono); font-size: .8rem; line-height: 1.65; color: var(--ink);
+  }
+  pre .cm { color: var(--muted); }
+  pre .kw { color: var(--accent); font-weight: 600; }
+  pre .st { color: var(--copper); }
+
+  .scroller { overflow-x: auto; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: .8rem; }
+  th, td { text-align: left; padding: .45rem .75rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  th { font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pos { color: var(--fail); }
+  .neg { color: var(--pass); }
+
+  ul, ol.body { margin: 0; padding-left: 1.15rem; max-width: 72ch; }
+  li { margin-bottom: .38rem; }
+  li::marker { color: var(--accent); }
+
+  .grid { display: grid; gap: .9rem; }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .g4 { grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 5px; padding: .9rem 1rem;
+    display: flex; flex-direction: column; gap: .45rem;
+  }
+  .card p { font-size: .9rem; }
+  .card .tag { font-family: var(--mono); font-size: .65rem; letter-spacing: .11em; text-transform: uppercase; color: var(--muted); }
+  .card.good { border-left: 3px solid var(--pass); }
+  .card.risk { border-left: 3px solid var(--warn); }
+  .card.bad  { border-left: 3px solid var(--fail); }
+
+  .stat { display: flex; flex-direction: column; gap: .2rem; }
+  .stat .n { font-family: var(--mono); font-size: 1.9rem; font-weight: 600; letter-spacing: -.04em; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: .78rem; color: var(--muted); line-height: 1.35; }
+
+  .note {
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 3px solid var(--copper); border-radius: 4px;
+    padding: .8rem 1rem; font-size: .9rem; max-width: 74ch;
+  }
+  .note .tag { font-family: var(--mono); font-size: .65rem; letter-spacing: .11em; text-transform: uppercase; color: var(--copper); display: block; margin-bottom: .3rem; }
+
+  .pills { display: flex; flex-wrap: wrap; gap: .35rem; }
+  .pill {
+    font-family: var(--mono); font-size: .7rem; letter-spacing: .04em;
+    padding: .18rem .5rem; border-radius: 3px; border: 1px solid var(--line); color: var(--muted);
+  }
+  .pill.pass { color: var(--pass); border-color: var(--pass); }
+  .pill.warn { color: var(--warn); border-color: var(--warn); }
+  .pill.fail { color: var(--fail); border-color: var(--fail); }
+
+  footer.doc { border-top: 1px solid var(--line); padding-top: 1.2rem; font-family: var(--mono); font-size: .74rem; color: var(--muted); }
+</style>
+
+<div class="wrap">
+
+  <nav class="toc" aria-label="Contents">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#s1">Abstract</a></li>
+      <li><a href="#s2">The problem</a></li>
+      <li><a href="#s3">Objectives</a></li>
+      <li><a href="#s4">System architecture</a></li>
+      <li><a href="#s5">Technology stack</a></li>
+      <li><a href="#s6">Stage 1 — the extractor</a></li>
+      <li><a href="#s7">Logistic regression</a></li>
+      <li><a href="#s8">The fragility model</a></li>
+      <li><a href="#s9">Models compared</a></li>
+      <li><a href="#s10">The two agents</a></li>
+      <li><a href="#s11">Grounding &amp; self-heal</a></li>
+      <li><a href="#s12">The scaffold</a></li>
+      <li><a href="#s13">The LLM router</a></li>
+      <li><a href="#s14">Persistence &amp; progress</a></li>
+      <li><a href="#s15">Security scanning</a></li>
+      <li><a href="#s16">Accounts, billing, admin</a></li>
+      <li><a href="#s17">Frontend</a></li>
+      <li><a href="#s18">Testing &amp; CI</a></li>
+      <li><a href="#s19">Deployment</a></li>
+      <li><a href="#s20">Benchmarking</a></li>
+      <li><a href="#s21">Limitations</a></li>
+      <li><a href="#s22">Roadmap</a></li>
+      <li><a href="#s23">Conclusion</a></li>
+      <li><a href="#s24">Glossary</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <header class="doc">
+      <div class="eyebrow">Project Report</div>
+      <h1>Testra</h1>
+      <p class="subtitle">An AI system that reads a web codebase and writes a grounded, runnable end-to-end test suite — with two LLM agents, a from-scratch logistic-regression classifier, and a selector-durability model.</p>
+      <div class="meta">
+        <span>Author <b>krishnapriya</b></span>
+        <span>Date <b>23 July 2026</b></span>
+        <span>Backend <b>~20,000 LOC Python</b></span>
+        <span>Tests <b>622</b></span>
+        <span>Licence <b>MIT</b></span>
+      </div>
+    </header>
+
+    <div class="note">
+      <span class="tag">How to read this report</span>
+      Every section opens with the technical account, and where a concept is genuinely hard, an italic <em>plain-language</em> paragraph restates it with no jargon at all. Those paragraphs are marked <strong>In plain words</strong> and are written so a curious child could follow them. Nothing in them is dumbed down to the point of being wrong.
+    </div>
+
+    <!-- 1 -->
+    <section id="s1">
+      <h2><span class="num">01</span>Abstract</h2>
+      <p>Testra is a full-stack web application that converts a source repository into a complete, ready-to-run end-to-end (E2E) test suite. A user supplies a GitHub URL or a ZIP archive; Testra filters the repository down to browser-facing files, has one LLM agent build a structured reading of the project, has a second LLM agent write Page Object Model classes and specification files grounded in selectors extracted from the real source, verifies every selector it produced, repairs the ones that failed, grades the suite for long-term durability, and delivers the result as a downloadable archive or a freshly published GitHub repository with working CI.</p>
+      <p>Two machine-learning components sit inside that pipeline. The first is a <strong>logistic-regression classifier implemented from scratch</strong> — no numpy, no scikit-learn — that learns which files in a given codebase are actually worth testing. The second is a <strong>linear weighted scorer</strong> that predicts how likely each generated selector is to break as the application evolves. Both are deliberately small, fully inspectable, and serialized to human-readable JSON.</p>
+      <p>The organising principle of the project is <strong>evidential honesty</strong>: the system never asserts a property it did not measure. It reports that a selector provably resolves to a real element; it never claims the test will pass, because it never executes the suite.</p>
+      <div class="grid g4">
+        <div class="card stat"><span class="n">2</span><span class="l">LLM agents</span></div>
+        <div class="card stat"><span class="n">2</span><span class="l">ML models</span></div>
+        <div class="card stat"><span class="n">45</span><span class="l">API endpoints</span></div>
+        <div class="card stat"><span class="n">622</span><span class="l">automated tests</span></div>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section id="s2">
+      <h2><span class="num">02</span>The problem</h2>
+      <p>End-to-end testing is the practice of driving a real browser through a real application the way a real person would: open the page, click the login button, type a password, confirm the dashboard appears. It is the only form of testing that verifies the product as the user experiences it, and it is the first thing teams abandon, for four reasons.</p>
+      <div class="grid g2">
+        <div class="card bad"><span class="tag">Cost</span><h4>It is slow to write</h4><p>A mid-sized application needs days of specialist work, repeated every time the interface changes.</p></div>
+        <div class="card bad"><span class="tag">Skill</span><h4>It is easy to write badly</h4><p>Good suites need Page Object Models, stable locators, environment configuration and CI wiring — not just a sequence of clicks.</p></div>
+        <div class="card bad"><span class="tag">Hallucination</span><h4>Naïve AI makes it worse</h4><p>Ask a general chatbot for a test suite and it will confidently produce <code>#submit-button</code> for a button that does not exist. The suite looks complete and fails on the first run.</p></div>
+        <div class="card bad"><span class="tag">Decay</span><h4>Locators rot</h4><p><code>div &gt; div:nth-child(3) &gt; button</code> is correct today and broken the moment a developer adds a wrapper element. The suite starts failing for reasons unrelated to the product.</p></div>
+      </div>
+      <p class="plain"><span class="lbl">In plain words</span>Imagine a huge toy shop. Every morning, someone has to check that every door opens, every button beeps and every price tag is right. Doing it by hand takes hours, so people stop doing it — and one tired morning, the broken door goes unnoticed. Testra builds the little robot that does the checking, and then shows you exactly which doors it really checked.</p>
+    </section>
+
+    <!-- 3 -->
+    <section id="s3">
+      <h2><span class="num">03</span>Objectives</h2>
+      <ol class="body">
+        <li><strong>Zero-friction input.</strong> A public GitHub URL, a private repository via GitHub sign-in, or a dragged ZIP — nothing to install, no configuration file to write.</li>
+        <li><strong>Multi-framework, multi-language output.</strong> Playwright, Cypress and Selenium across TypeScript, JavaScript, Python and Java.</li>
+        <li><strong>Grounded generation.</strong> Every selector the model emits must be traceable to a real anchor in the source, or explicitly flagged as unverified.</li>
+        <li><strong>Runnable on arrival.</strong> The delivered suite must include its dependency manifest, framework configuration and CI pipeline, and must pass its own install step without editing.</li>
+        <li><strong>Durability awareness.</strong> The suite must be graded on how well it will survive future UI change, not only on whether it is correct today.</li>
+        <li><strong>Learned file selection.</strong> File importance must adapt to the codebase in front of it, rather than relying permanently on frozen path heuristics.</li>
+        <li><strong>Operational resilience.</strong> No single LLM provider outage or rate limit may take the product down.</li>
+        <li><strong>Measurable, honest quality.</strong> Report the metric the system can actually prove, with correct denominators.</li>
+      </ol>
+    </section>
+
+    <!-- 4 -->
+    <section id="s4">
+      <h2><span class="num">04</span>System architecture</h2>
+      <p>Testra is a two-tier application: a React single-page frontend and a single FastAPI backend service, with SQLite for durable state. There is no message broker and no worker fleet; long operations stream their own progress over the request that started them.</p>
+      <pre><span class="cm">┌─────────────────┐   POST /api/analyze     ┌──────────────────────────────┐</span>
+<span class="cm">│</span>  React + Vite   <span class="cm">│</span> ──────────────────────▶ <span class="cm">│</span>  FastAPI  <span class="st">main.py</span>            <span class="cm">│</span>
+<span class="cm">│</span>  TypeScript     <span class="cm">│</span> ◀────────────────────── <span class="cm">│</span>  request-id · CORS · limits  <span class="cm">│</span>
+<span class="cm">└────────┬────────┘   job_id + analysis    <span class="cm">└──────────────┬───────────────┘</span>
+         <span class="cm">│</span>                                               <span class="cm">│</span>
+         <span class="cm">│</span>  GET /api/stream/{job_id}  (SSE)              ▼
+         <span class="cm">│</span>                             <span class="cm">┌──────────────────────────────┐</span>
+         <span class="cm">│</span>                             <span class="cm">│</span> <span class="kw">AGENT 1 · FilterAgent</span>        <span class="cm">│</span>
+         <span class="cm">│</span>                             <span class="cm">│</span>  FileExtractor  (local)      <span class="cm">│</span>
+         <span class="cm">│</span>                             <span class="cm">│</span>  importance_model  (ML)      <span class="cm">│</span>
+         <span class="cm">│</span>                             <span class="cm">│</span>  structured project read     <span class="cm">│</span>
+         <span class="cm">│</span>                             <span class="cm">└──────────────┬───────────────┘</span>
+         <span class="cm">│</span>  POST /api/generate/{id}                   <span class="cm">│</span>  FilterResult
+         <span class="cm">│</span>                                            ▼
+         <span class="cm">│</span>                             <span class="cm">┌──────────────────────────────┐</span>
+         <span class="cm">└────────────────────────────▶</span><span class="cm">│</span> <span class="kw">AGENT 2 · WriterAgent</span>        <span class="cm">│</span>
+                                       <span class="cm">│</span>  ground → write → validate   <span class="cm">│</span>
+                                       <span class="cm">│</span>  → self-heal → grade         <span class="cm">│</span>
+                                       <span class="cm">└──────┬──────────────────┬────┘</span>
+                    <span class="cm">┌─────────────────────┘</span>                  <span class="cm">│</span>
+                    ▼                                        ▼
+        <span class="cm">┌───────────────────────┐</span>                <span class="cm">┌────────────────────────┐</span>
+        <span class="cm">│</span> <span class="kw">LLMRouter</span>             <span class="cm">│</span>                <span class="cm">│</span> <span class="kw">JobStore</span> (SQLite)     <span class="cm">│</span>
+        <span class="cm">│</span> Gemini → Groq → Claude<span class="cm">│</span>                <span class="cm">│</span> durable · TTL-pruned   <span class="cm">│</span>
+        <span class="cm">│</span> rotation · 429 cooldown<span class="cm">│</span>               <span class="cm">│</span> survives restarts      <span class="cm">│</span>
+        <span class="cm">└───────────────────────┘</span>                <span class="cm">└────────────────────────┘</span></pre>
+      <h3>Request lifecycle</h3>
+      <ol class="body">
+        <li><strong>Analyze</strong> — fetch the repository (GitHub API or ZIP) → run <code>FileExtractor</code> → run Agent 1 → persist the job in SQLite → return a <code>job_id</code> plus the project analysis. Each phase streams a progress step as it happens.</li>
+        <li><strong>Stream</strong> (optional) — Server-Sent Events push Agent 2's output token by token; the raw output is cached on the job so the generate call can reuse it, avoiding a second paid LLM call.</li>
+        <li><strong>Generate</strong> — load the job, run Agent 2 (or reuse the streamed output), ground and validate every selector, self-heal failures, grade fragility, and return the complete file set.</li>
+      </ol>
+    </section>
+
+    <!-- 5 -->
+    <section id="s5">
+      <h2><span class="num">05</span>Technology stack</h2>
+      <div class="scroller"><table>
+        <thead><tr><th>Layer</th><th>Choice</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Frontend</td><td>React 18 · TypeScript · Vite</td><td>Fast dev server, typed API contracts shared with Pydantic schemas</td></tr>
+          <tr><td>Styling</td><td>Tailwind CSS</td><td>Consistent spacing scale without a bespoke design system</td></tr>
+          <tr><td>Backend</td><td>FastAPI · Python 3.11–3.13</td><td>Async I/O for provider calls, automatic OpenAPI docs, Pydantic validation at the edge</td></tr>
+          <tr><td>Validation</td><td>Pydantic v2</td><td>One typed model per request and response shape; enums for framework and language</td></tr>
+          <tr><td>Persistence</td><td>SQLite (stdlib)</td><td>Durable jobs, sessions, quota and audit with zero operational surface</td></tr>
+          <tr><td>ML</td><td>Hand-written, stdlib only</td><td>17-weight model does not justify shipping a training stack to production</td></tr>
+          <tr><td>LLMs</td><td>Gemini · Groq LLaMA · Anthropic Claude</td><td>Three independent providers; free tiers cover capacity, Claude covers quality</td></tr>
+          <tr><td>Security</td><td>OWASP ZAP (opt-in daemon)</td><td>Active scanning without bundling it into the default runtime</td></tr>
+          <tr><td>Packaging</td><td>Docker · docker-compose</td><td>One command to run the whole system, profiles for optional services</td></tr>
+          <tr><td>Serving</td><td>Caddy</td><td>Automatic TLS, static frontend, reverse proxy to the API</td></tr>
+          <tr><td>CI</td><td>GitHub Actions</td><td>Backend matrix across three Python versions plus a frontend build on every push</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- 6 -->
+    <section id="s6">
+      <h2><span class="num">06</span>Stage 1 — the deterministic extractor</h2>
+      <p><code>services/file_extractor.py</code> (658 lines) performs all the work that does not need a language model, before a single token is spent. It filters a raw <code>{path: content}</code> dictionary down to browser-facing UI files, detects the technology stack, scores every survivor for importance, and fits the winners into a token budget.</p>
+      <h3>Stack detection</h3>
+      <p>React, Vue, Next, Nuxt, Angular and Svelte on the frontend; Django, Flask, FastAPI, Rails and Laravel plus their template engines on the server side. Detection drives both the prompt and the scaffold that will be generated later.</p>
+      <h3>Importance scoring — the hand-written ladder</h3>
+      <div class="scroller"><table>
+        <thead><tr><th>Score</th><th>Rule</th><th>Rationale</th></tr></thead>
+        <tbody>
+          <tr><td class="num">10</td><td>Router / entrypoint patterns</td><td>Defines every reachable route — the map of the app</td></tr>
+          <tr><td class="num">9</td><td><code>pages/ app/ views/ screens/</code></td><td>Whole screens a user lands on</td></tr>
+          <tr><td class="num">8</td><td>Layouts; auth, login, signup, form, checkout, cart</td><td>Highest-value flows in almost every product</td></tr>
+          <tr><td class="num">7</td><td><code>templates/ partials/</code></td><td>Server-rendered markup carrying real anchors</td></tr>
+          <tr><td class="num">6</td><td><code>components/ containers/ features/</code></td><td>Shared interactive pieces</td></tr>
+          <tr><td class="num">5</td><td>Config files</td><td>Useful context, not a test target</td></tr>
+          <tr><td class="num">4</td><td>Everything else retained</td><td>Baseline</td></tr>
+        </tbody>
+      </table></div>
+      <h3>Token budgeting</h3>
+      <p>The extractor targets a <strong>600,000-token budget</strong>. Files are added in descending importance until the budget is reached. Crucially, files that do not fit are <strong>summarized rather than dropped</strong>: their ids, classes and routes are extracted into a compact stand-in, so the model still receives the anchors it needs to write real selectors even for files it never sees in full. A warning surfaces in the UI when this happens.</p>
+      <p class="plain"><span class="lbl">In plain words</span>A big project is like a whole school. Testra only cares about the rooms children actually walk into — not the boiler room and not the store cupboard. So it walks the corridors first, marks the doors worth checking, and if there are too many doors to describe in full, it writes a short note about the far ones instead of forgetting them.</p>
+    </section>
+
+    <!-- 7 -->
+    <section id="s7">
+      <h2><span class="num">07</span>The logistic-regression model</h2>
+      <p><code>services/importance_model.py</code> (226 lines) is the project's principal machine-learning component: a binary logistic-regression classifier written from first principles, with no numerical or ML dependency of any kind.</p>
+
+      <h3>7.1 Why a learned model at all</h3>
+      <p>The ladder in section 06 encodes good priors, but they are permanently frozen and they look only at the <strong>path</strong>. It cannot notice that in a particular codebase the <code>pages/</code> directory holds thin two-line shells while every interactive control lives in <code>features/</code>. The consequence is concrete and costly:</p>
+      <div class="grid g2">
+        <div class="card bad"><span class="tag">Rule sees only the name</span><h4><code>pages/About.tsx</code> → 9</h4><p>Forty words of static text, nothing clickable, nothing a test could assert — yet ranked at 9 and sent to the model at full length, consuming budget.</p></div>
+        <div class="card good"><span class="tag">Body tells the truth</span><h4><code>features/Checkout.tsx</code> → 6</h4><p>Three forms, nine inputs, a <code>data-testid</code> on every control. The single most testable file in the repository, ranked below the About page.</p></div>
+      </div>
+      <p>The learned model refines the score using the file's <em>body</em>, so it can rank on evidence rather than on directory convention.</p>
+
+      <h3>7.2 Why logistic regression specifically</h3>
+      <ol class="body">
+        <li><strong>The question is binary.</strong> "Would a UI test ever target this file?" is a yes/no with a useful confidence attached — precisely the shape logistic regression fits.</li>
+        <li><strong>The data is thin and the features are few.</strong> Seventeen features and a few thousand rows do not justify a neural network; a higher-capacity model would overfit and explain nothing.</li>
+        <li><strong>Interpretability is a product requirement.</strong> Every coefficient is a named number attached to a named feature. When a file scores 9, the reason is legible.</li>
+        <li><strong>It costs nothing to run.</strong> One multiply-add per feature. No GPU, no service call, no latency to the request path.</li>
+      </ol>
+
+      <h3>7.3 Step one — feature extraction</h3>
+      <p><code>extract_features(path, content)</code> converts each file into exactly seventeen numbers in the range 0 to 1. Binary features are 1 or 0; count features are divided by a saturation constant and clipped, so one enormous file cannot dominate the sum. Extraction is regex-only: no parsing, no LLM, microseconds per file.</p>
+      <div class="scroller"><table>
+        <thead><tr><th>Feature</th><th>Meaning</th><th>Type</th><th>Normalisation</th></tr></thead>
+        <tbody>
+          <tr><td>is_router</td><td>App entrypoint / router file</td><td>binary</td><td>—</td></tr>
+          <tr><td>in_pages_dir</td><td>pages, app, views, screens</td><td>binary</td><td>—</td></tr>
+          <tr><td>in_components_dir</td><td>components, containers, features</td><td>binary</td><td>—</td></tr>
+          <tr><td>in_layouts_dir</td><td>layout, layouts</td><td>binary</td><td>—</td></tr>
+          <tr><td>has_auth_keyword</td><td>auth, login, signup, checkout, cart, form</td><td>binary</td><td>—</td></tr>
+          <tr><td>is_config</td><td>config file</td><td>binary</td><td>—</td></tr>
+          <tr><td>is_test_file</td><td>already a test — low value as a target</td><td>binary</td><td>—</td></tr>
+          <tr><td>is_style_or_asset</td><td>css, scss, svg, png, font</td><td>binary</td><td>—</td></tr>
+          <tr><td>ext_component</td><td>.tsx .jsx .vue .svelte</td><td>binary</td><td>—</td></tr>
+          <tr><td>path_depth</td><td>directory depth</td><td>continuous</td><td>÷ 5, clipped to [0,1]</td></tr>
+          <tr><td>n_ids</td><td>count of <code>id=</code> anchors</td><td>continuous</td><td>÷ 8, clipped</td></tr>
+          <tr><td>n_testids</td><td>count of <code>data-testid</code>/<code>data-cy</code></td><td>continuous</td><td>÷ 8, clipped</td></tr>
+          <tr><td>n_forms</td><td>count of <code>&lt;form&gt;</code></td><td>continuous</td><td>÷ 3, clipped</td></tr>
+          <tr><td>n_buttons</td><td>buttons and <code>role="button"</code></td><td>continuous</td><td>÷ 8, clipped</td></tr>
+          <tr><td>n_inputs</td><td>input / select / textarea</td><td>continuous</td><td>÷ 8, clipped</td></tr>
+          <tr><td>has_onclick</td><td>any click handler present</td><td>binary</td><td>—</td></tr>
+          <tr><td>size_small</td><td>body under 300 characters</td><td>binary</td><td>—</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note"><span class="tag">Design constraint</span>The <code>FEATURES</code> list <em>is</em> the model's contract — the weight vector is aligned to its order. Adding, removing or reordering a feature invalidates every saved weight, so the list is treated as a versioned interface and changing it requires retraining.</div>
+
+      <h3>7.4 Step two — the hypothesis</h3>
+      <p>The model computes a linear combination of features, then passes it through the logistic (sigmoid) function:</p>
+      <pre><span class="cm"># z = w·x + b        σ(z) = 1 / (1 + e^-z)</span>
+
+<span class="kw">def</span> predict_proba(self, features: <span class="kw">dict</span>[<span class="kw">str</span>, <span class="kw">float</span>]) -> <span class="kw">float</span>:
+    z = self.bias + <span class="kw">sum</span>(
+        self.weights.get(f, 0.0) * features.get(f, 0.0)
+        <span class="kw">for</span> f <span class="kw">in</span> FEATURES
+    )
+    <span class="kw">return</span> 1.0 / (1.0 + math.exp(-z))
+
+<span class="kw">def</span> score_1_to_10(self, path, content=<span class="st">""</span>) -> <span class="kw">int</span>:
+    p = self.predict_proba(extract_features(path, content))
+    <span class="kw">return</span> <span class="kw">max</span>(1, <span class="kw">min</span>(10, <span class="kw">round</span>(1 + p * 9)))</pre>
+      <p>The sigmoid maps any real number onto the open interval (0, 1): strongly negative totals approach 0, strongly positive totals approach 1, and z = 0 gives exactly 0.5 — perfect indecision. The output is then mapped onto the 1–10 scale the rest of the application already speaks, so the learned score is a drop-in replacement for the heuristic score. A probability of 0.92 becomes a 9; 0.06 becomes a 2.</p>
+      <p class="plain"><span class="lbl">In plain words</span>Think of a scorecard for picking a football team. "Can they run fast?" — add 3 points. "Can they kick?" — add 4. "Do they get tired quickly?" — take 2 away. Add it all up. Logistic regression is exactly that scorecard, with one extra trick at the end: it squashes the total onto a line from 0 to 1, so instead of a strange number like 7.4 you get something that reads as confidence — 0.9 means "almost certainly yes", 0.1 means "almost certainly no". And the points on the card are not chosen by a person; the machine works them out itself.</p>
+
+      <h3>7.5 Step three — training by gradient descent</h3>
+      <p><code>fit()</code> is full-batch gradient descent on the cross-entropy objective with L2 regularization. All weights initialise to zero — the model begins with no opinions.</p>
+      <pre><span class="kw">def</span> fit(self, samples, *, epochs=<span class="st">400</span>, lr=<span class="st">0.3</span>, l2=<span class="st">1e-3</span>):
+    <span class="kw">if not</span> samples: <span class="kw">return</span> self
+    <span class="kw">for</span> f <span class="kw">in</span> FEATURES:
+        self.weights.setdefault(f, 0.0)
+    n = <span class="kw">len</span>(samples)
+
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="kw">range</span>(epochs):
+        grad  = {f: 0.0 <span class="kw">for</span> f <span class="kw">in</span> FEATURES}
+        gbias = 0.0
+
+        <span class="cm"># accumulate the gradient over every example</span>
+        <span class="kw">for</span> feats, label <span class="kw">in</span> samples:
+            pred = self.predict_proba(feats)
+            err  = pred - label                <span class="cm"># how wrong, and which way</span>
+            <span class="kw">for</span> f <span class="kw">in</span> FEATURES:
+                grad[f] += err * feats.get(f, 0.0)
+            gbias += err
+
+        <span class="cm"># descend, with L2 shrinkage folded into the same step</span>
+        <span class="kw">for</span> f <span class="kw">in</span> FEATURES:
+            self.weights[f] -= lr * (grad[f] / n + l2 * self.weights[f])
+        self.bias -= lr * (gbias / n)
+
+    self.trained_on = n
+    <span class="kw">return</span> self</pre>
+      <div class="grid g2">
+        <div class="card"><span class="tag">err = pred − label</span><h4>The size and direction of the miss</h4><p>Predicting 0.8 on a true positive gives −0.2 — a gentle nudge. Predicting 0.9 on a true negative gives +0.9 — a large correction. The gradient scales naturally with confidence in the wrong answer.</p></div>
+        <div class="card"><span class="tag">err × feature</span><h4>Blame lands only where evidence was</h4><p>A feature that was 0 for this example contributes nothing to its own gradient. Only features that were actually present move.</p></div>
+        <div class="card"><span class="tag">lr = 0.3</span><h4>Step size</h4><p>Too large and the weights oscillate past the minimum; too small and 400 epochs are not enough to reach it. 0.3 with normalised features is a stable middle.</p></div>
+        <div class="card"><span class="tag">l2 = 1e-3</span><h4>Regularization</h4><p>Every weight is shrunk slightly toward zero on each step, so no single feature can dominate on the strength of a coincidence in the training set. This is the model's defence against overfitting.</p></div>
+      </div>
+      <div class="note"><span class="tag">Deliberate simplicity</span>No minibatching, no momentum, no adaptive optimiser, no learning-rate schedule. With seventeen weights and a few thousand rows, none of that machinery would improve the result enough to justify the code that implements it.</div>
+      <p class="plain"><span class="lbl">In plain words</span>It is the game "warmer, colder". The machine starts knowing nothing. It guesses. We tell it how wrong it was. It shifts every point on its scorecard a tiny step in the direction that would have been less wrong. Then it does that again, four hundred times — and by the end, the scorecard is good.</p>
+
+      <h3>7.6 Step four — where the labels come from</h3>
+      <p>Supervised learning needs known answers, and nobody is going to hand-label thousands of files. Testra therefore uses <strong>weak supervision</strong>: a cheap, imperfect, explicitly-labelled-as-imperfect answer key.</p>
+      <pre><span class="kw">def</span> weak_label(path: <span class="kw">str</span>, content: <span class="kw">str</span>) -> <span class="kw">int</span>:
+    f = extract_features(path, content)
+
+    <span class="cm"># categorically never a test target</span>
+    <span class="kw">if</span> f[<span class="st">"is_config"</span>] <span class="kw">or</span> f[<span class="st">"is_style_or_asset"</span>] <span class="kw">or</span> f[<span class="st">"is_test_file"</span>]:
+        <span class="kw">return</span> 0
+
+    interactive = (f[<span class="st">"n_forms"</span>] + f[<span class="st">"n_buttons"</span>] + f[<span class="st">"n_inputs"</span>]
+                 + f[<span class="st">"n_testids"</span>] + f[<span class="st">"has_onclick"</span>])
+
+    ui_facing   = (f[<span class="st">"is_router"</span>] <span class="kw">or</span> f[<span class="st">"in_pages_dir"</span>]
+                <span class="kw">or</span> f[<span class="st">"in_components_dir"</span>] <span class="kw">or</span> f[<span class="st">"has_auth_keyword"</span>])
+
+    <span class="kw">return</span> 1 <span class="kw">if</span> (ui_facing <span class="kw">and</span> interactive > 0) <span class="kw">else</span> 0</pre>
+      <p>A file is labelled positive when it is UI-facing <em>and</em> carries something a test could anchor to. It is negative for configuration, styles, assets, existing tests, and anything with no interactive surface. This is the cold-start prior. The design intent — stated in the module docstring — is that the same <code>fit()</code> is re-run later on <strong>real signal</strong>: which files actually produced verified, low-fragility selectors, as measured by the grounding pipeline and the benchmark harness. The label function is scaffolding for the first model, not the permanent definition of truth.</p>
+
+      <h3>7.7 Persistence and graceful degradation</h3>
+      <p>Training writes <code>importance_model.json</code> — weights, bias, sample count and the ordered feature list — in plain, readable JSON. There is no pickle and no vendor binary format; a reviewer can open the artifact and disagree with a coefficient.</p>
+      <pre>{
+  <span class="st">"weights"</span>:    { <span class="st">"n_testids"</span>: 2.41, <span class="st">"is_config"</span>: -1.87, ... },
+  <span class="st">"bias"</span>:       -0.42,
+  <span class="st">"trained_on"</span>: 8412,
+  <span class="st">"features"</span>:   [ <span class="st">"is_router"</span>, <span class="st">"in_pages_dir"</span>, ... ]
+}</pre>
+      <p>The most important property of the whole module is that <strong>it is allowed to be absent</strong>:</p>
+      <pre><span class="cm"># loaded once at import; None when no artifact exists on disk</span>
+_ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
+
+<span class="kw">def</span> learned_score(path, content, fallback: <span class="kw">int</span>) -> <span class="kw">int</span>:
+    <span class="cm">"""Model score when a model is trained; the caller's heuristic otherwise."""</span>
+    m = _ACTIVE
+    <span class="kw">return</span> m.score_1_to_10(path, content) <span class="kw">if</span> m <span class="kw">is not</span> <span class="kw">None</span> <span class="kw">else</span> fallback</pre>
+      <div class="grid g3">
+        <div class="card good"><span class="tag">No artifact</span><h4>Silent fallback</h4><p>Callers use the heuristic ladder. Importing the module changes nothing until a model is trained.</p></div>
+        <div class="card good"><span class="tag">Corrupt artifact</span><h4>Also fallback</h4><p><code>load()</code> catches every exception and returns <code>None</code> — a bad file means "use the heuristic", never "fail the request".</p></div>
+        <div class="card good"><span class="tag">Cost</span><h4>Loaded once</h4><p>Module-level, so the extractor pays the deserialisation cost a single time rather than once per file.</p></div>
+      </div>
+      <p class="plain"><span class="lbl">In plain words</span>The clever part is allowed to be missing. If the learned scorecard isn't there, or is damaged, Testra quietly goes back to the older, simpler list of rules and carries on. Nothing breaks. That is what makes it safe to be clever in the first place.</p>
+
+      <h3>7.8 What is tested</h3>
+      <p><code>tests/test_importance_model.py</code> covers feature extraction on representative files, sigmoid output bounds, that <code>fit()</code> actually separates positives from negatives after training, JSON round-tripping through <code>to_dict</code>/<code>from_dict</code>, and that a missing artifact degrades to the fallback path.</p>
+    </section>
+
+    <!-- 8 -->
+    <section id="s8">
+      <h2><span class="num">08</span>The fragility model</h2>
+      <p><code>services/fragility.py</code> (262 lines) answers a different question: not "is this selector correct today" — grounding settles that — but "will this selector still work in three months". It is a linear weighted scorer over named features of the selector's <em>shape</em>.</p>
+      <h3>Why not an LLM</h3>
+      <p>Brittleness is a small, stable, explainable function of shape: does the locator lean on position, on depth, on a build-generated class, or on a stable contract like <code>data-testid</code> or an ARIA role? A linear scorer answers that deterministically, at zero token cost, with a human-readable reason attached to every score. The weights are stored as <strong>data</strong> (<code>FEATURE_WEIGHTS</code>), not logic, so the benchmark harness can re-fit them from real break data without touching the scoring code.</p>
+      <div class="scroller"><table>
+        <thead><tr><th>Feature</th><th>Weight</th><th>What it detects</th></tr></thead>
+        <tbody>
+          <tr><td>absolute_xpath</td><td class="num pos">+0.95</td><td><code>/html/body/div[2]/…</code> — breaks on any structural edit</td></tr>
+          <tr><td>nth_child</td><td class="num pos">+0.70</td><td><code>:nth-child</code>, <code>:nth-of-type</code> — purely positional</td></tr>
+          <tr><td>hashed_class</td><td class="num pos">+0.65</td><td><code>css-1a2b3c</code>, <code>sc-bdfBwe</code> — build-generated, changes per build</td></tr>
+          <tr><td>bare_tag</td><td class="num pos">+0.55</td><td>A plain <code>button</code> or <code>div</code> — matches far too much</td></tr>
+          <tr><td>deep_chain</td><td class="num pos">+0.45</td><td>Four or more combinators — couples the test to layout depth</td></tr>
+          <tr><td>index_access</td><td class="num pos">+0.40</td><td><code>.nth(3)</code>, <code>.eq(2)</code> — order-dependent</td></tr>
+          <tr><td>long_class_chain</td><td class="num pos">+0.30</td><td><code>.a.b.c.d</code> — styling, not identity</td></tr>
+          <tr><td>text_match</td><td class="num pos">+0.25</td><td><code>getByText</code> — breaks on a copy change or translation</td></tr>
+          <tr><td>stable_id</td><td class="num neg">−0.35</td><td><code>#login-form</code> — an id that does not look generated</td></tr>
+          <tr><td>aria_label</td><td class="num neg">−0.45</td><td><code>getByLabel</code> / <code>aria-label</code></td></tr>
+          <tr><td>role</td><td class="num neg">−0.55</td><td><code>getByRole</code> — an accessibility contract</td></tr>
+          <tr><td>test_id</td><td class="num neg">−0.85</td><td><code>data-testid</code> / <code>data-cy</code> — purpose-built for tests</td></tr>
+        </tbody>
+      </table></div>
+      <p>The bias is <strong>0.35</strong>: a featureless selector sits at medium risk, not zero risk, because the absence of evidence for durability is not evidence of durability. Each selector receives a risk score in [0, 1], a grade, the list of reasons that produced it, and — where one can be named — a sturdier suggested replacement. The suite receives a single letter from the mean.</p>
+      <div class="pills">
+        <span class="pill pass">A &lt; 0.25</span><span class="pill pass">B &lt; 0.40</span><span class="pill warn">C &lt; 0.55</span><span class="pill fail">D &lt; 0.70</span><span class="pill fail">F ≥ 0.70</span>
+      </div>
+      <div class="note"><span class="tag">Naming discipline</span>The output is called a <em>risk estimate</em>, because that is what it is. It is never presented as a measured probability of failure, since no failures were observed to measure.</div>
+      <p class="plain"><span class="lbl">In plain words</span>A good handle is one that won't move. "The button labelled <em>Log in</em>" will still be there after a redesign. "The third box inside the second box" will not. This model looks at how each instruction was written and warns you when it depends on something likely to shift.</p>
+    </section>
+
+    <!-- 9 -->
+    <section id="s9">
+      <h2><span class="num">09</span>The two models compared</h2>
+      <div class="scroller"><table>
+        <thead><tr><th></th><th>importance_model.py</th><th>fragility.py</th></tr></thead>
+        <tbody>
+          <tr><td>Question</td><td>Is this file worth testing?</td><td>Will this selector break later?</td></tr>
+          <tr><td>Family</td><td>Logistic regression (binary classifier)</td><td>Linear weighted scorer</td></tr>
+          <tr><td>Inputs</td><td>17 features from path and body</td><td>12 features from selector shape</td></tr>
+          <tr><td>Link function</td><td>Sigmoid → (0,1)</td><td>None — clipped linear sum</td></tr>
+          <tr><td>Output</td><td>Probability → score 1–10</td><td>Risk 0–1 → grade A–F</td></tr>
+          <tr><td>Weights obtained by</td><td class="neg">Gradient descent on data</td><td class="pos">Hand-set from locator guidance</td></tr>
+          <tr><td>Labels</td><td>Weak supervision, then real outcomes</td><td>None yet — re-fittable by design</td></tr>
+          <tr><td>Regularization</td><td>L2, λ = 1e-3</td><td>—</td></tr>
+          <tr><td>Runs</td><td>Before the LLM — file selection</td><td>After the LLM — suite grading</td></tr>
+          <tr><td>If artifact absent</td><td>Falls back to the heuristic ladder</td><td>Always present — it is code</td></tr>
+        </tbody>
+      </table></div>
+      <p class="plain"><span class="lbl">In plain words</span>Both are the same idea underneath: <b>multiply every clue by how much it matters, add it all up, then decide.</b> The only difference is who chose the numbers — a person who already knew the answer, or the data itself.</p>
+    </section>
+
+    <!-- 10 -->
+    <section id="s10">
+      <h2><span class="num">10</span>The two agents</h2>
+      <h3>Agent 1 — <code>agents/filter_agent.py</code></h3>
+      <p>Runs the extractor, then asks the LLM in strict JSON mode for a structured reading of the project: a summary, the key pages, the routes, and the testing challenges it foresees. The result is a typed <code>FilterResult</code>, serialized transparently into SQLite so the job survives a server restart.</p>
+      <h3>Agent 2 — <code>agents/writer_agent.py</code></h3>
+      <ol class="body">
+        <li>Build a grounding list of <strong>real selectors</strong> — ids, <code>data-testid</code>/<code>data-cy</code>, name attributes, classes — extracted from the actual source, and inject it into the prompt.</li>
+        <li>Plan the file list for the suite.</li>
+        <li>Generate <strong>each file in its own call</strong>, so a large suite cannot be truncated by a single output-token ceiling.</li>
+        <li>Validate every selector produced against the source, and flag suspected hallucinations with a visible ⚠️.</li>
+        <li>Optionally self-heal: re-prompt with the misses and the real anchors.</li>
+      </ol>
+      <div class="note"><span class="tag">Separation of concerns</span>The model writes page objects and specs — nothing else. Everything that makes the suite <em>runnable</em> comes from the scaffold (section 12); everything that makes it <em>trustworthy</em> comes from the grounding pipeline (section 11).</div>
+      <p class="plain"><span class="lbl">In plain words</span>One helper reads the school and draws the map. The other walks the map and writes the checklist. Splitting the job in two means neither has to be brilliant at both.</p>
+    </section>
+
+    <!-- 11 -->
+    <section id="s11">
+      <h2><span class="num">11</span>Grounding, self-heal and validation</h2>
+      <p>The failure mode this product exists to prevent is a suite that looks perfect and breaks on its first run because the model invented a selector. Four components attack that, and none of them execute the generated code — they reason about it statically.</p>
+      <div class="grid g2">
+        <div class="card"><span class="tag">services/grounding.py</span><h4>Source grounding</h4><p>Extracts anchors that genuinely exist — ids, test-ids, classes, form names, ARIA roles, accessible labels, link and button text — each carrying <strong>provenance</strong>: the file and line it was declared on. The UI can therefore cite <code>LoginForm.tsx:42</code> rather than ask for trust. Works for any repository.</p></div>
+        <div class="card"><span class="tag">services/grounding.py</span><h4>DOM grounding</h4><p>When the user supplies a live URL they own, the deployed page's real HTML is fetched through the security scanner's SSRF-guarded, non-executing path. This is the stronger evidence, because it is exactly what the browser will see.</p></div>
+        <div class="card"><span class="tag">writer_agent</span><h4>The self-heal loop</h4><p>Consumes the unverified set and re-prompts the model with the precise selectors that missed <em>and</em> the real anchors that exist — so the correction is a grounded substitution, not a second guess.</p></div>
+        <div class="card"><span class="tag">services/validator.py</span><h4>Static validation</h4><p>Python is compiled with <code>py_compile</code>; JavaScript is checked with <code>node --check</code> where Node is available; TypeScript and other files get structural checks for balanced brackets and non-truncation.</p></div>
+      </div>
+      <p>Both grounding modes are constructed identically — extract an anchor set, then perform a membership test — so a selector verified against source and one verified against the live DOM are judged by the same rules. No CSS engine is required: the selectors emitted reduce to a handful of anchor kinds, and membership <em>is</em> the question "would <code>querySelector</code> find this".</p>
+      <div class="note"><span class="tag">Honest accounting</span><code>FileValidation</code> records whether anything was <em>actually</em> verified, or whether there was simply no toolchain for that file type. Configuration and documentation files pass by default, so counting them as passes would inflate the number: "8/8 files passed syntax validation" reads as eight checked files when two of them were a README and a YAML nobody parsed. Callers reporting a rate count only genuinely checked files.</div>
+    </section>
+
+    <!-- 12 -->
+    <section id="s12">
+      <h2><span class="num">12</span>The scaffold</h2>
+      <p><code>agents/scaffold.py</code> produces the dependency manifest, framework configuration, GitHub Actions and GitLab CI pipelines, and the README. These are <strong>templated, not generated</strong>: each has exactly one correct answer per framework, so asking a language model for them only introduces variance.</p>
+      <p>The module exists because the alternative failed silently for every user: the CI template ran <code>npm ci</code> while nothing ever emitted a <code>package.json</code>. The pipeline could not pass on any repository, and neither half of the system knew about the other. The install step and the manifest it installs are now written by the same module.</p>
+      <div class="grid g2">
+        <div class="card good"><span class="tag">Invariant 1</span><h4>The suite owns <code>e2e/</code>, not the repo root</h4><p>A React application already has a <code>package.json</code> at the root; writing ours over it would destroy the manifest of the application under test.</p></div>
+        <div class="card good"><span class="tag">Invariant 2</span><h4><code>BASE_URL</code> wins, then a local <code>webServer</code></h4><p>One environment variable points the same suite at staging or production. Unset, the configuration boots the application, so a fresh clone and CI both work with no arguments. Base URLs are normalised to a trailing slash and tests navigate with slashless relative paths — the only combination under which a sub-path deployment such as a GitHub Pages project site stays addressable.</p></div>
+      </div>
+    </section>
+
+    <!-- 13 -->
+    <section id="s13">
+      <h2><span class="num">13</span>The LLM router</h2>
+      <p><code>services/llm_router.py</code> (948 lines) is the availability layer. It tries providers in priority order, rotates round-robin through each provider's configured keys, and places a key on cooldown when it returns a 429 or errors. A <code>json_mode</code> flag forces valid JSON per provider, and per-request status updates are scoped with a <code>ContextVar</code> so concurrent streams never cross-talk.</p>
+      <div class="scroller"><table>
+        <thead><tr><th>Provider</th><th>Free tier model</th><th>Pro tier model</th><th>Cooldown</th></tr></thead>
+        <tbody>
+          <tr><td>Gemini</td><td>gemini-2.0-flash</td><td>gemini-2.0-flash</td><td class="num">60 s</td></tr>
+          <tr><td>Groq</td><td>llama-3.3-70b-versatile</td><td>llama-3.3-70b-versatile</td><td class="num">30 s</td></tr>
+          <tr><td>Claude</td><td>claude-haiku-4-5</td><td class="neg">claude-opus-4-8</td><td class="num">120 s</td></tr>
+        </tbody>
+      </table></div>
+      <div class="grid g2">
+        <div class="card"><span class="tag">Free tier order</span><h4>Capacity first</h4><p>Gemini → Groq → Claude. Gemini's very large context window swallows big repositories; Groq is the fastest responder.</p></div>
+        <div class="card"><span class="tag">Pro tier order</span><h4>Quality first</h4><p>Claude → Gemini → Groq. Charging for Opus and then serving the request from Flash because Flash happened to be listed first would make the upgrade a lie.</p></div>
+      </div>
+      <p><code>upgrade_would_change_model()</code> is <strong>derived from the model table rather than hardcoded</strong>. If the Pro tier ever stops buying a materially stronger model, the upsell in the interface turns itself off. A previous version advertised a premium model while quietly serving the same free-tier one; deriving the claim from the fact makes that class of bug structurally impossible. Provenance is reported alongside every generation, so a Pro user who fell back to a free-tier provider is told so rather than being quietly downgraded.</p>
+      <p class="plain"><span class="lbl">In plain words</span>It's like having three friends who can help with your homework. Ask the first one. If they're busy, ask the second. If everyone's busy, wait a minute and try again — and always say honestly which friend actually answered.</p>
+    </section>
+
+    <!-- 14 -->
+    <section id="s14">
+      <h2><span class="num">14</span>Persistence and live progress</h2>
+      <h3><code>services/store.py</code> — the durable job store</h3>
+      <p>1,157 lines of SQLite-backed state using only the standard library. Jobs survive process restarts and are shared across workers; old jobs are pruned by TTL (24 hours). <code>FilterResult</code> is serialized to and from JSON transparently, so callers deal in typed objects, not rows.</p>
+      <h3><code>services/progress.py</code> — NDJSON step streaming</h3>
+      <p>The four long POST endpoints — <code>/api/analyze</code>, <code>/api/upload-zip</code>, <code>/api/scan</code> and <code>/api/publish-zip</code> — stream newline-delimited JSON: one <code>{"type":"step"}</code> line per phase as it starts and finishes, then a single <code>result</code> or <code>error</code>. The client lights up a flowchart from it, so a 10–60 second wait shows which phase is running and what it found.</p>
+      <p>NDJSON over the endpoint's own response body was chosen rather than SSE because all four are POSTs and two carry a multipart upload, while <code>EventSource</code> can only issue a GET with no headers and no body. Streaming in-band keeps the request's authentication header and its file attached.</p>
+      <div class="note"><span class="tag">The trade-off this forces</span>Because the HTTP status line is sent before the work runs, a mid-flight failure cannot <em>be</em> an HTTP status. Errors therefore split by when they become decidable: anything pre-flight — a malformed URL, a missing token, a spent quota — is raised <strong>before the first byte</strong> and remains a real 400/403/402. Anything after is emitted in-band carrying its status, and the client re-raises the identical exception, so a 402 opens the upgrade modal either way.</div>
+      <p>Step ids are a cross-language contract with <code>frontend/src/flows.ts</code>. A drifted id would be silent in the browser — the card simply never lights — so <code>Progress</code> rejects an unknown id rather than emitting an event nothing listens for.</p>
+    </section>
+
+    <!-- 15 -->
+    <section id="s15">
+      <h2><span class="num">15</span>Security scanning</h2>
+      <h3>Passive configuration audit — <code>services/security_scanner.py</code></h3>
+      <p>1,187 lines. Given a URL the user owns, it fetches the site and inspects its <em>configuration</em> for the issues that commonly bite web applications in production. It is deliberately non-intrusive: it reads headers, cookies, TLS and redirect behaviour, and probes a short curated list of files that should never be public. It sends no attack payloads and brute-forces nothing.</p>
+      <ul>
+        <li>HTTPS enforcement and HSTS</li>
+        <li>Security headers — CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy</li>
+        <li>Cookie flags — Secure, HttpOnly, SameSite</li>
+        <li>Server and framework version disclosure</li>
+        <li>CORS misconfiguration — <code>Access-Control-Allow-Origin: *</code> together with credentials</li>
+        <li>Accidentally exposed sensitive files — <code>.env</code>, <code>.git/config</code></li>
+        <li>Mixed content and insecure form actions</li>
+      </ul>
+      <h3>Active scanning — <code>services/zap_scanner.py</code></h3>
+      <p>Opt-in via <code>docker compose --profile zap up</code>, which starts an OWASP ZAP daemon alongside the stack. ZAP takes about a minute to become responsive; the backend waits for it rather than quietly falling back. Without the profile, active scans degrade to the passive audit <strong>and say so</strong>. <code>GET /api/scan/capabilities</code> reports whether active scanning is available, and why not if it is not.</p>
+      <h3>The SSRF guard</h3>
+      <p>Scans of localhost, private ranges and link-local addresses are refused — <strong>including across redirect hops</strong>, so a public URL cannot redirect the scanner into an internal network. A scope gate additionally blocks third-party sites the user plainly does not own. The same guarded, non-executing fetch path is reused for DOM grounding.</p>
+    </section>
+
+    <!-- 16 -->
+    <section id="s16">
+      <h2><span class="num">16</span>Accounts, billing and administration</h2>
+      <div class="grid g2">
+        <div class="card"><span class="tag">services/auth.py</span><h4>Authentication</h4><p>Email and password with verification and OTP, Google OAuth, GitHub OAuth, password reset, session revocation across all devices, and account deletion.</p></div>
+        <div class="card"><span class="tag">services/quota.py + billing.py</span><h4>Plans and quota</h4><p>Free plan with a monthly generation allowance; Pro with unlimited runs and a stronger model. <code>limit_for()</code> and <code>tier_for()</code> are deliberately adjacent — they are the only two things a plan changes.</p></div>
+        <div class="card"><span class="tag">services/git_publisher.py</span><h4>Publishing</h4><p>Sign in with GitHub — no Personal Access Token to paste — and Testra creates the repository and pushes the suite. Linked tokens are encrypted at rest when <code>SESSION_SECRET</code> is configured.</p></div>
+        <div class="card"><span class="tag">services/admin.py</span><h4>The admin role</h4><p>User management, plan and quota overrides, platform analytics, and provider/key health, behind <code>require_admin</code> on every <code>/api/admin/*</code> route.</p></div>
+      </div>
+      <h3>Two deliberate security decisions</h3>
+      <ol class="body">
+        <li><strong>The admin grant lives in <code>ADMIN_EMAILS</code> config, not a <code>users.role</code> column.</strong> With no row that confers privilege, there is nothing to write in order to escalate, no promote-user endpoint to abuse, and no path from a stolen session to a second administrator. The trade is that changing the admin list requires a config change and a restart — the right friction for the one role that can read every account. The address must also be <em>verified</em>: with <code>REQUIRE_EMAIL_VERIFICATION=false</code>, a stranger could sign up as an admin's address, so the allowlist alone is not proof of who holds it.</li>
+        <li><strong>Non-admins receive 404, not 403.</strong> A 403 confirms the console exists to anyone holding a session. To everyone else it should look absent. The client's <code>user.is_admin</code> flag decides only whether the navigation item renders; every route re-derives the role server-side.</li>
+      </ol>
+    </section>
+
+    <!-- 17 -->
+    <section id="s17">
+      <h2><span class="num">17</span>The frontend</h2>
+      <p>A React 18 + TypeScript single-page application built with Vite: <strong>20 routes</strong> and <strong>29 components</strong>. Notable pieces:</p>
+      <div class="grid g3">
+        <div class="card"><h4>FlowPipeline</h4><p>Renders the live NDJSON step stream as a flowchart, so long operations show which phase is running.</p></div>
+        <div class="card"><h4>StreamingOutput</h4><p>Displays Agent 2's SSE token stream as the suite is written.</p></div>
+        <div class="card"><h4>TrustPanel</h4><p>The live-DOM badge, per-selector provenance, and the A–F durability grade — each a real measurement.</p></div>
+        <div class="card"><h4>ScanPanel</h4><p>Security findings with severity, evidence and remediation.</p></div>
+        <div class="card"><h4>PublishPanel</h4><p>GitHub connection and one-click repository publication.</p></div>
+        <div class="card"><h4>QuotaBar / UpgradeModal</h4><p>Remaining monthly generations, and the upgrade path when exhausted.</p></div>
+        <div class="card"><h4>Admin suite</h4><p>Overview, Users and System consoles behind a protected route.</p></div>
+        <div class="card"><h4>CodeViewer</h4><p>Generated files with selector warnings inline.</p></div>
+        <div class="card"><h4>ErrorBoundary</h4><p>A render failure degrades one panel, not the whole application.</p></div>
+      </div>
+    </section>
+
+    <!-- 18 -->
+    <section id="s18">
+      <h2><span class="num">18</span>Testing and continuous integration</h2>
+      <p>The backend carries <strong>622 automated tests across 26 suites</strong> — roughly one test file per service, covering the extractor and scoring, framework detection, router failover and key rotation, writer-agent logic, grounding, fragility, the importance model, validation, the store, quota, billing, authentication, both OAuth flows, the publisher, the scaffold, the security scanner and the ZAP integration.</p>
+      <div class="grid g4">
+        <div class="card stat"><span class="n">622</span><span class="l">tests</span></div>
+        <div class="card stat"><span class="n">26</span><span class="l">test suites</span></div>
+        <div class="card stat"><span class="n">3</span><span class="l">Python versions in CI</span></div>
+        <div class="card stat"><span class="n">867</span><span class="l">lines in the largest suite (security scanner)</span></div>
+      </div>
+      <p>CI (<code>.github/workflows/ci.yml</code>) runs the backend matrix across Python 3.11, 3.12 and 3.13 plus a frontend build on every push. Linting is Ruff.</p>
+    </section>
+
+    <!-- 19 -->
+    <section id="s19">
+      <h2><span class="num">19</span>Deployment</h2>
+      <p>The whole system runs with one command: <code>docker compose up</code> — frontend on port 5173, API on 8000, interactive OpenAPI docs at <code>/docs</code>. Optional active scanning is a compose profile rather than a default dependency.</p>
+      <p>Production is containerised behind Caddy for automatic TLS and static serving, with <code>deploy/aws-setup.sh</code> and <code>deploy/bootstrap.sh</code> provisioning the host and <code>deploy/docker-compose.prod.yml</code> describing the production topology. Configuration is typed via <code>pydantic-settings</code>; logging is structured JSON with request IDs correlating every line of a request.</p>
+    </section>
+
+    <!-- 20 -->
+    <section id="s20">
+      <h2><span class="num">20</span>Benchmarking</h2>
+      <p><code>services/benchmark.py</code> runs the grounding and fragility analysis over a set of <em>(repository, generated suite)</em> cases and prints a markdown leaderboard. It reports:</p>
+      <ul>
+        <li><strong>Verified-selector rate</strong> — of every selector the model wrote, the fraction that provably resolves to a real element in the source or the live DOM. Pooled and per-repository.</li>
+        <li><strong>Fragility grade distribution</strong> — so a suite cannot score well by grounding everything to <code>nth-child</code>.</li>
+      </ul>
+      <p>The harness is explicit about denominators: a case that grounded nothing counts as a case with <em>no measurable rate</em>, not a free 100%, and aggregates are computed only over cases that actually had selectors. It runs two ways — over pre-generated suites (fast, free, deterministic; used in CI to catch a regression in grounding itself), or over the full pipeline with real API keys to produce headline numbers.</p>
+      <div class="note"><span class="tag">Why this metric</span>Because Testra never executes the generated suite, "pass rate" would be an invented number. "Selectors provably resolve" is the strongest claim the system can actually support, so it is the one reported.</div>
+    </section>
+
+    <!-- 21 -->
+    <section id="s21">
+      <h2><span class="num">21</span>Limitations</h2>
+      <p>The project ships a model card (<code>docs/LIMITATIONS.md</code>). The green "passed a syntax check" badge means each generated file passed a <strong>static structural check only</strong>. It does <em>not</em> mean the tests were executed, that the selectors resolve against your running application, or that the assertions pass.</p>
+      <div class="grid g2">
+        <div class="card risk"><h4>Selector extraction is regex-based</h4><p>It can miss dynamic classes (<code>className={styles.x}</code>), CSS-in-JS, and some ARIA/role/text selectors, so both false positives and false negatives are possible. Selectors marked "not verified" need review.</p></div>
+        <div class="card risk"><h4>Very large repositories</h4><p>May exceed the model's context window. Low-priority files are summarized rather than sent verbatim, which can reduce selector accuracy.</p></div>
+        <div class="card risk"><h4>Output size ceilings</h4><p>Extremely large suites can hit provider output-token limits. Narrowing the requested scope and regenerating is the workaround.</p></div>
+        <div class="card risk"><h4>Free-tier variance</h4><p>Quality and latency depend on whichever provider was available. Results vary run to run; the provenance report always names the model that actually answered.</p></div>
+      </div>
+      <h3>Data handling</h3>
+      <p>Repository contents are held only for the duration of a job (SQLite, pruned after 24 hours) and sent to the selected LLM provider. Linked GitHub tokens are encrypted at rest when <code>SESSION_SECRET</code> is set. The security scanner is passive and refuses internal or private targets.</p>
+      <p class="plain"><span class="lbl">In plain words</span>Saying "I checked <b>this</b> much, and no further" is not a weakness in the project. It is the thing that makes everything else it says believable.</p>
+    </section>
+
+    <!-- 22 -->
+    <section id="s22">
+      <h2><span class="num">22</span>Roadmap</h2>
+      <ol class="body">
+        <li><strong>Sandboxed execution.</strong> Actually run the generated suite in Docker against a live target and report real pass/fail — turning the honest "selectors resolve" metric into a measured one.</li>
+        <li><strong>AST-based selector extraction.</strong> Replace regex with a real parse, capturing roles, accessible names and visible text — removing the largest current source of false flags.</li>
+        <li><strong>Retrieval-based context selection.</strong> Per-provider context budgeting so very large repositories stop relying on summarization.</li>
+        <li><strong>Re-fit both models on real outcomes.</strong> Retrain the logistic regression on which files actually produced verified, low-fragility selectors, and re-fit <code>FEATURE_WEIGHTS</code> from observed selector breakage. The plumbing for both already exists.</li>
+        <li><strong>Diff-aware regeneration.</strong> Re-upload a new version and see only which tests need updating.</li>
+        <li><strong>Conversational refinement.</strong> "Add a test for the forgot-password flow."</li>
+      </ol>
+    </section>
+
+    <!-- 23 -->
+    <section id="s23">
+      <h2><span class="num">23</span>Conclusion</h2>
+      <p>Testra takes a task that is universally agreed to be valuable and universally avoided — writing end-to-end tests — and reduces it to pasting a URL. The engineering interest is not that it calls a language model; almost anything can call a language model. It is the apparatus built <em>around</em> the model: a deterministic pre-filter that spends no tokens, a learned classifier that adapts file selection to the codebase in front of it, a grounding layer that traces every generated selector back to the line of source it came from, a repair loop that fixes misses with evidence rather than with another guess, a durability model that grades what will still work next quarter, and a benchmark that refuses to flatter itself with a convenient denominator.</p>
+      <p>The two ML components embody the project's technical thesis: prefer the small, explainable thing. A 226-line logistic regression with named weights, readable JSON and a safe fallback path is a better engineering answer than a dependency-heavy black box when the model is small, the data is thin, and somebody will eventually need to ask <em>why did it score that file a 9?</em></p>
+      <p class="plain"><span class="lbl">In plain words</span>A robot that checks your website, written by a robot that read your website — and a receipt showing exactly what was checked, and what wasn't.</p>
+    </section>
+
+    <!-- 24 -->
+    <section id="s24">
+      <h2><span class="num">24</span>Glossary</h2>
+      <div class="scroller"><table>
+        <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>E2E test</td><td>A test that drives a real browser through the real application, as a user would.</td></tr>
+          <tr><td>Selector</td><td>The instruction that tells the robot which element to click, e.g. <code>#login-btn</code>.</td></tr>
+          <tr><td>Anchor</td><td>Something in the page a selector can hold on to: an id, a test-id, a role, a label, visible text.</td></tr>
+          <tr><td>Grounding</td><td>Proving a generated selector corresponds to an anchor that genuinely exists.</td></tr>
+          <tr><td>Provenance</td><td>The file and line where an anchor was declared — the citation behind a claim.</td></tr>
+          <tr><td>Page Object Model</td><td>A pattern where each screen gets a class exposing its actions, so specs stay readable.</td></tr>
+          <tr><td>Logistic regression</td><td>A model that multiplies each input by a learned weight, sums them, and squashes the total into a 0–1 probability.</td></tr>
+          <tr><td>Sigmoid</td><td>The squashing function σ(z) = 1/(1+e<sup>−z</sup>) that produces that probability.</td></tr>
+          <tr><td>Gradient descent</td><td>Training by repeatedly nudging every weight in the direction that reduces the error.</td></tr>
+          <tr><td>Epoch</td><td>One complete pass over the training data. Testra uses 400.</td></tr>
+          <tr><td>Learning rate</td><td>How big each nudge is. Testra uses 0.3.</td></tr>
+          <tr><td>L2 regularization</td><td>Gently shrinking weights toward zero each step so no feature dominates on coincidence.</td></tr>
+          <tr><td>Weak supervision</td><td>Training on cheap, approximate labels when hand-labelled truth is unavailable.</td></tr>
+          <tr><td>Overfitting</td><td>Memorising the training examples instead of learning the pattern behind them.</td></tr>
+          <tr><td>Fragility</td><td>How likely a currently-correct selector is to break as the UI changes.</td></tr>
+          <tr><td>SSE / NDJSON</td><td>Two ways of streaming results as they are produced rather than after everything finishes.</td></tr>
+          <tr><td>SSRF</td><td>An attack that tricks a server into fetching internal addresses on the attacker's behalf.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <footer class="doc">
+      Testra — Project Report · 23 July 2026 · Companion to the project presentation · MIT licence
+    </footer>
+
+  </main>
+</div>
+
+<script>
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a'));
+    var map = {};
+    links.forEach(function (a) { map[a.getAttribute('href').slice(1)] = a; });
+
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) {
+          links.forEach(function (a) { a.classList.remove('on'); });
+          var a = map[e.target.id];
+          if (a) a.classList.add('on');
+        }
+      });
+    }, { rootMargin: '-10% 0px -70% 0px', threshold: 0 });
+
+    Object.keys(map).forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) io.observe(el);
+    });
+  })();
+</script>
+
+</body>
+</html>
