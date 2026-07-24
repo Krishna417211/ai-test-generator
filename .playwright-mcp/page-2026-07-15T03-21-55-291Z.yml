@@ -1,0 +1,223 @@
+- generic [ref=f21e1]:
+  - generic [ref=f21e4]:
+    - banner [ref=f21e5]:
+      - navigation [ref=f21e7]:
+        - link "Testra" [ref=f21e8] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f21e34]:
+          - link "Generate" [ref=f21e35] [cursor=pointer]:
+            - /url: /generate
+          - link "Publish" [ref=f21e38] [cursor=pointer]:
+            - /url: /publish
+          - link "Scan" [ref=f21e44] [cursor=pointer]:
+            - /url: /scan
+          - link "Status" [ref=f21e48] [cursor=pointer]:
+            - /url: /status
+        - button "K Krishna" [ref=f21e52] [cursor=pointer]:
+          - generic [ref=f21e53]: K
+          - generic [ref=f21e54]: Krishna
+    - main [ref=f21e57]:
+      - generic [ref=f21e88]:
+        - generic [ref=f21e89]:
+          - generic [ref=f21e91]:
+            - generic [ref=f21e92]: Input
+            - generic [ref=f21e99]: Preview
+            - generic [ref=f21e105]: Configure
+            - generic [ref=f21e112]:
+              - generic [ref=f21e113]: "4"
+              - generic [ref=f21e115]: Download
+          - generic [ref=f21e272]:
+            - generic [ref=f21e273]:
+              - generic [ref=f21e278]:
+                - paragraph [ref=f21e279]: 7 tests across 8 files
+                - paragraph [ref=f21e280]:
+                  - text: Playwright
+                  - generic [ref=f21e281]: · syntax check passed
+                - paragraph [ref=f21e282]: Syntax-checked only — not executed. Run them against your app to confirm they pass.
+              - button "Download All" [ref=f21e283] [cursor=pointer]
+            - generic [ref=f21e287]:
+              - generic [ref=f21e288]: Test Specs (2)
+              - generic [ref=f21e289]:
+                - generic [ref=f21e290]:
+                  - generic [ref=f21e291]:
+                    - generic [ref=f21e298]:
+                      - generic [ref=f21e299]:
+                        - generic [ref=f21e300]: tests/specs/login.spec.ts
+                        - generic [ref=f21e301]: Test Spec
+                      - paragraph [ref=f21e302]: Login flow test cases
+                    - generic [ref=f21e303]:
+                      - button "Copy to clipboard" [ref=f21e304] [cursor=pointer]
+                      - button "Download file" [ref=f21e308] [cursor=pointer]
+                      - button "Hide" [active] [ref=f21e488] [cursor=pointer]
+                  - code [ref=f21e492]:
+                    - generic [ref=f21e493]:
+                      - textbox "Editor content" [ref=f21e494]
+                      - textbox [ref=f21e495]
+                      - generic [ref=f21e497]:
+                        - generic [ref=f21e498]: "1"
+                        - generic [ref=f21e501]: "2"
+                        - generic [ref=f21e503]: "3"
+                        - generic [ref=f21e505]: "4"
+                        - generic [ref=f21e507]: "5"
+                        - generic [ref=f21e509]:
+                          - generic [ref=f21e510] [cursor=pointer]: 
+                          - generic [ref=f21e511]: "6"
+                        - generic [ref=f21e512]: "7"
+                        - generic [ref=f21e514]: "8"
+                        - generic [ref=f21e516]:
+                          - generic [ref=f21e517] [cursor=pointer]: 
+                          - generic [ref=f21e518]: "9"
+                        - generic [ref=f21e519]: "10"
+                        - generic [ref=f21e521]: "11"
+                        - generic [ref=f21e523]: "12"
+                        - generic [ref=f21e525]: "13"
+                        - generic [ref=f21e527]:
+                          - generic [ref=f21e528] [cursor=pointer]: 
+                          - generic [ref=f21e529]: "14"
+                        - generic [ref=f21e530]: "15"
+                        - generic [ref=f21e532]: "16"
+                        - generic [ref=f21e534]: "17"
+                        - generic [ref=f21e536]: "18"
+                        - generic [ref=f21e538]: "19"
+                        - generic [ref=f21e540]: "20"
+                        - generic [ref=f21e542]:
+                          - generic [ref=f21e543] [cursor=pointer]: 
+                          - generic [ref=f21e544]: "21"
+                      - generic [ref=f21e588]:
+                        - generic [ref=f21e589]: "import { test, expect } from '@playwright/test';"
+                        - generic [ref=f21e591]: "import { LoginPage } from '../pages/LoginPage';"
+                        - generic [ref=f21e594]: const baseUrl = 'http://localhost:3000';
+                        - generic [ref=f21e597]: "test.describe('Login flow', () => {"
+                        - generic [ref=f21e599]: "let loginPage: LoginPage;"
+                        - generic [ref=f21e602]: "test.beforeEach(async ({ page }) => {"
+                        - generic [ref=f21e604]: await page.goto(baseUrl + '/login');
+                        - generic [ref=f21e606]: loginPage = new LoginPage(page);
+                        - generic [ref=f21e608]: "});"
+                        - generic [ref=f21e611]: "test('should render login form correctly', async () => {"
+                        - generic [ref=f21e613]: await expect(loginPage.getLoginForm()).toBeVisible();
+                        - generic [ref=f21e615]: await expect(loginPage.getEmailInput()).toBeVisible();
+                        - generic [ref=f21e617]: await expect(loginPage.getPasswordInput()).toBeVisible();
+                        - generic [ref=f21e619]: await expect(loginPage.getLoginSubmitButton()).toBeVisible();
+                        - generic [ref=f21e621]: "});"
+                        - generic [ref=f21e624]: "test('should submit login form successfully', async () => {"
+                - generic [ref=f21e314]:
+                  - generic [ref=f21e321]:
+                    - generic [ref=f21e322]:
+                      - generic [ref=f21e323]: tests/specs/cart.spec.ts
+                      - generic [ref=f21e324]: Test Spec
+                    - paragraph [ref=f21e325]: Cart flow test cases
+                  - generic [ref=f21e326]:
+                    - button "Copy to clipboard" [ref=f21e327] [cursor=pointer]
+                    - button "Download file" [ref=f21e331] [cursor=pointer]
+                    - button "Preview" [ref=f21e335] [cursor=pointer]
+            - generic [ref=f21e336]:
+              - generic [ref=f21e337]: Page Objects (2)
+              - generic [ref=f21e338]:
+                - generic [ref=f21e340]:
+                  - generic [ref=f21e347]:
+                    - generic [ref=f21e348]:
+                      - generic [ref=f21e349]: tests/pages/LoginPage.ts
+                      - generic [ref=f21e350]: Page Object
+                    - paragraph [ref=f21e351]: Page Object for login page
+                  - generic [ref=f21e352]:
+                    - button "Copy to clipboard" [ref=f21e353] [cursor=pointer]
+                    - button "Download file" [ref=f21e357] [cursor=pointer]
+                    - button "Preview" [ref=f21e361] [cursor=pointer]
+                - generic [ref=f21e363]:
+                  - generic [ref=f21e370]:
+                    - generic [ref=f21e371]:
+                      - generic [ref=f21e372]: tests/pages/CartPage.ts
+                      - generic [ref=f21e373]: Page Object
+                    - paragraph [ref=f21e374]: Page Object for cart page
+                  - generic [ref=f21e375]:
+                    - button "Copy to clipboard" [ref=f21e376] [cursor=pointer]
+                    - button "Download file" [ref=f21e380] [cursor=pointer]
+                    - button "Preview" [ref=f21e384] [cursor=pointer]
+            - generic [ref=f21e385]:
+              - generic [ref=f21e386]: Config & CI/CD (4)
+              - generic [ref=f21e387]:
+                - generic [ref=f21e389]:
+                  - generic [ref=f21e396]:
+                    - generic [ref=f21e397]:
+                      - generic [ref=f21e398]: playwright.config.ts
+                      - generic [ref=f21e399]: Config
+                    - paragraph [ref=f21e400]: Playwright configuration file
+                  - generic [ref=f21e401]:
+                    - button "Copy to clipboard" [ref=f21e402] [cursor=pointer]
+                    - button "Download file" [ref=f21e406] [cursor=pointer]
+                    - button "Preview" [ref=f21e410] [cursor=pointer]
+                - generic [ref=f21e412]:
+                  - generic [ref=f21e419]:
+                    - generic [ref=f21e420]:
+                      - generic [ref=f21e421]: .github/workflows/e2e-tests.yml
+                      - generic [ref=f21e422]: CI/CD
+                    - paragraph [ref=f21e423]: GitHub Actions CI/CD pipeline for automatic test runs
+                  - generic [ref=f21e424]:
+                    - button "Copy to clipboard" [ref=f21e425] [cursor=pointer]
+                    - button "Download file" [ref=f21e429] [cursor=pointer]
+                    - button "Preview" [ref=f21e433] [cursor=pointer]
+                - generic [ref=f21e435]:
+                  - generic [ref=f21e442]:
+                    - generic [ref=f21e443]:
+                      - generic [ref=f21e444]: .gitlab-ci.yml
+                      - generic [ref=f21e445]: CI/CD
+                    - paragraph [ref=f21e446]: GitLab CI pipeline
+                  - generic [ref=f21e447]:
+                    - button "Copy to clipboard" [ref=f21e448] [cursor=pointer]
+                    - button "Download file" [ref=f21e452] [cursor=pointer]
+                    - button "Preview" [ref=f21e456] [cursor=pointer]
+                - generic [ref=f21e458]:
+                  - generic [ref=f21e465]:
+                    - generic [ref=f21e466]:
+                      - generic [ref=f21e467]: README.md
+                      - generic [ref=f21e468]: Docs
+                    - paragraph [ref=f21e469]: Setup and running instructions for the generated test suite
+                  - generic [ref=f21e470]:
+                    - button "Copy to clipboard" [ref=f21e471] [cursor=pointer]
+                    - button "Download file" [ref=f21e475] [cursor=pointer]
+                    - button "Preview" [ref=f21e479] [cursor=pointer]
+            - generic [ref=f21e480]:
+              - button "Generate for another repo" [ref=f21e481] [cursor=pointer]
+              - button "Download ZIP" [ref=f21e482] [cursor=pointer]
+        - generic [ref=f21e174]:
+          - generic [ref=f21e175]:
+            - generic [ref=f21e176]: LLM Providers
+            - generic [ref=f21e180]:
+              - generic [ref=f21e181]:
+                - generic [ref=f21e182]: Gemini 1.5 Flash
+                - generic [ref=f21e187]: 0/2 keys
+              - generic [ref=f21e188]:
+                - generic [ref=f21e189]: Groq LLaMA 3.1
+                - generic [ref=f21e194]: 2/2 keys
+              - generic [ref=f21e195]:
+                - generic [ref=f21e196]: Claude Haiku
+                - generic [ref=f21e201]: 1/1 keys
+          - generic [ref=f21e202]:
+            - generic [ref=f21e203]: Session
+            - generic [ref=f21e204]:
+              - generic [ref=f21e205]: Framework
+              - generic [ref=f21e206]: React (Vite/CRA)
+            - generic [ref=f21e207]:
+              - generic [ref=f21e208]: Files
+              - generic [ref=f21e209]: "4"
+            - generic [ref=f21e210]:
+              - generic [ref=f21e211]: Routes
+              - generic [ref=f21e212]: "2"
+            - generic [ref=f21e213]:
+              - generic [ref=f21e214]: Tokens
+              - generic [ref=f21e215]: "216"
+    - contentinfo [ref=f21e21]:
+      - generic [ref=f21e22]:
+        - generic [ref=f21e23]: Testra — free & open source
+        - generic [ref=f21e29]:
+          - link "Generate" [ref=f21e30] [cursor=pointer]:
+            - /url: /generate
+          - link "Publish" [ref=f21e31] [cursor=pointer]:
+            - /url: /publish
+          - link "Scan" [ref=f21e32] [cursor=pointer]:
+            - /url: /scan
+          - link "GitHub" [ref=f21e33] [cursor=pointer]:
+            - /url: https://github.com
+  - generic [ref=f21e629]:
+    - alert
+    - alert

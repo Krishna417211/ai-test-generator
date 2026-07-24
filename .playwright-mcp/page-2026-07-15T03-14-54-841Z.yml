@@ -1,0 +1,35 @@
+- generic [ref=f16e3]:
+  - banner [ref=f16e4]:
+    - navigation [ref=f16e6]:
+      - link "Testra" [ref=f16e7] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f16e13]:
+        - link "Generate" [ref=f16e14] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f16e17] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f16e23] [cursor=pointer]:
+          - /url: /scan
+        - link "Status" [ref=f16e27] [cursor=pointer]:
+          - /url: /status
+      - button "K Krishna" [ref=f16e32] [cursor=pointer]:
+        - generic [ref=f16e33]: K
+        - generic [ref=f16e34]: Krishna
+  - main [ref=f16e38]:
+    - generic [ref=f16e39]:
+      - heading "404" [level=1] [ref=f16e44]
+      - paragraph [ref=f16e45]: This page took a wrong turn. The link may be broken or the page may have moved.
+      - link "Back home" [ref=f16e46] [cursor=pointer]:
+        - /url: /
+  - contentinfo [ref=f16e49]:
+    - generic [ref=f16e50]:
+      - generic [ref=f16e51]: Testra — free & open source
+      - generic [ref=f16e57]:
+        - link "Generate" [ref=f16e58] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f16e59] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f16e60] [cursor=pointer]:
+          - /url: /scan
+        - link "GitHub" [ref=f16e61] [cursor=pointer]:
+          - /url: https://github.com

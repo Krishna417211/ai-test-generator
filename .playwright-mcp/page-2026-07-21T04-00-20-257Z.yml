@@ -1,0 +1,133 @@
+- generic [ref=f4e3]:
+  - banner [ref=f4e4]:
+    - navigation [ref=f4e6]:
+      - link "Testra" [ref=f4e7] [cursor=pointer]:
+        - /url: /dashboard
+      - generic [ref=f4e13]:
+        - link "5 left 0/5" [ref=f4e79] [cursor=pointer]:
+          - /url: /settings
+          - generic [ref=f4e81]:
+            - generic [ref=f4e82]: 5 left
+            - generic [ref=f4e83]: 0/5
+        - button "K Krishna Priya" [ref=f4e86] [cursor=pointer]:
+          - generic [ref=f4e87]: K
+          - generic [ref=f4e88]: Krishna Priya
+  - generic [ref=f4e92]:
+    - complementary [ref=f4e93]:
+      - generic [ref=f4e94]:
+        - generic [ref=f4e95]:
+          - generic [ref=f4e96]: K
+          - generic [ref=f4e97]:
+            - generic [ref=f4e98]: Krishna Priya
+            - generic [ref=f4e99]: blacktheta20@gmail.com
+        - navigation [ref=f4e100]:
+          - link "Overview" [ref=f4e101] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Generate" [ref=f4e108] [cursor=pointer]:
+            - /url: /generate
+          - link "Publish" [ref=f4e112] [cursor=pointer]:
+            - /url: /publish
+          - link "Scan" [ref=f4e119] [cursor=pointer]:
+            - /url: /scan
+          - link "Status" [ref=f4e124] [cursor=pointer]:
+            - /url: /status
+          - link "Settings" [ref=f4e128] [cursor=pointer]:
+            - /url: /settings
+          - link "Profile" [ref=f4e133] [cursor=pointer]:
+            - /url: /profile
+    - main [ref=f4e139]:
+      - generic [ref=f4e140]:
+        - generic [ref=f4e141]:
+          - generic [ref=f4e142]:
+            - heading "Welcome back, Krishna" [level=1] [ref=f4e143]
+            - paragraph [ref=f4e144]: Here's what you've been doing with Testra.
+          - generic [ref=f4e145]: Free
+        - generic [ref=f4e146]:
+          - generic [ref=f4e147]:
+            - generic [ref=f4e151]: "0"
+            - generic [ref=f4e152]: Suites generated
+          - generic [ref=f4e153]:
+            - generic [ref=f4e160]: "0"
+            - generic [ref=f4e161]: Tests written
+          - generic [ref=f4e162]:
+            - generic [ref=f4e167]: "2"
+            - generic [ref=f4e168]: Repos published
+          - generic [ref=f4e169]:
+            - generic [ref=f4e174]: "0"
+            - generic [ref=f4e175]: Sites scanned
+        - generic [ref=f4e176]:
+          - generic [ref=f4e177]:
+            - generic [ref=f4e178]:
+              - generic [ref=f4e179]: Activity
+              - paragraph [ref=f4e180]: 2 actions over the last 30 days
+            - generic [ref=f4e181]:
+              - generic [ref=f4e182]:
+                - generic [ref=f4e183]: Generate
+                - generic [ref=f4e185]: Publish
+                - generic [ref=f4e187]: Scan
+              - button "Table" [ref=f4e189] [cursor=pointer]
+          - img "Daily activity for the last 30 days" [ref=f4e193]:
+            - generic [ref=f4e194]: "0"
+            - generic [ref=f4e196]: "1"
+            - generic [ref=f4e198]: "2"
+            - generic [ref=f4e261]: Jun 22
+            - generic [ref=f4e262]: Jul 21
+        - generic [ref=f4e263]:
+          - generic [ref=f4e264]:
+            - generic [ref=f4e265]:
+              - generic [ref=f4e266]: Recent activity
+              - link "Full history" [ref=f4e267] [cursor=pointer]:
+                - /url: /profile
+            - generic [ref=f4e271]:
+              - link "Krishna417211/fast_api Published 0 files 6 days ago" [ref=f4e272] [cursor=pointer]:
+                - /url: https://github.com/Krishna417211/fast_api
+                - generic [ref=f4e275]:
+                  - generic [ref=f4e276]: Krishna417211/fast_api
+                  - generic [ref=f4e277]: Published 0 files
+                - generic [ref=f4e278]: 6 days ago
+              - link "Krishna417211/demo Published 0 files 7 days ago" [ref=f4e283] [cursor=pointer]:
+                - /url: https://github.com/Krishna417211/demo
+                - generic [ref=f4e286]:
+                  - generic [ref=f4e287]: Krishna417211/demo
+                  - generic [ref=f4e288]: Published 0 files
+                - generic [ref=f4e289]: 7 days ago
+          - generic [ref=f4e294]:
+            - generic [ref=f4e295]:
+              - generic [ref=f4e296]: Plan & usage
+              - generic [ref=f4e301]:
+                - generic [ref=f4e302]: 0 of 5
+                - generic [ref=f4e303]: Resets Aug 1, 2026
+              - paragraph [ref=f4e305]: 5 generations left this month.
+              - link "Manage plan" [ref=f4e306] [cursor=pointer]:
+                - /url: /settings
+            - generic [ref=f4e310]:
+              - generic [ref=f4e311]: Quick actions
+              - link "Generate tests Point at a repo, get an E2E suite" [ref=f4e312] [cursor=pointer]:
+                - /url: /generate
+                - generic [ref=f4e316]:
+                  - generic [ref=f4e317]: Generate tests
+                  - generic [ref=f4e318]: Point at a repo, get an E2E suite
+              - link "Publish a project Push to a new GitHub repo with CI" [ref=f4e322] [cursor=pointer]:
+                - /url: /publish
+                - generic [ref=f4e329]:
+                  - generic [ref=f4e330]: Publish a project
+                  - generic [ref=f4e331]: Push to a new GitHub repo with CI
+              - link "Scan a site Audit a deployed URL for issues" [ref=f4e335] [cursor=pointer]:
+                - /url: /scan
+                - generic [ref=f4e340]:
+                  - generic [ref=f4e341]: Scan a site
+                  - generic [ref=f4e342]: Audit a deployed URL for issues
+  - contentinfo [ref=f4e41]:
+    - generic [ref=f4e42]:
+      - generic [ref=f4e43]: Testra — free & open source
+      - generic [ref=f4e49]:
+        - link "Generate" [ref=f4e50] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f4e51] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f4e52] [cursor=pointer]:
+          - /url: /scan
+        - link "How it works" [ref=f4e53] [cursor=pointer]:
+          - /url: /how-it-works
+        - link "GitHub" [ref=f4e54] [cursor=pointer]:
+          - /url: https://github.com

@@ -1,0 +1,146 @@
+- generic [ref=f9e3]:
+  - banner [ref=f9e4]:
+    - navigation [ref=f9e6]:
+      - link "Testra" [ref=f9e7] [cursor=pointer]:
+        - /url: /dashboard
+      - generic [ref=f9e13]:
+        - link "Resets Aug 1, 2026" [ref=f9e34] [cursor=pointer]:
+          - /url: /settings
+          - generic [ref=f9e36]:
+            - generic [ref=f9e37]: Resets
+            - generic [ref=f9e38]: Aug 1, 2026
+        - button "Q QA User 01" [ref=f9e42] [cursor=pointer]:
+          - generic [ref=f9e43]: Q
+          - generic [ref=f9e44]: QA User 01
+  - generic [ref=f9e48]:
+    - complementary [ref=f9e49]:
+      - generic [ref=f9e50]:
+        - generic [ref=f9e51]:
+          - generic [ref=f9e52]: Q
+          - generic [ref=f9e53]:
+            - generic [ref=f9e54]: QA User 01
+            - generic [ref=f9e55]: qa-user-01@testra.test
+        - navigation [ref=f9e56]:
+          - link "Overview" [ref=f9e57] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Generate" [ref=f9e64] [cursor=pointer]:
+            - /url: /generate
+          - link "Publish" [ref=f9e68] [cursor=pointer]:
+            - /url: /publish
+          - link "Scan" [ref=f9e75] [cursor=pointer]:
+            - /url: /scan
+          - link "Status" [ref=f9e80] [cursor=pointer]:
+            - /url: /status
+          - link "Settings" [ref=f9e84] [cursor=pointer]:
+            - /url: /settings
+          - link "Profile" [ref=f9e89] [cursor=pointer]:
+            - /url: /profile
+    - main [ref=f9e95]:
+      - dialog [ref=f9e419]:
+        - button "Close" [active] [ref=f9e420] [cursor=pointer]
+        - generic [ref=f9e424]: Free limit reached
+        - heading "Upgrade to Testra Pro" [level=2] [ref=f9e427]
+        - paragraph [ref=f9e428]: You've used all 5 free generations this month. Your quota resets on August 1 — or go unlimited now.
+        - generic [ref=f9e429]:
+          - button "yearly Save $140 $100/year" [pressed] [ref=f9e430] [cursor=pointer]:
+            - generic [ref=f9e431]:
+              - generic [ref=f9e435]: yearly
+              - generic [ref=f9e436]: Save $140
+            - generic [ref=f9e437]: $100/year
+          - button "monthly $20/month" [ref=f9e438] [cursor=pointer]:
+            - generic [ref=f9e439]: monthly
+            - generic [ref=f9e442]: $20/month
+        - list [ref=f9e443]:
+          - listitem [ref=f9e444]: Unlimited test generations
+          - listitem [ref=f9e447]: Priority access when capacity is tight
+          - listitem [ref=f9e450]: Page Object Models + CI/CD pipelines
+          - listitem [ref=f9e453]: Private repo publishing
+        - button "Upgrade — $100/yr" [ref=f9e456] [cursor=pointer]
+        - button "Not now — I'll wait for my quota to reset" [ref=f9e457] [cursor=pointer]
+      - generic [ref=f9e127]:
+        - generic [ref=f9e128]:
+          - generic [ref=f9e130]:
+            - generic [ref=f9e131]: Input
+            - generic [ref=f9e138]: Preview
+            - generic [ref=f9e145]:
+              - generic [ref=f9e146]: "3"
+              - generic [ref=f9e148]: Configure
+            - generic [ref=f9e151]:
+              - generic [ref=f9e152]: "4"
+              - generic [ref=f9e154]: Download
+          - generic [ref=f9e459]:
+            - generic [ref=f9e460]: "Detected: Static HTML/JS (multi-page)"
+            - generic [ref=f9e465]:
+              - generic [ref=f9e466]: Test Framework
+              - generic [ref=f9e467]:
+                - button "Playwright Fast, reliable, supports all browsers" [pressed] [ref=f9e468] [cursor=pointer]:
+                  - generic [ref=f9e469]: Playwright
+                  - generic [ref=f9e470]: Fast, reliable, supports all browsers
+                - button "Cypress Great DX, real-time browser preview" [ref=f9e471] [cursor=pointer]:
+                  - generic [ref=f9e472]: Cypress
+                  - generic [ref=f9e473]: Great DX, real-time browser preview
+                - button "Selenium Industry standard, broad language support" [ref=f9e474] [cursor=pointer]:
+                  - generic [ref=f9e475]: Selenium
+                  - generic [ref=f9e476]: Industry standard, broad language support
+            - generic [ref=f9e477]:
+              - generic [ref=f9e478]: Language
+              - generic [ref=f9e479]:
+                - button "TypeScript" [pressed] [ref=f9e480] [cursor=pointer]
+                - button "JavaScript" [ref=f9e481] [cursor=pointer]
+                - button "Python" [ref=f9e482] [cursor=pointer]
+            - generic [ref=f9e483]:
+              - generic [ref=f9e484]: What to test (optional)
+              - 'textbox "Describe the flows you want tested. For example: - User registration and login - Product search and add to cart - Checkout with payment form - Profile settings update" [ref=f9e485]':
+                - /placeholder: "Describe the flows you want tested. For example:\n- User registration and login\n- Product search and add to cart\n- Checkout with payment form\n- Profile settings update"
+              - paragraph [ref=f9e486]: Leave blank to auto-test all detected pages and flows.
+            - generic [ref=f9e487]:
+              - generic [ref=f9e488]: Base URL
+              - textbox [ref=f9e489]: http://localhost:3000
+            - generic [ref=f9e490]:
+              - generic [ref=f9e491]: Live site URL — optional
+              - textbox "https://your-app.com" [ref=f9e492]
+              - paragraph [ref=f9e493]: If it's deployed and you own it, we'll verify every selector against the live DOM and auto-fix the ones that don't match. Nothing is executed — we only read the page.
+            - switch "Include GitHub Actions + GitLab CI yaml" [checked] [ref=f9e494] [cursor=pointer]
+            - button "Generate Test Suite" [ref=f9e498] [cursor=pointer]
+        - generic [ref=f9e215]:
+          - generic [ref=f9e216]:
+            - generic [ref=f9e217]: LLM Providers
+            - generic [ref=f9e501]: Streaming from llama-3.3-70b-versatile...
+            - generic [ref=f9e221]:
+              - generic [ref=f9e222]:
+                - generic [ref=f9e223]: Gemini 1.5 Flash
+                - generic [ref=f9e228]: 1/2 keys
+              - generic [ref=f9e229]:
+                - generic [ref=f9e230]: Groq LLaMA 3.1
+                - generic [ref=f9e235]: 2/2 keys
+              - generic [ref=f9e236]:
+                - generic [ref=f9e237]: Claude Haiku
+                - generic [ref=f9e242]: 1/1 keys
+          - generic [ref=f9e243]:
+            - generic [ref=f9e244]: Session
+            - generic [ref=f9e245]:
+              - generic [ref=f9e246]: Framework
+              - generic [ref=f9e247]: Static HTML/JS (multi-page)
+            - generic [ref=f9e248]:
+              - generic [ref=f9e249]: Files
+              - generic [ref=f9e250]: "1"
+            - generic [ref=f9e251]:
+              - generic [ref=f9e252]: Routes
+              - generic [ref=f9e253]: "0"
+            - generic [ref=f9e254]:
+              - generic [ref=f9e255]: Tokens
+              - generic [ref=f9e256]: "88"
+  - contentinfo [ref=f9e20]:
+    - generic [ref=f9e21]:
+      - generic [ref=f9e22]: Testra — free & open source
+      - generic [ref=f9e28]:
+        - link "Generate" [ref=f9e29] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f9e30] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f9e31] [cursor=pointer]:
+          - /url: /scan
+        - link "How it works" [ref=f9e32] [cursor=pointer]:
+          - /url: /how-it-works
+        - link "GitHub" [ref=f9e33] [cursor=pointer]:
+          - /url: https://github.com

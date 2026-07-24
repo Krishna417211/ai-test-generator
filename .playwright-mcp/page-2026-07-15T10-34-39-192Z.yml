@@ -1,0 +1,14 @@
+- main [ref=f5e7]:
+  - generic [ref=f5e8]:
+    - generic [ref=f5e9]:
+      - heading "Check your email" [level=1] [ref=f5e34]
+      - paragraph [ref=f5e14]: We sent a 6-digit code to a****@testra.dev.
+    - generic [ref=f5e15]:
+      - generic [ref=f5e16]:
+        - textbox "6-digit login code" [active] [ref=f5e35]:
+          - /placeholder: "000000"
+        - button "Verify and open console" [disabled] [ref=f5e36]
+      - paragraph [ref=f5e30]:
+        - text: The code expires shortly.
+        - button "Start over" [ref=f5e39] [cursor=pointer]
+        - text: to get a new one.

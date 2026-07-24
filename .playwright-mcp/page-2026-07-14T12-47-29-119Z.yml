@@ -1,0 +1,81 @@
+- generic [ref=f1e3]:
+  - banner [ref=f1e4]:
+    - navigation [ref=f1e6]:
+      - link "Testra" [ref=f1e7] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f1e13]:
+        - link "Log in" [ref=f1e14] [cursor=pointer]:
+          - /url: /login
+        - link "Sign up" [ref=f1e15] [cursor=pointer]:
+          - /url: /signup
+  - main [ref=f1e17]:
+    - generic [ref=f1e20]:
+      - generic [ref=f1e21]: Gemini · Groq · Claude — all free, auto-rotated
+      - heading "Ship fearless. Test, push & secure with one AI." [level=1] [ref=f1e23]: Ship fearless.Test, push & secure with one AI.
+      - paragraph [ref=f1e24]: Testra reads your codebase and writes production E2E tests, publishes them to GitHub with CI/CD, and scans your live app for vulnerabilities — free, no account.
+      - generic [ref=f1e25]:
+        - link "Generate tests free" [ref=f1e26] [cursor=pointer]:
+          - /url: /generate
+        - link "Scan my site" [ref=f1e31] [cursor=pointer]:
+          - /url: /scan
+      - generic [ref=f1e35]: Loved by developers who hate writing tests
+      - generic [ref=f1e48]:
+        - generic [ref=f1e49]: login.spec.ts
+        - generic [ref=f1e56]:
+          - text: "import { test, expect } from"
+          - generic [ref=f1e57]: "'@playwright/test'"
+          - text: "; import { LoginPage } from"
+          - generic [ref=f1e58]: "'../pages/LoginPage'"
+          - text: ;
+          - generic [ref=f1e59]: // generated from your real selectors
+          - text: "test('user can log in', async ({ page }) => { const login = new LoginPage(page); await login.goto(); await login.signIn('ada@site.com', '********'); await expect(page).toHaveURL(/dashboard/); });"
+    - generic [ref=f1e61]:
+      - link [ref=f1e64] [cursor=pointer]:
+        - /url: /generate
+        - heading "Generate E2E tests" [level=3] [ref=f1e68]
+        - paragraph [ref=f1e69]: Point at any repo. A two-agent AI pipeline writes Playwright, Cypress or Selenium suites with real selectors, Page Objects & CI.
+        - generic [ref=f1e70]: Try it
+      - link [ref=f1e75] [cursor=pointer]:
+        - /url: /publish
+        - heading "Push to GitHub" [level=3] [ref=f1e82]
+        - paragraph [ref=f1e83]: Log in with GitHub, drop a ZIP, and we create a fresh repo and push it — with a validated CI/CD pipeline baked in.
+        - generic [ref=f1e84]: Try it
+      - link [ref=f1e89] [cursor=pointer]:
+        - /url: /scan
+        - heading "Scan for vulnerabilities" [level=3] [ref=f1e94]
+        - paragraph [ref=f1e95]: Audit your deployed URL for the misconfigurations that bite in production — with a fix and an AI action plan for each.
+        - generic [ref=f1e96]: Try it
+    - generic [ref=f1e99]:
+      - generic [ref=f1e100]:
+        - heading "From code to confidence" [level=2] [ref=f1e101]
+        - paragraph [ref=f1e102]: Three steps. No config. No account.
+      - generic [ref=f1e103]:
+        - generic [ref=f1e104]:
+          - generic [ref=f1e105]: "1"
+          - heading "Point at your code" [level=3] [ref=f1e111]
+          - paragraph [ref=f1e112]: A GitHub URL or a ZIP — public or private.
+        - generic [ref=f1e113]:
+          - generic [ref=f1e114]: "2"
+          - heading "AI does the work" [level=3] [ref=f1e119]
+          - paragraph [ref=f1e120]: Filters your repo, writes tests, validates them, hardens your deploy.
+        - generic [ref=f1e121]:
+          - generic [ref=f1e122]: "3"
+          - heading "Ship with confidence" [level=3] [ref=f1e126]
+          - paragraph [ref=f1e127]: Download, push to a repo, or get a security report — in seconds.
+    - generic [ref=f1e131]:
+      - heading "Your next deploy could be bulletproof." [level=2] [ref=f1e132]
+      - paragraph [ref=f1e133]: Generate a full test suite in the time it takes to read this sentence.
+      - link "Start now — it's free" [ref=f1e135] [cursor=pointer]:
+        - /url: /generate
+  - contentinfo [ref=f1e138]:
+    - generic [ref=f1e139]:
+      - generic [ref=f1e140]: Testra — free & open source
+      - generic [ref=f1e146]:
+        - link "Generate" [ref=f1e147] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f1e148] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f1e149] [cursor=pointer]:
+          - /url: /scan
+        - link "GitHub" [ref=f1e150] [cursor=pointer]:
+          - /url: https://github.com

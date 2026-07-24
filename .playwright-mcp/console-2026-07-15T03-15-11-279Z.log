@@ -1,0 +1,141 @@
+[     278ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:21550
+[     339ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4426
+[     340ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4426
+[   37499ms] ReferenceError: pluralize is not defined
+    at http://localhost:5173/src/pages/Status.tsx?t=1784085348579:215:56
+    at Array.map (<anonymous>)
+    at Status (http://localhost:5173/src/pages/Status.tsx?t=1784085348579:164:99)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:11548:26)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14582:28)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:15924:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3674:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3699:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3733:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19765:15)
+[   37507ms] ReferenceError: pluralize is not defined
+    at http://localhost:5173/src/pages/Status.tsx?t=1784085348579:215:56
+    at Array.map (<anonymous>)
+    at Status (http://localhost:5173/src/pages/Status.tsx?t=1784085348579:164:99)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:11548:26)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14582:28)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:15924:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3674:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3699:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3733:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19765:15)
+[   37509ms] [ERROR] The above error occurred in the <Status> component:
+
+    at Status (http://localhost:5173/src/pages/Status.tsx?t=1784085348579:35:37)
+    at ProtectedRoute (http://localhost:5173/src/components/ProtectedRoute.tsx:22:42)
+    at RenderedRoute (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4122:5)
+    at Routes (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4592:5)
+    at PopChildMeasure (http://localhost:5173/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8494:23)
+    at PopChild (http://localhost:5173/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8522:21)
+    at PresenceChild (http://localhost:5173/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8574:24)
+    at AnimatePresence (http://localhost:5173/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8661:26)
+    at AnimatedRoutes (http://localhost:5173/src/App.tsx?t=1784085243416:38:20)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.tsx:6:16)
+    at div
+    at div
+    at AuthProvider (http://localhost:5173/src/context/AuthContext.tsx:22:32)
+    at Router (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4535:15)
+    at BrowserRouter (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:5273:5)
+    at App
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14031
+[   37510ms] [ERROR] Uncaught UI error: ReferenceError: pluralize is not defined
+    at http://localhost:5173/src/pages/Status.tsx?t=1784085348579:215:56
+    at Array.map (<anonymous>)
+    at Status (http://localhost:5173/src/pages/Status.tsx?t=1784085348579:164:99)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:11548:26)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14582:28)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:15924:22)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19753:22)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19198:20)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19137:13)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19116:15) 
+    at Status (http://localhost:5173/src/pages/Status.tsx?t=1784085348579:35:37)
+    at ProtectedRoute (http://localhost:5173/src/components/ProtectedRoute.tsx:22:42)
+    at RenderedRoute (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4122:5)
+    at Routes (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4592:5)
+    at PopChildMeasure (http://localhost:5173/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8494:23)
+    at PopChild (http://localhost:5173/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8522:21)
+    at PresenceChild (http://localhost:5173/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8574:24)
+    at AnimatePresence (http://localhost:5173/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8661:26)
+    at AnimatedRoutes (http://localhost:5173/src/App.tsx?t=1784085243416:38:20)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.tsx:6:16)
+    at div
+    at div
+    at AuthProvider (http://localhost:5173/src/context/AuthContext.tsx:22:32)
+    at Router (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4535:15)
+    at BrowserRouter (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:5273:5)
+    at App @ http://localhost:5173/src/components/ErrorBoundary.tsx:11
+[   43835ms] ReferenceError: pluralize is not defined
+    at http://localhost:5173/src/pages/Status.tsx?t=1784085354907:215:56
+    at Array.map (<anonymous>)
+    at Status (http://localhost:5173/src/pages/Status.tsx?t=1784085354907:164:99)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:11548:26)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14582:28)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:15924:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3674:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3699:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3733:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19765:15)
+[   43838ms] ReferenceError: pluralize is not defined
+    at http://localhost:5173/src/pages/Status.tsx?t=1784085354907:215:56
+    at Array.map (<anonymous>)
+    at Status (http://localhost:5173/src/pages/Status.tsx?t=1784085354907:164:99)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:11548:26)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14582:28)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:15924:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3674:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3699:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:3733:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19765:15)
+[   43838ms] [ERROR] The above error occurred in the <Status> component:
+
+    at Status (http://localhost:5173/src/pages/Status.tsx?t=1784085354907:35:37)
+    at ProtectedRoute (http://localhost:5173/src/components/ProtectedRoute.tsx:22:42)
+    at RenderedRoute (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4122:5)
+    at Routes (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4592:5)
+    at PopChildMeasure (http://localhost:5173/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8494:23)
+    at PopChild (http://localhost:5173/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8522:21)
+    at PresenceChild (http://localhost:5173/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8574:24)
+    at AnimatePresence (http://localhost:5173/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8661:26)
+    at AnimatedRoutes (http://localhost:5173/src/App.tsx?t=1784085243416:38:20)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.tsx:6:16)
+    at div
+    at div
+    at AuthProvider (http://localhost:5173/src/context/AuthContext.tsx:22:32)
+    at Router (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4535:15)
+    at BrowserRouter (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:5273:5)
+    at App
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14031
+[   43839ms] [ERROR] Uncaught UI error: ReferenceError: pluralize is not defined
+    at http://localhost:5173/src/pages/Status.tsx?t=1784085354907:215:56
+    at Array.map (<anonymous>)
+    at Status (http://localhost:5173/src/pages/Status.tsx?t=1784085354907:164:99)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:11548:26)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:14582:28)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:15924:22)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19753:22)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19198:20)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19137:13)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/chunk-YZVM2MHU.js?v=cd6fc269:19116:15) 
+    at Status (http://localhost:5173/src/pages/Status.tsx?t=1784085354907:35:37)
+    at ProtectedRoute (http://localhost:5173/src/components/ProtectedRoute.tsx:22:42)
+    at RenderedRoute (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4122:5)
+    at Routes (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4592:5)
+    at PopChildMeasure (http://localhost:5173/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8494:23)
+    at PopChild (http://localhost:5173/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8522:21)
+    at PresenceChild (http://localhost:5173/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8574:24)
+    at AnimatePresence (http://localhost:5173/node_modules/.vite/deps/framer-motion.js?v=cd6fc269:8661:26)
+    at AnimatedRoutes (http://localhost:5173/src/App.tsx?t=1784085243416:38:20)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.tsx:6:16)
+    at div
+    at div
+    at AuthProvider (http://localhost:5173/src/context/AuthContext.tsx:22:32)
+    at Router (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:4535:15)
+    at BrowserRouter (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=cd6fc269:5273:5)
+    at App @ http://localhost:5173/src/components/ErrorBoundary.tsx:11

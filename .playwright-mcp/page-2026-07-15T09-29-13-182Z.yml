@@ -1,0 +1,122 @@
+- generic [ref=f3e3]:
+  - banner [ref=f3e4]:
+    - navigation [ref=f3e6]:
+      - link "Testra" [ref=f3e7] [cursor=pointer]:
+        - /url: /dashboard
+      - button "P Priya Admin" [ref=f3e62] [cursor=pointer]:
+        - generic [ref=f3e63]: P
+        - generic [ref=f3e64]: Priya Admin
+  - generic [ref=f3e68]:
+    - complementary [ref=f3e69]:
+      - generic [ref=f3e70]:
+        - generic [ref=f3e71]:
+          - generic [ref=f3e72]: P
+          - generic [ref=f3e73]:
+            - generic [ref=f3e74]: Priya Admin
+            - generic [ref=f3e75]: admin@testra.dev
+        - navigation [ref=f3e76]:
+          - link "Overview" [ref=f3e77] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Generate" [ref=f3e84] [cursor=pointer]:
+            - /url: /generate
+          - link "Publish" [ref=f3e88] [cursor=pointer]:
+            - /url: /publish
+          - link "Scan" [ref=f3e95] [cursor=pointer]:
+            - /url: /scan
+          - link "Status" [ref=f3e100] [cursor=pointer]:
+            - /url: /status
+          - link "Settings" [ref=f3e104] [cursor=pointer]:
+            - /url: /settings
+          - link "Profile" [ref=f3e109] [cursor=pointer]:
+            - /url: /profile
+          - generic [ref=f3e114]: Admin
+          - link "Overview" [ref=f3e118] [cursor=pointer]:
+            - /url: /admin
+          - link "Users" [ref=f3e123] [cursor=pointer]:
+            - /url: /admin/users
+          - link "System" [ref=f3e130] [cursor=pointer]:
+            - /url: /admin/system
+    - main [ref=f3e145]:
+      - generic [ref=f3e146]:
+        - generic [ref=f3e147]:
+          - generic [ref=f3e148]:
+            - heading "Users" [level=1] [ref=f3e149]
+            - paragraph [ref=f3e150]: 7 accounts on this instance
+          - button "Refresh" [ref=f3e151] [cursor=pointer]
+        - textbox "Search users" [ref=f3e158]:
+          - /placeholder: Search by email, name, or GitHub handle…
+        - generic [ref=f3e160]:
+          - button "A Ada Lovelace Pro ada@example.com ada 8 gen · 2 scan Joined May 7, 2026" [ref=f3e162] [cursor=pointer]:
+            - generic [ref=f3e163]: A
+            - generic [ref=f3e164]:
+              - generic [ref=f3e165]:
+                - generic [ref=f3e166]: Ada Lovelace
+                - generic [ref=f3e167]: Pro
+              - generic [ref=f3e168]: ada@example.comada
+            - generic [ref=f3e175]:
+              - generic [ref=f3e176]: 8 gen · 2 scan
+              - generic [ref=f3e177]: Joined May 7, 2026
+          - button "F Frank Ng frank@example.com 1 gen · 1 scan Joined May 1, 2026" [ref=f3e179] [cursor=pointer]:
+            - generic [ref=f3e180]: F
+            - generic [ref=f3e181]:
+              - generic [ref=f3e182]: Frank Ng
+              - generic [ref=f3e184]: frank@example.com
+            - generic [ref=f3e188]:
+              - generic [ref=f3e189]: 1 gen · 1 scan
+              - generic [ref=f3e190]: Joined May 1, 2026
+          - button "P Priya Admin Admin admin@testra.dev 5 gen · 1 scan Joined Mar 25, 2026" [ref=f3e192] [cursor=pointer]:
+            - generic [ref=f3e193]: P
+            - generic [ref=f3e194]:
+              - generic [ref=f3e195]:
+                - generic [ref=f3e196]: Priya Admin
+                - generic [ref=f3e197]: Admin
+              - generic [ref=f3e198]: admin@testra.dev
+            - generic [ref=f3e202]:
+              - generic [ref=f3e203]: 5 gen · 1 scan
+              - generic [ref=f3e204]: Joined Mar 25, 2026
+          - button "E Erin Woods erin@example.com 7 gen · 4 scan Joined Mar 20, 2026" [ref=f3e206] [cursor=pointer]:
+            - generic [ref=f3e207]: E
+            - generic [ref=f3e208]:
+              - generic [ref=f3e209]: Erin Woods
+              - generic [ref=f3e211]: erin@example.com
+            - generic [ref=f3e215]:
+              - generic [ref=f3e216]: 7 gen · 4 scan
+              - generic [ref=f3e217]: Joined Mar 20, 2026
+          - button "D Dave Cutler Suspended dave@example.com 6 gen · 1 scan Joined Mar 3, 2026" [ref=f3e219] [cursor=pointer]:
+            - generic [ref=f3e220]: D
+            - generic [ref=f3e221]:
+              - generic [ref=f3e222]:
+                - generic [ref=f3e223]: Dave Cutler
+                - generic [ref=f3e224]: Suspended
+              - generic [ref=f3e225]: dave@example.com
+            - generic [ref=f3e229]:
+              - generic [ref=f3e230]: 6 gen · 1 scan
+              - generic [ref=f3e231]: Joined Mar 3, 2026
+          - button "B Bob Martin bob@example.com 7 gen · 4 scan Joined Feb 3, 2026" [ref=f3e233] [cursor=pointer]:
+            - generic [ref=f3e234]: B
+            - generic [ref=f3e235]:
+              - generic [ref=f3e236]: Bob Martin
+              - generic [ref=f3e238]: bob@example.com
+            - generic [ref=f3e242]:
+              - generic [ref=f3e243]: 7 gen · 4 scan
+              - generic [ref=f3e244]: Joined Feb 3, 2026
+          - button "C Carol Shaw carol@test.org 0 gen · 3 scan Joined Jan 28, 2026" [ref=f3e246] [cursor=pointer]:
+            - generic [ref=f3e247]: C
+            - generic [ref=f3e248]:
+              - generic [ref=f3e249]: Carol Shaw
+              - generic [ref=f3e251]: carol@test.org
+            - generic [ref=f3e257]:
+              - generic [ref=f3e258]: 0 gen · 3 scan
+              - generic [ref=f3e259]: Joined Jan 28, 2026
+  - contentinfo [ref=f3e17]:
+    - generic [ref=f3e18]:
+      - generic [ref=f3e19]: Testra — free & open source
+      - generic [ref=f3e25]:
+        - link "Generate" [ref=f3e26] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f3e27] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f3e28] [cursor=pointer]:
+          - /url: /scan
+        - link "GitHub" [ref=f3e29] [cursor=pointer]:
+          - /url: https://github.com

@@ -1,0 +1,20 @@
+- generic [ref=f5e3]:
+  - banner [ref=f5e4]:
+    - generic [ref=f5e5]:
+      - generic [ref=f5e6]: Testra Admin
+      - generic [ref=f5e10]:
+        - generic [ref=f5e11]: blacktheta20@gmail.com
+        - link "Main app" [ref=f5e12] [cursor=pointer]:
+          - /url: /dashboard
+        - button "Sign out" [ref=f5e13] [cursor=pointer]
+  - generic [ref=f5e18]:
+    - complementary [ref=f5e19]:
+      - navigation [ref=f5e21]:
+        - link "Overview" [ref=f5e22] [cursor=pointer]:
+          - /url: /admin
+        - link "Users" [ref=f5e27] [cursor=pointer]:
+          - /url: /admin/users
+        - link "System" [ref=f5e34] [cursor=pointer]:
+          - /url: /admin/system
+    - main [ref=f5e49]:
+      - generic [ref=f5e50]: Loading the overview…

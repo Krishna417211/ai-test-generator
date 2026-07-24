@@ -1,0 +1,101 @@
+- generic [ref=f14e4]:
+  - banner [ref=f14e5]:
+    - navigation [ref=f14e7]:
+      - link "Testra" [ref=f14e8] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f14e34]:
+        - link "Generate" [ref=f14e35] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f14e38] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f14e44] [cursor=pointer]:
+          - /url: /scan
+        - link "Status" [ref=f14e48] [cursor=pointer]:
+          - /url: /status
+      - button "K Krishna" [ref=f14e52] [cursor=pointer]:
+        - generic [ref=f14e53]: K
+        - generic [ref=f14e54]: Krishna
+  - main [ref=f14e57]:
+    - generic [ref=f14e58]:
+      - generic [ref=f14e59]: Production security audit
+      - heading "Scan your deployed app" [level=1] [ref=f14e63]
+      - paragraph [ref=f14e64]: Find the misconfigurations that bite in production — HTTPS, security headers, cookies, CORS and exposed files — each with a concrete fix.
+    - generic [ref=f14e66]:
+      - paragraph [ref=f14e67]: "Enter your deployed URL and we'll audit it for common production security issues — HTTPS/TLS, security headers, cookie flags, CORS, and accidentally-exposed files — with a concrete fix for each. Passive & non-intrusive: it inspects configuration, it doesn't attack your site."
+      - textbox "https://your-app.com" [ref=f14e72]: https://nurons.me/home
+      - button "Scan for vulnerabilities" [ref=f14e73] [cursor=pointer]
+      - generic [ref=f14e80]:
+        - generic [ref=f14e81]:
+          - generic [ref=f14e82]:
+            - generic [ref=f14e83]: D
+            - generic [ref=f14e84]: 52/100
+          - generic [ref=f14e85]:
+            - generic [ref=f14e86]: https://nurons.me/home
+            - paragraph [ref=f14e87]: The overall risk level is moderate to high due to missing security headers. Fix the Content-Security-Policy, HSTS, and X-Frame-Options first, as they protect against common attacks like cross-site scripting and clickjacking. These fixes will significantly improve the site's security posture. Fortunately, the site's core functionality and data transmission appear to be properly encrypted, indicating some existing security measures are in place.
+        - generic [ref=f14e88]:
+          - generic [ref=f14e89]: 1 High
+          - generic [ref=f14e90]: 2 Medium
+          - generic [ref=f14e91]: 2 Low
+          - generic [ref=f14e92]: 1 Info
+        - generic [ref=f14e93]:
+          - generic [ref=f14e94]: 6 finding(s) · tap any to see details & the fix
+          - button "High headers No Content-Security-Policy Without a CSP, injected scripts (XSS) run freely. A CSP is the single most effective defence-in-depth control against XSS and data injection. Fix Add a Content-Security-Policy header, e.g. \"default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'\". −" [active] [ref=f14e152] [cursor=pointer]:
+            - generic [ref=f14e100]:
+              - generic [ref=f14e101]:
+                - generic [ref=f14e102]: High
+                - generic [ref=f14e103]: headers
+              - generic [ref=f14e104]: No Content-Security-Policy
+              - generic [ref=f14e153]:
+                - paragraph [ref=f14e154]: Without a CSP, injected scripts (XSS) run freely. A CSP is the single most effective defence-in-depth control against XSS and data injection.
+                - generic [ref=f14e155]:
+                  - generic [ref=f14e156]: Fix
+                  - paragraph [ref=f14e157]: Add a Content-Security-Policy header, e.g. "default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'".
+            - generic [ref=f14e105]: −
+          - button "Medium headers HSTS not set +" [ref=f14e107] [cursor=pointer]:
+            - generic [ref=f14e109]:
+              - generic [ref=f14e110]:
+                - generic [ref=f14e111]: Medium
+                - generic [ref=f14e112]: headers
+              - generic [ref=f14e113]: HSTS not set
+            - generic [ref=f14e114]: +
+          - button "Medium headers Clickjacking protection missing (X-Frame-Options) +" [ref=f14e116] [cursor=pointer]:
+            - generic [ref=f14e118]:
+              - generic [ref=f14e119]:
+                - generic [ref=f14e120]: Medium
+                - generic [ref=f14e121]: headers
+              - generic [ref=f14e122]: Clickjacking protection missing (X-Frame-Options)
+            - generic [ref=f14e123]: +
+          - button "Low headers MIME-sniffing not disabled (X-Content-Type-Options) +" [ref=f14e125] [cursor=pointer]:
+            - generic [ref=f14e127]:
+              - generic [ref=f14e128]:
+                - generic [ref=f14e129]: Low
+                - generic [ref=f14e130]: headers
+              - generic [ref=f14e131]: MIME-sniffing not disabled (X-Content-Type-Options)
+            - generic [ref=f14e132]: +
+          - button "Low headers No Referrer-Policy +" [ref=f14e134] [cursor=pointer]:
+            - generic [ref=f14e136]:
+              - generic [ref=f14e137]:
+                - generic [ref=f14e138]: Low
+                - generic [ref=f14e139]: headers
+              - generic [ref=f14e140]: No Referrer-Policy
+            - generic [ref=f14e141]: +
+          - button "Info headers No Permissions-Policy +" [ref=f14e143] [cursor=pointer]:
+            - generic [ref=f14e145]:
+              - generic [ref=f14e146]:
+                - generic [ref=f14e147]: Info
+                - generic [ref=f14e148]: headers
+              - generic [ref=f14e149]: No Permissions-Policy
+            - generic [ref=f14e150]: +
+        - paragraph [ref=f14e151]: This is a lightweight passive scan of configuration — a clean result isn't a substitute for a full penetration test.
+  - contentinfo [ref=f14e21]:
+    - generic [ref=f14e22]:
+      - generic [ref=f14e23]: Testra — free & open source
+      - generic [ref=f14e29]:
+        - link "Generate" [ref=f14e30] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f14e31] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f14e32] [cursor=pointer]:
+          - /url: /scan
+        - link "GitHub" [ref=f14e33] [cursor=pointer]:
+          - /url: https://github.com

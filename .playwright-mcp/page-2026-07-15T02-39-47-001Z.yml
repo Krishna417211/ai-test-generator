@@ -1,0 +1,116 @@
+- generic [ref=f4e4]:
+  - banner [ref=f4e5]:
+    - navigation [ref=f4e7]:
+      - link "Testra" [ref=f4e8] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f4e34]:
+        - link "Generate" [ref=f4e35] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f4e38] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f4e44] [cursor=pointer]:
+          - /url: /scan
+        - link "Status" [ref=f4e48] [cursor=pointer]:
+          - /url: /status
+      - button "K Krishna" [ref=f4e52] [cursor=pointer]:
+        - generic [ref=f4e53]: K
+        - generic [ref=f4e54]: Krishna
+  - main [ref=f4e57]:
+    - generic [ref=f4e96]:
+      - generic [ref=f4e97]:
+        - generic [ref=f4e99]:
+          - generic [ref=f4e100]: Input
+          - generic [ref=f4e108]:
+            - generic [ref=f4e109]: "2"
+            - generic [ref=f4e111]: Preview
+          - generic [ref=f4e114]:
+            - generic [ref=f4e115]: "3"
+            - generic [ref=f4e117]: Configure
+          - generic [ref=f4e120]:
+            - generic [ref=f4e121]: "4"
+            - generic [ref=f4e123]: Download
+        - generic [ref=f4e124]:
+          - generic [ref=f4e125]:
+            - generic [ref=f4e126]:
+              - generic [ref=f4e127]:
+                - text: React (Vite/CRA)
+                - heading "Project Analysis" [level=3] [ref=f4e128]
+              - generic [ref=f4e129]:
+                - generic [ref=f4e130]: "4"
+                - generic [ref=f4e131]: UI files found
+            - paragraph [ref=f4e132]: This is a React-based e-commerce application with user authentication and cart functionality. The app has a login page and a cart page, with routes for each. The main features include user login, cart management, and potentially more features to be added.
+            - generic [ref=f4e133]: 216 tokens • 2 routes detected
+          - generic [ref=f4e134]:
+            - generic [ref=f4e135]: Detected Routes
+            - generic [ref=f4e141]:
+              - generic [ref=f4e142]: /login
+              - generic [ref=f4e143]: /cart
+          - generic [ref=f4e144]:
+            - generic [ref=f4e145]: Key Pages to Test
+            - generic [ref=f4e151]:
+              - generic [ref=f4e153]:
+                - generic [ref=f4e154]:
+                  - generic [ref=f4e155]: src/pages/Login.jsx
+                  - generic [ref=f4e156]: high
+                - paragraph [ref=f4e157]: User login page with email/password form
+                - generic [ref=f4e158]:
+                  - generic [ref=f4e159]: successful login
+                  - generic [ref=f4e160]: invalid credentials
+                  - generic [ref=f4e161]: forgot password link
+              - generic [ref=f4e163]:
+                - generic [ref=f4e164]:
+                  - generic [ref=f4e165]: src/pages/Cart.jsx
+                  - generic [ref=f4e166]: medium
+                - paragraph [ref=f4e167]: User cart page with checkout button
+                - generic [ref=f4e168]:
+                  - generic [ref=f4e169]: checkout button click
+                  - generic [ref=f4e170]: cart item removal
+          - generic [ref=f4e171]:
+            - generic [ref=f4e172]: Testing Considerations
+            - list [ref=f4e176]:
+              - listitem [ref=f4e177]:
+                - generic [ref=f4e178]: •
+                - text: App uses React Router for client-side routing — need to mock route changes for tests
+              - listitem [ref=f4e179]:
+                - generic [ref=f4e180]: •
+                - text: No specific authentication mechanism is shown, but potential auth flows may need special handling
+          - button "Configure Test Generation" [ref=f4e181] [cursor=pointer]
+      - generic [ref=f4e185]:
+        - generic [ref=f4e186]:
+          - generic [ref=f4e187]: LLM Providers
+          - generic [ref=f4e191]:
+            - generic [ref=f4e192]:
+              - generic [ref=f4e193]: Gemini 1.5 Flash
+              - generic [ref=f4e198]: 1/2 keys
+            - generic [ref=f4e199]:
+              - generic [ref=f4e200]: Groq LLaMA 3.1
+              - generic [ref=f4e205]: 2/2 keys
+            - generic [ref=f4e206]:
+              - generic [ref=f4e207]: Claude Haiku
+              - generic [ref=f4e212]: 1/1 keys
+        - generic [ref=f4e213]:
+          - generic [ref=f4e214]: Session
+          - generic [ref=f4e215]:
+            - generic [ref=f4e216]: Framework
+            - generic [ref=f4e217]: React (Vite/CRA)
+          - generic [ref=f4e218]:
+            - generic [ref=f4e219]: Files
+            - generic [ref=f4e220]: "4"
+          - generic [ref=f4e221]:
+            - generic [ref=f4e222]: Routes
+            - generic [ref=f4e223]: "2"
+          - generic [ref=f4e224]:
+            - generic [ref=f4e225]: Tokens
+            - generic [ref=f4e226]: "216"
+  - contentinfo [ref=f4e21]:
+    - generic [ref=f4e22]:
+      - generic [ref=f4e23]: Testra — free & open source
+      - generic [ref=f4e29]:
+        - link "Generate" [ref=f4e30] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f4e31] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f4e32] [cursor=pointer]:
+          - /url: /scan
+        - link "GitHub" [ref=f4e33] [cursor=pointer]:
+          - /url: https://github.com

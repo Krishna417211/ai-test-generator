@@ -1,0 +1,120 @@
+- generic [ref=f2e3]:
+  - banner [ref=f2e4]:
+    - navigation [ref=f2e6]:
+      - link "Testra" [ref=f2e7] [cursor=pointer]:
+        - /url: /dashboard
+      - generic [ref=f2e13]:
+        - link "3 left 2/5" [ref=f2e34] [cursor=pointer]:
+          - /url: /settings
+          - generic [ref=f2e36]:
+            - generic [ref=f2e37]: 3 left
+            - generic [ref=f2e38]: 2/5
+        - button "T tp-check2" [ref=f2e42] [cursor=pointer]:
+          - generic [ref=f2e43]: T
+          - generic [ref=f2e44]: tp-check2
+  - generic [ref=f2e48]:
+    - complementary [ref=f2e49]:
+      - generic [ref=f2e50]:
+        - generic [ref=f2e51]:
+          - generic [ref=f2e52]: T
+          - generic [ref=f2e53]:
+            - generic [ref=f2e54]: tp-check2
+            - generic [ref=f2e55]: tp-check2@example.com
+        - navigation [ref=f2e56]:
+          - link "Overview" [ref=f2e57] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Generate" [ref=f2e64] [cursor=pointer]:
+            - /url: /generate
+          - link "Publish" [ref=f2e68] [cursor=pointer]:
+            - /url: /publish
+          - link "Scan" [ref=f2e75] [cursor=pointer]:
+            - /url: /scan
+          - link "Status" [ref=f2e80] [cursor=pointer]:
+            - /url: /status
+          - link "Settings" [ref=f2e84] [cursor=pointer]:
+            - /url: /settings
+          - link "Profile" [ref=f2e89] [cursor=pointer]:
+            - /url: /profile
+    - main [ref=f2e95]:
+      - generic [ref=f2e125]:
+        - generic [ref=f2e126]:
+          - generic [ref=f2e128]:
+            - generic [ref=f2e129]: Input
+            - generic [ref=f2e136]: Preview
+            - generic [ref=f2e143]:
+              - generic [ref=f2e144]: "3"
+              - generic [ref=f2e146]: Configure
+            - generic [ref=f2e149]:
+              - generic [ref=f2e150]: "4"
+              - generic [ref=f2e152]: Download
+          - generic [ref=f2e275]:
+            - generic [ref=f2e276]: "Detected: React (Vite/CRA)"
+            - generic [ref=f2e281]:
+              - generic [ref=f2e282]: Test Framework
+              - generic [ref=f2e283]:
+                - button "Playwright Fast, reliable, supports all browsers" [pressed] [ref=f2e284] [cursor=pointer]:
+                  - generic [ref=f2e285]: Playwright
+                  - generic [ref=f2e286]: Fast, reliable, supports all browsers
+                - button "Cypress Great DX, real-time browser preview" [ref=f2e287] [cursor=pointer]:
+                  - generic [ref=f2e288]: Cypress
+                  - generic [ref=f2e289]: Great DX, real-time browser preview
+                - button "Selenium Industry standard, broad language support" [ref=f2e290] [cursor=pointer]:
+                  - generic [ref=f2e291]: Selenium
+                  - generic [ref=f2e292]: Industry standard, broad language support
+            - generic [ref=f2e293]:
+              - generic [ref=f2e294]: Language
+              - generic [ref=f2e295]:
+                - button "TypeScript" [pressed] [ref=f2e296] [cursor=pointer]
+                - button "JavaScript" [ref=f2e297] [cursor=pointer]
+                - button "Python" [ref=f2e298] [cursor=pointer]
+            - generic [ref=f2e299]:
+              - generic [ref=f2e300]: What to test (optional)
+              - 'textbox "Describe the flows you want tested. For example: - User registration and login - Product search and add to cart - Checkout with payment form - Profile settings update" [ref=f2e301]':
+                - /placeholder: "Describe the flows you want tested. For example:\n- User registration and login\n- Product search and add to cart\n- Checkout with payment form\n- Profile settings update"
+              - paragraph [ref=f2e302]: Leave blank to auto-test all detected pages and flows.
+            - generic [ref=f2e303]:
+              - generic [ref=f2e304]: Base URL
+              - textbox [ref=f2e305]: http://localhost:3000
+            - switch "Include GitHub Actions + GitLab CI yaml" [checked] [ref=f2e306] [cursor=pointer]
+            - button "Generate Test Suite" [ref=f2e310] [cursor=pointer]
+        - generic [ref=f2e230]:
+          - generic [ref=f2e231]:
+            - generic [ref=f2e232]: LLM Providers
+            - generic [ref=f2e236]:
+              - generic [ref=f2e237]:
+                - generic [ref=f2e238]: Gemini 1.5 Flash
+                - generic [ref=f2e243]: 1/2 keys
+              - generic [ref=f2e244]:
+                - generic [ref=f2e245]: Groq LLaMA 3.1
+                - generic [ref=f2e250]: 2/2 keys
+              - generic [ref=f2e251]:
+                - generic [ref=f2e252]: Claude Haiku
+                - generic [ref=f2e257]: 1/1 keys
+          - generic [ref=f2e258]:
+            - generic [ref=f2e259]: Session
+            - generic [ref=f2e260]:
+              - generic [ref=f2e261]: Framework
+              - generic [ref=f2e262]: React (Vite/CRA)
+            - generic [ref=f2e263]:
+              - generic [ref=f2e264]: Files
+              - generic [ref=f2e265]: "3"
+            - generic [ref=f2e266]:
+              - generic [ref=f2e267]: Routes
+              - generic [ref=f2e268]: "1"
+            - generic [ref=f2e269]:
+              - generic [ref=f2e270]: Tokens
+              - generic [ref=f2e271]: "197"
+  - contentinfo [ref=f2e20]:
+    - generic [ref=f2e21]:
+      - generic [ref=f2e22]: Testra — free & open source
+      - generic [ref=f2e28]:
+        - link "Generate" [ref=f2e29] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f2e30] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f2e31] [cursor=pointer]:
+          - /url: /scan
+        - link "How it works" [ref=f2e32] [cursor=pointer]:
+          - /url: /how-it-works
+        - link "GitHub" [ref=f2e33] [cursor=pointer]:
+          - /url: https://github.com

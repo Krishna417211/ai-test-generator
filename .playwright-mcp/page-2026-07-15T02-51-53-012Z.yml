@@ -1,0 +1,150 @@
+- generic [ref=f9e4]:
+  - banner [ref=f9e5]:
+    - navigation [ref=f9e7]:
+      - link "Testra" [ref=f9e8] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f9e14]:
+        - link "Generate" [ref=f9e15] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f9e18] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f9e24] [cursor=pointer]:
+          - /url: /scan
+        - link "Status" [ref=f9e28] [cursor=pointer]:
+          - /url: /status
+      - button "K Krishna" [ref=f9e33] [cursor=pointer]:
+        - generic [ref=f9e34]: K
+        - generic [ref=f9e35]: Krishna
+  - main [ref=f9e39]:
+    - generic [ref=f9e91]:
+      - generic [ref=f9e92]:
+        - generic [ref=f9e94]:
+          - generic [ref=f9e95]: Input
+          - generic [ref=f9e103]:
+            - generic [ref=f9e104]: "2"
+            - generic [ref=f9e106]: Preview
+          - generic [ref=f9e109]:
+            - generic [ref=f9e110]: "3"
+            - generic [ref=f9e112]: Configure
+          - generic [ref=f9e115]:
+            - generic [ref=f9e116]: "4"
+            - generic [ref=f9e118]: Download
+        - generic [ref=f9e119]:
+          - generic [ref=f9e120]:
+            - generic [ref=f9e121]:
+              - generic [ref=f9e122]:
+                - text: FastAPI (API)
+                - heading "Project Analysis" [level=3] [ref=f9e123]
+              - generic [ref=f9e124]:
+                - generic [ref=f9e125]: "0"
+                - generic [ref=f9e126]: UI files found
+            - paragraph [ref=f9e127]: This FastAPI web project is a full-stack application with user authentication, dashboard, and profile management features. It provides a login system, navigation, and interactive components for user engagement. The application uses JWT authentication and has dynamic content with infinite scroll.
+            - generic [ref=f9e128]: 0 tokens • 6 routes detected
+          - generic [ref=f9e129]:
+            - generic [ref=f9e130]: Detected Routes
+            - generic [ref=f9e136]:
+              - generic [ref=f9e137]: /
+              - generic [ref=f9e138]: /login
+              - generic [ref=f9e139]: /register
+              - generic [ref=f9e140]: /dashboard
+              - generic [ref=f9e141]: /profile
+              - generic [ref=f9e142]: /forgot-password
+          - generic [ref=f9e143]:
+            - generic [ref=f9e144]: Key Pages to Test
+            - generic [ref=f9e150]:
+              - generic [ref=f9e152]:
+                - generic [ref=f9e153]:
+                  - generic [ref=f9e154]: src/pages/Login.tsx
+                  - generic [ref=f9e155]: high
+                - paragraph [ref=f9e156]: User login page with email/password form
+                - generic [ref=f9e157]:
+                  - generic [ref=f9e158]: successful login
+                  - generic [ref=f9e159]: invalid credentials
+                  - generic [ref=f9e160]: forgot password link
+              - generic [ref=f9e162]:
+                - generic [ref=f9e163]:
+                  - generic [ref=f9e164]: src/pages/Register.tsx
+                  - generic [ref=f9e165]: medium
+                - paragraph [ref=f9e166]: User registration page with form validation
+                - generic [ref=f9e167]:
+                  - generic [ref=f9e168]: successful registration
+                  - generic [ref=f9e169]: invalid form data
+                  - generic [ref=f9e170]: password mismatch
+              - generic [ref=f9e172]:
+                - generic [ref=f9e173]:
+                  - generic [ref=f9e174]: src/pages/Dashboard.tsx
+                  - generic [ref=f9e175]: high
+                - paragraph [ref=f9e176]: User dashboard with product grid and navigation
+                - generic [ref=f9e177]:
+                  - generic [ref=f9e178]: product grid rendering
+                  - generic [ref=f9e179]: navigation links
+                  - generic [ref=f9e180]: search functionality
+              - generic [ref=f9e182]:
+                - generic [ref=f9e183]:
+                  - generic [ref=f9e184]: src/pages/Profile.tsx
+                  - generic [ref=f9e185]: medium
+                - paragraph [ref=f9e186]: User profile page with edit functionality
+                - generic [ref=f9e187]:
+                  - generic [ref=f9e188]: profile information display
+                  - generic [ref=f9e189]: edit profile form
+                  - generic [ref=f9e190]: password change
+              - generic [ref=f9e192]:
+                - generic [ref=f9e193]:
+                  - generic [ref=f9e194]: src/pages/ForgotPassword.tsx
+                  - generic [ref=f9e195]: low
+                - paragraph [ref=f9e196]: Forgot password page with email reset link
+                - generic [ref=f9e197]:
+                  - generic [ref=f9e198]: email reset link
+                  - generic [ref=f9e199]: password reset form
+          - generic [ref=f9e200]:
+            - generic [ref=f9e201]: Testing Considerations
+            - list [ref=f9e205]:
+              - listitem [ref=f9e206]:
+                - generic [ref=f9e207]: •
+                - text: App uses JWT auth — tokens need to be seeded in localStorage before protected route tests
+              - listitem [ref=f9e208]:
+                - generic [ref=f9e209]: •
+                - text: Product grid uses infinite scroll — need special waits for dynamic content
+              - listitem [ref=f9e210]:
+                - generic [ref=f9e211]: •
+                - text: Form validation and error handling need to be thoroughly tested
+          - button "Configure Test Generation" [ref=f9e212] [cursor=pointer]
+      - generic [ref=f9e216]:
+        - generic [ref=f9e217]:
+          - generic [ref=f9e218]: LLM Providers
+          - generic [ref=f9e222]:
+            - generic [ref=f9e223]:
+              - generic [ref=f9e224]: Gemini 1.5 Flash
+              - generic [ref=f9e229]: 1/2 keys
+            - generic [ref=f9e230]:
+              - generic [ref=f9e231]: Groq LLaMA 3.1
+              - generic [ref=f9e236]: 2/2 keys
+            - generic [ref=f9e237]:
+              - generic [ref=f9e238]: Claude Haiku
+              - generic [ref=f9e243]: 1/1 keys
+        - generic [ref=f9e244]:
+          - generic [ref=f9e245]: Session
+          - generic [ref=f9e246]:
+            - generic [ref=f9e247]: Framework
+            - generic [ref=f9e248]: FastAPI (API)
+          - generic [ref=f9e249]:
+            - generic [ref=f9e250]: Files
+            - generic [ref=f9e251]: "0"
+          - generic [ref=f9e252]:
+            - generic [ref=f9e253]: Routes
+            - generic [ref=f9e254]: "6"
+          - generic [ref=f9e255]:
+            - generic [ref=f9e256]: Tokens
+            - generic [ref=f9e257]: "0"
+  - contentinfo [ref=f9e71]:
+    - generic [ref=f9e72]:
+      - generic [ref=f9e73]: Testra — free & open source
+      - generic [ref=f9e79]:
+        - link "Generate" [ref=f9e80] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f9e81] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f9e82] [cursor=pointer]:
+          - /url: /scan
+        - link "GitHub" [ref=f9e83] [cursor=pointer]:
+          - /url: https://github.com

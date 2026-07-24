@@ -1,0 +1,173 @@
+- generic [ref=f5e40]:
+  - banner [ref=f5e41]:
+    - generic [ref=f5e42]:
+      - generic [ref=f5e43]: Testra Admin
+      - generic [ref=f5e47]:
+        - generic [ref=f5e48]: admin@testra.dev
+        - link "Main app" [ref=f5e49] [cursor=pointer]:
+          - /url: /dashboard
+        - button "Sign out" [ref=f5e50] [cursor=pointer]
+  - generic [ref=f5e55]:
+    - complementary [ref=f5e56]:
+      - navigation [ref=f5e58]:
+        - link "Overview" [ref=f5e59] [cursor=pointer]:
+          - /url: /admin
+        - link "Users" [ref=f5e64] [cursor=pointer]:
+          - /url: /admin/users
+        - link "System" [ref=f5e71] [cursor=pointer]:
+          - /url: /admin/system
+    - main [ref=f5e86]:
+      - generic [ref=f5e87]:
+        - generic [ref=f5e88]:
+          - generic [ref=f5e89]:
+            - heading "Platform overview" [level=1] [ref=f5e90]
+            - paragraph [ref=f5e91]: Every account on this instance, not just yours.
+          - button "Refresh" [ref=f5e92] [cursor=pointer]
+        - generic [ref=f5e98]:
+          - generic [ref=f5e99]:
+            - generic [ref=f5e106]: "7"
+            - generic [ref=f5e107]: Accounts
+            - generic [ref=f5e108]: No new signups this week
+          - generic [ref=f5e109]:
+            - generic [ref=f5e113]: "1"
+            - generic [ref=f5e114]: On Pro
+            - generic [ref=f5e115]: 14% of accounts
+          - generic [ref=f5e116]:
+            - generic [ref=f5e120]: "34"
+            - generic [ref=f5e121]: Suites generated
+            - generic [ref=f5e122]: 34 in the last 24h
+          - generic [ref=f5e123]:
+            - generic [ref=f5e128]: "16"
+            - generic [ref=f5e129]: Sites scanned
+        - generic [ref=f5e130]:
+          - generic [ref=f5e131]:
+            - generic [ref=f5e136]: "5"
+            - generic [ref=f5e137]: Repos published
+          - generic [ref=f5e138]:
+            - generic [ref=f5e143]: "1"
+            - generic [ref=f5e144]: Live sessions
+          - generic [ref=f5e145]:
+            - generic [ref=f5e150]: "1"
+            - generic [ref=f5e151]: Suspended
+          - generic [ref=f5e152]:
+            - generic [ref=f5e156]: 29%
+            - generic [ref=f5e157]: Generation failure rate
+            - generic [ref=f5e158]: 10 failures all time
+        - generic [ref=f5e159]:
+          - generic [ref=f5e160]:
+            - generic [ref=f5e161]:
+              - generic [ref=f5e162]: Activity
+              - paragraph [ref=f5e163]: 55 actions over the last 30 days
+            - generic [ref=f5e164]:
+              - generic [ref=f5e165]:
+                - generic [ref=f5e166]: Generate
+                - generic [ref=f5e168]: Publish
+                - generic [ref=f5e170]: Scan
+              - button "Table" [ref=f5e172] [cursor=pointer]
+          - img "Daily activity for the last 30 days" [ref=f5e176]:
+            - generic [ref=f5e177]: "0"
+            - generic [ref=f5e179]: "28"
+            - generic [ref=f5e181]: "55"
+            - generic [ref=f5e246]: Jun 16
+            - generic [ref=f5e247]: Jul 15
+        - generic [ref=f5e248]:
+          - generic [ref=f5e249]:
+            - generic [ref=f5e250]: By framework
+            - generic [ref=f5e251]:
+              - generic [ref=f5e253]:
+                - generic [ref=f5e254]: Playwright
+                - generic [ref=f5e255]: 13 · 38%
+              - generic [ref=f5e259]:
+                - generic [ref=f5e260]: Selenium · Python
+                - generic [ref=f5e261]: 12 · 35%
+              - generic [ref=f5e265]:
+                - generic [ref=f5e266]: Cypress
+                - generic [ref=f5e267]: 6 · 18%
+              - generic [ref=f5e271]:
+                - generic [ref=f5e272]: Playwright · Python
+                - generic [ref=f5e273]: 3 · 9%
+          - generic [ref=f5e276]:
+            - generic [ref=f5e277]: By language
+            - generic [ref=f5e278]:
+              - generic [ref=f5e280]:
+                - generic [ref=f5e281]: Python
+                - generic [ref=f5e282]: 15 · 44%
+              - generic [ref=f5e286]:
+                - generic [ref=f5e287]: TypeScript
+                - generic [ref=f5e288]: 13 · 38%
+              - generic [ref=f5e292]:
+                - generic [ref=f5e293]: JavaScript
+                - generic [ref=f5e294]: 6 · 18%
+        - generic [ref=f5e297]:
+          - generic [ref=f5e298]: Recent failures
+          - generic [ref=f5e299]:
+            - generic [ref=f5e300]:
+              - generic [ref=f5e304]:
+                - generic [ref=f5e305]: frank/shop-web
+                - generic [ref=f5e306]: All providers exhausted (quota_exhausted)
+                - link "frank@example.com" [ref=f5e307] [cursor=pointer]:
+                  - /url: /admin/users?q=frank%40example.com
+              - generic [ref=f5e311]: 3 mins ago
+            - generic [ref=f5e312]:
+              - generic [ref=f5e316]:
+                - generic [ref=f5e317]: erin/shop-web
+                - generic [ref=f5e318]: All providers exhausted (quota_exhausted)
+                - link "erin@example.com" [ref=f5e319] [cursor=pointer]:
+                  - /url: /admin/users?q=erin%40example.com
+              - generic [ref=f5e323]: 3 mins ago
+            - generic [ref=f5e324]:
+              - generic [ref=f5e328]:
+                - generic [ref=f5e329]: erin/shop-web
+                - generic [ref=f5e330]: All providers exhausted (quota_exhausted)
+                - link "erin@example.com" [ref=f5e331] [cursor=pointer]:
+                  - /url: /admin/users?q=erin%40example.com
+              - generic [ref=f5e335]: 3 mins ago
+            - generic [ref=f5e336]:
+              - generic [ref=f5e340]:
+                - generic [ref=f5e341]: dave/shop-web
+                - generic [ref=f5e342]: All providers exhausted (quota_exhausted)
+                - link "dave@example.com" [ref=f5e343] [cursor=pointer]:
+                  - /url: /admin/users?q=dave%40example.com
+              - generic [ref=f5e347]: 3 mins ago
+            - generic [ref=f5e348]:
+              - generic [ref=f5e352]:
+                - generic [ref=f5e353]: dave/shop-web
+                - generic [ref=f5e354]: All providers exhausted (quota_exhausted)
+                - link "dave@example.com" [ref=f5e355] [cursor=pointer]:
+                  - /url: /admin/users?q=dave%40example.com
+              - generic [ref=f5e359]: 3 mins ago
+            - generic [ref=f5e360]:
+              - generic [ref=f5e364]:
+                - generic [ref=f5e365]: dave/shop-web
+                - generic [ref=f5e366]: All providers exhausted (quota_exhausted)
+                - link "dave@example.com" [ref=f5e367] [cursor=pointer]:
+                  - /url: /admin/users?q=dave%40example.com
+              - generic [ref=f5e371]: 3 mins ago
+            - generic [ref=f5e372]:
+              - generic [ref=f5e376]:
+                - generic [ref=f5e377]: dave/shop-web
+                - generic [ref=f5e378]: All providers exhausted (quota_exhausted)
+                - link "dave@example.com" [ref=f5e379] [cursor=pointer]:
+                  - /url: /admin/users?q=dave%40example.com
+              - generic [ref=f5e383]: 3 mins ago
+            - generic [ref=f5e384]:
+              - generic [ref=f5e388]:
+                - generic [ref=f5e389]: bob/shop-web
+                - generic [ref=f5e390]: All providers exhausted (quota_exhausted)
+                - link "bob@example.com" [ref=f5e391] [cursor=pointer]:
+                  - /url: /admin/users?q=bob%40example.com
+              - generic [ref=f5e395]: 3 mins ago
+            - generic [ref=f5e396]:
+              - generic [ref=f5e400]:
+                - generic [ref=f5e401]: bob/shop-web
+                - generic [ref=f5e402]: All providers exhausted (quota_exhausted)
+                - link "bob@example.com" [ref=f5e403] [cursor=pointer]:
+                  - /url: /admin/users?q=bob%40example.com
+              - generic [ref=f5e407]: 3 mins ago
+            - generic [ref=f5e408]:
+              - generic [ref=f5e412]:
+                - generic [ref=f5e413]: bob/shop-web
+                - generic [ref=f5e414]: All providers exhausted (quota_exhausted)
+                - link "bob@example.com" [ref=f5e415] [cursor=pointer]:
+                  - /url: /admin/users?q=bob%40example.com
+              - generic [ref=f5e419]: 3 mins ago

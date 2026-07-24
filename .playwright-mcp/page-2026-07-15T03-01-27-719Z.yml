@@ -1,0 +1,98 @@
+- generic [ref=f12e4]:
+  - banner [ref=f12e5]:
+    - navigation [ref=f12e7]:
+      - link "Testra" [ref=f12e8] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f12e34]:
+        - link "Generate" [ref=f12e35] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f12e38] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f12e44] [cursor=pointer]:
+          - /url: /scan
+        - link "Status" [ref=f12e48] [cursor=pointer]:
+          - /url: /status
+      - button "K Krishna" [ref=f12e52] [cursor=pointer]:
+        - generic [ref=f12e53]: K
+        - generic [ref=f12e54]: Krishna
+  - main [ref=f12e57]:
+    - generic [ref=f12e92]:
+      - generic [ref=f12e93]:
+        - generic [ref=f12e95]:
+          - generic [ref=f12e96]: Input
+          - generic [ref=f12e103]: Preview
+          - generic [ref=f12e110]:
+            - generic [ref=f12e111]: "3"
+            - generic [ref=f12e113]: Configure
+          - generic [ref=f12e116]:
+            - generic [ref=f12e117]: "4"
+            - generic [ref=f12e119]: Download
+        - generic [ref=f12e259]:
+          - generic [ref=f12e260]: "Detected: React (Vite/CRA)"
+          - generic [ref=f12e265]:
+            - generic [ref=f12e266]: Test Framework
+            - generic [ref=f12e267]:
+              - button "Playwright Fast, reliable, supports all browsers" [pressed] [ref=f12e268] [cursor=pointer]:
+                - generic [ref=f12e269]: Playwright
+                - generic [ref=f12e270]: Fast, reliable, supports all browsers
+              - button "Cypress Great DX, real-time browser preview" [ref=f12e271] [cursor=pointer]:
+                - generic [ref=f12e272]: Cypress
+                - generic [ref=f12e273]: Great DX, real-time browser preview
+              - button "Selenium Industry standard, broad language support" [ref=f12e274] [cursor=pointer]:
+                - generic [ref=f12e275]: Selenium
+                - generic [ref=f12e276]: Industry standard, broad language support
+          - generic [ref=f12e277]:
+            - generic [ref=f12e278]: Language
+            - generic [ref=f12e279]:
+              - button "TypeScript" [pressed] [ref=f12e280] [cursor=pointer]
+              - button "JavaScript" [ref=f12e281] [cursor=pointer]
+              - button "Python" [ref=f12e282] [cursor=pointer]
+          - generic [ref=f12e283]:
+            - generic [ref=f12e284]: What to test (optional)
+            - 'textbox "Describe the flows you want tested. For example: - User registration and login - Product search and add to cart - Checkout with payment form - Profile settings update" [ref=f12e285]':
+              - /placeholder: "Describe the flows you want tested. For example:\n- User registration and login\n- Product search and add to cart\n- Checkout with payment form\n- Profile settings update"
+            - paragraph [ref=f12e286]: Leave blank to auto-test all detected pages and flows.
+          - generic [ref=f12e287]:
+            - generic [ref=f12e288]: Base URL
+            - textbox [ref=f12e289]: http://localhost:3000
+          - switch "Include GitHub Actions + GitLab CI yaml" [checked] [ref=f12e290] [cursor=pointer]
+          - button "Generate Test Suite" [ref=f12e294] [cursor=pointer]
+      - generic [ref=f12e215]:
+        - generic [ref=f12e216]:
+          - generic [ref=f12e217]: LLM Providers
+          - generic [ref=f12e221]:
+            - generic [ref=f12e222]:
+              - generic [ref=f12e223]: Gemini 1.5 Flash
+              - generic [ref=f12e228]: 1/2 keys
+            - generic [ref=f12e229]:
+              - generic [ref=f12e230]: Groq LLaMA 3.1
+              - generic [ref=f12e235]: 2/2 keys
+            - generic [ref=f12e236]:
+              - generic [ref=f12e237]: Claude Haiku
+              - generic [ref=f12e242]: 1/1 keys
+        - generic [ref=f12e243]:
+          - generic [ref=f12e244]: Session
+          - generic [ref=f12e245]:
+            - generic [ref=f12e246]: Framework
+            - generic [ref=f12e247]: React (Vite/CRA)
+          - generic [ref=f12e248]:
+            - generic [ref=f12e249]: Files
+            - generic [ref=f12e250]: "41"
+          - generic [ref=f12e251]:
+            - generic [ref=f12e252]: Routes
+            - generic [ref=f12e253]: "7"
+          - generic [ref=f12e254]:
+            - generic [ref=f12e255]: Tokens
+            - generic [ref=f12e256]: ~62k
+  - contentinfo [ref=f12e21]:
+    - generic [ref=f12e22]:
+      - generic [ref=f12e23]: Testra — free & open source
+      - generic [ref=f12e29]:
+        - link "Generate" [ref=f12e30] [cursor=pointer]:
+          - /url: /generate
+        - link "Publish" [ref=f12e31] [cursor=pointer]:
+          - /url: /publish
+        - link "Scan" [ref=f12e32] [cursor=pointer]:
+          - /url: /scan
+        - link "GitHub" [ref=f12e33] [cursor=pointer]:
+          - /url: https://github.com
