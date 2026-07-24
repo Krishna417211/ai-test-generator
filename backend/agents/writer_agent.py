@@ -23,6 +23,12 @@ from services.validator import validate_files
 from services import grounding as grounding_svc
 from services import fragility as fragility_svc
 from services import renderer as renderer_svc
+from services import live_crawler as crawler_svc
+
+# How many of the deployed site's own routes a live crawl will render and merge
+# before it stops. Enough to reach the login/signup/checkout surfaces that the
+# landing page never shows; capped so a large site can't stall a generation.
+CRAWL_MAX_PAGES = 20
 
 logger = logging.getLogger(__name__)
 
@@ -252,34 +258,60 @@ class WriterAgent:
         dom_index = None
         dom_note = None
         if live_url:
+            # Mode 2 (live crawl): render *and* walk the deployed site's own
+            # routes, merging every page's real anchors into one index. This is
+            # strictly richer than the single-page render below — a landing page
+            # is often a shell whose /login, /signup, /checkout carry the forms a
+            # test must ground against. Best-effort: if the crawler can't run
+            # (no browser) or the crawl comes back thin, we fall through to the
+            # single-page render, and then to a static fetch — the same safe
+            # degradation as before. Nothing is executed; we only read the DOM.
             try:
-                # Render the page in a headless browser when one is available, so a
-                # client-rendered app is grounded against the DOM the browser
-                # actually builds rather than its empty shell. Falls back to a
-                # static fetch (mode="static") on any deploy without a browser.
-                html, render_mode = await renderer_svc.render_html(live_url)
-                candidate = grounding_svc.build_dom_index(html)
-                # A rendered page with almost no anchors is a genuinely sparse page;
-                # a *static* shell is just JS we couldn't run. Either way, grounding
-                # against near-nothing proves nothing the source doesn't and would
-                # let the report claim a live-DOM check that never really happened —
-                # so decline it and say why, honestly reflecting which case it was.
-                if grounding_svc.dom_index_is_useful(candidate):
-                    dom_index = candidate
+                result = await crawler_svc.crawl(live_url, max_pages=CRAWL_MAX_PAGES)
+                if result.pages and grounding_svc.dom_index_is_useful(result.index):
+                    dom_index = result.index
                     logger.info(
-                        f"DOM grounding ({render_mode}): indexed "
-                        f"{len(candidate.anchors)} anchors from {live_url}"
+                        f"DOM grounding (crawl/{result.n_pages}p): indexed "
+                        f"{len(result.index.anchors)} anchors across "
+                        f"{result.n_pages} routes of {live_url}"
                     )
-                else:
-                    dom_note = grounding_svc.describe_thin_dom(
-                        html, rendered=(render_mode == "rendered")
-                    )
-                    logger.info(
-                        f"DOM grounding skipped for {live_url} ({render_mode}): only "
-                        f"{len(candidate.anchors)} anchors — using source only"
-                    )
+            except crawler_svc.CrawlUnavailable as e:
+                logger.info(f"Live crawl unavailable for {live_url}: {e} — trying single-page render")
             except Exception as e:
-                logger.warning(f"DOM grounding unavailable for {live_url}: {e} — using source only")
+                logger.warning(f"Live crawl failed for {live_url}: {e} — trying single-page render")
+
+            # Fallback: single-page render (Mode 1's DOM grounding), used when the
+            # crawl was unavailable or too thin to prove anything.
+            if dom_index is None:
+                try:
+                    # Render the page in a headless browser when one is available,
+                    # so a client-rendered app is grounded against the DOM the
+                    # browser actually builds rather than its empty shell. Falls
+                    # back to a static fetch (mode="static") without a browser.
+                    html, render_mode = await renderer_svc.render_html(live_url)
+                    candidate = grounding_svc.build_dom_index(html)
+                    # A rendered page with almost no anchors is a genuinely sparse
+                    # page; a *static* shell is just JS we couldn't run. Either
+                    # way, grounding against near-nothing proves nothing the source
+                    # does not and would let the report claim a live-DOM check that
+                    # never really happened — so decline it and say why, honestly
+                    # reflecting which case it was.
+                    if grounding_svc.dom_index_is_useful(candidate):
+                        dom_index = candidate
+                        logger.info(
+                            f"DOM grounding ({render_mode}): indexed "
+                            f"{len(candidate.anchors)} anchors from {live_url}"
+                        )
+                    else:
+                        dom_note = grounding_svc.describe_thin_dom(
+                            html, rendered=(render_mode == "rendered")
+                        )
+                        logger.info(
+                            f"DOM grounding skipped for {live_url} ({render_mode}): only "
+                            f"{len(candidate.anchors)} anchors — using source only"
+                        )
+                except Exception as e:
+                    logger.warning(f"DOM grounding unavailable for {live_url}: {e} — using source only")
 
         # Self-heal: if any generated file fails static validation, ask the LLM
         # to fix it. (Off by default — costs extra LLM calls.)
