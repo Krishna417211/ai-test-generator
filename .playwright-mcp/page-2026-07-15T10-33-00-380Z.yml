@@ -1,8 +1,0 @@
-- main [ref=f4e7]:
-  - generic [ref=f4e8]:
-    - generic [ref=f4e9]:
-      - heading "Not an admin account" [level=1] [ref=f4e42]
-      - paragraph [ref=f4e14]: You're signed in as bob@example.com.
-    - generic [ref=f4e15]:
-      - paragraph [ref=f4e43]: This account doesn't have admin access. Sign out and use an admin address, or ask whoever runs this instance to add yours.
-      - button "Sign out and try another account" [ref=f4e44] [cursor=pointer]

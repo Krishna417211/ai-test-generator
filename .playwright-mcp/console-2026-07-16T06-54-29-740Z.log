@@ -1,2 +1,0 @@
-[     194ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "username"): (More info: https://goo.gl/9p2vKq) %o @ http://13.205.171.237/login:0
-[   19086ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://13.205.171.237/api/auth/login:0
