@@ -1,6 +1,9 @@
 import { useState } from "react";
-import { Play, Settings, AlertTriangle } from "lucide-react";
+import {
+  Play, Settings, AlertTriangle, Globe, Loader2, CheckCircle2, XCircle, Ban,
+} from "lucide-react";
 import type { Framework, Language } from "../types";
+import { previewCrawl, type CrawlPreview } from "../utils/api";
 
 interface Config {
   framework: Framework;
@@ -52,6 +55,27 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading, 
   const [baseUrl, setBaseUrl] = useState("http://localhost:3000");
   const [includeCi, setIncludeCi] = useState(true);
   const [liveUrl, setLiveUrl] = useState("");
+
+  // "Preview crawl" — run the live crawler on liveUrl by itself so the user can
+  // confirm it actually renders their site before spending a generation credit.
+  const [crawl, setCrawl] = useState<CrawlPreview | null>(null);
+  const [crawling, setCrawling] = useState(false);
+  const [crawlError, setCrawlError] = useState<string | null>(null);
+
+  const runPreview = async () => {
+    const url = liveUrl.trim();
+    if (!url || crawling) return;
+    setCrawling(true);
+    setCrawlError(null);
+    setCrawl(null);
+    try {
+      setCrawl(await previewCrawl(url));
+    } catch (e) {
+      setCrawlError(e instanceof Error ? e.message : "Crawl preview failed");
+    } finally {
+      setCrawling(false);
+    }
+  };
 
   const handleFrameworkChange = (fw: Framework) => {
     setFramework(fw);
@@ -159,6 +183,32 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading, 
           If it&apos;s deployed and you own it, we&apos;ll verify every selector against the live
           DOM and auto-fix the ones that don&apos;t match. Nothing is executed — we only read the page.
         </p>
+
+        {/* Preview crawl — exercises the live crawler on its own so you can see
+            it working (routes rendered, anchors indexed) before generating. */}
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={runPreview}
+            disabled={!liveUrl.trim() || crawling}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-grey-700 bg-white/[0.02] text-sm text-grey-300 hover:border-grey-600 hover:text-white disabled:opacity-40 disabled:hover:border-grey-700 transition-all"
+          >
+            {crawling ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
+            {crawling ? "Crawling your site…" : "Preview live crawl"}
+          </button>
+          <p className="text-xs text-grey-500 mt-1.5">
+            Renders your site and follows its own links — the same crawl used for grounding. No credit spent.
+          </p>
+
+          {crawlError && (
+            <div className="mt-3 flex items-start gap-2.5 px-4 py-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-sm text-rose-300">
+              <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+              <span>{crawlError}</span>
+            </div>
+          )}
+
+          {crawl && <CrawlResultCard crawl={crawl} />}
+        </div>
       </div>
 
       {/* CI toggle — a real switch, so the whole row (not just the 40px track)
@@ -201,6 +251,95 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading, 
         <Play size={16} />
         {loading ? "Generating..." : "Generate Test Suite"}
       </button>
+    </div>
+  );
+}
+
+// Per-status framing. "thin"/"unavailable" are not failures — the crawl ran (or
+// couldn't run here) and a real generation would degrade safely — so they read
+// amber, distinct from a hard red error, and each says what generation would do.
+const STATUS: Record<
+  CrawlPreview["status"],
+  { icon: typeof Globe; label: string; ring: string; tint: string }
+> = {
+  ok:          { icon: CheckCircle2, label: "Crawl succeeded",   ring: "border-emerald-500/30 bg-emerald-500/[0.07]", tint: "text-emerald-300" },
+  thin:        { icon: AlertTriangle, label: "Rendered, but thin", ring: "border-amber-500/30 bg-amber-500/[0.07]",   tint: "text-amber-300" },
+  unavailable: { icon: Ban,          label: "Crawler unavailable", ring: "border-amber-500/30 bg-amber-500/[0.07]",   tint: "text-amber-300" },
+  blocked:     { icon: Ban,          label: "URL blocked",        ring: "border-rose-500/30 bg-rose-500/[0.07]",     tint: "text-rose-300" },
+  error:       { icon: XCircle,      label: "Crawl failed",       ring: "border-rose-500/30 bg-rose-500/[0.07]",     tint: "text-rose-300" },
+};
+
+/** Shows what the live crawler actually saw — routes rendered, anchors indexed,
+ *  a sample of those anchors, and routes it discovered but didn't visit. This is
+ *  the "is it working?" proof, right in the generate flow. */
+function CrawlResultCard({ crawl }: { crawl: CrawlPreview }) {
+  const s = STATUS[crawl.status];
+  const Icon = s.icon;
+  const ran = crawl.n_pages > 0;
+
+  return (
+    <div className={`mt-3 rounded-xl border ${s.ring} p-4 space-y-3`}>
+      <div className="flex items-center justify-between gap-3">
+        <span className={`flex items-center gap-2 text-sm font-semibold ${s.tint}`}>
+          <Icon size={15} className="shrink-0" />
+          {s.label}
+        </span>
+        <span className="text-[11px] font-mono text-grey-500">{crawl.elapsed_ms} ms</span>
+      </div>
+
+      {ran && (
+        <div className="flex flex-wrap gap-4 text-sm">
+          <span className="text-grey-300">
+            <span className="font-mono text-white">{crawl.n_pages}</span>{" "}
+            <span className="text-grey-500">route{crawl.n_pages === 1 ? "" : "s"} rendered</span>
+          </span>
+          <span className="text-grey-300">
+            <span className="font-mono text-white">{crawl.n_anchors}</span>{" "}
+            <span className="text-grey-500">anchor{crawl.n_anchors === 1 ? "" : "s"} indexed</span>
+          </span>
+        </div>
+      )}
+
+      {crawl.message && (
+        <p className="text-xs text-grey-400 leading-relaxed">{crawl.message}</p>
+      )}
+
+      {crawl.pages.length > 0 && (
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-grey-500 mb-1.5">Routes rendered</div>
+          <div className="max-h-40 overflow-y-auto rounded-lg border border-grey-800 divide-y divide-grey-800">
+            {crawl.pages.map((p) => (
+              <div key={p.path} className="flex items-center justify-between gap-3 px-3 py-1.5 text-xs">
+                <span className="font-mono text-grey-300 truncate">{p.path || "/"}</span>
+                <span className="font-mono text-grey-500 shrink-0">{p.n_anchors}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {crawl.sample_anchors.length > 0 && (
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-grey-500 mb-1.5">Sample anchors</div>
+          <div className="flex flex-wrap gap-1.5">
+            {crawl.sample_anchors.map((a, i) => (
+              <span
+                key={`${a.kind}:${a.value}:${i}`}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.03] border border-grey-800 text-[11px]"
+              >
+                <span className="text-brand-300 font-mono">{a.kind}</span>
+                <span className="text-grey-400 font-mono truncate max-w-[180px]">{a.value}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {crawl.unvisited.length > 0 && (
+        <p className="text-[11px] text-grey-500">
+          + {crawl.unvisited.length} more route{crawl.unvisited.length === 1 ? "" : "s"} discovered but not visited (page cap reached).
+        </p>
+      )}
     </div>
   );
 }

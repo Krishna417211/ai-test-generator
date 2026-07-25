@@ -47,6 +47,49 @@ class StatusRequest(BaseModel):
     pass
 
 
+class CrawlPreviewRequest(BaseModel):
+    """A single deployed URL to render-and-crawl on its own, so the user can see
+    whether the live crawler works before spending a generation credit."""
+    url: str
+
+
+# ── Responses (live-crawl preview) ────────────
+
+class CrawledRoute(BaseModel):
+    path: str                                # the route's path, e.g. "/login"
+    n_anchors: int                           # anchors this page contributed
+
+
+class CrawlAnchor(BaseModel):
+    kind: str                                # id | testid | role | text | ...
+    value: str
+
+
+class CrawlPreviewResponse(BaseModel):
+    """The observable result of a standalone live crawl.
+
+    `status` tells the UI what actually happened, honestly:
+      ok          — crawl rendered enough to ground a suite against.
+      thin        — it rendered but found too few anchors; a real run would fall
+                    back to source-only grounding (so we say so, not "success").
+      unavailable — no headless browser on the server (CrawlUnavailable).
+      blocked     — the URL is private/out-of-scope (the SSRF/scope guard).
+      error       — the crawl couldn't complete (unreachable host, etc.).
+    """
+    status: str
+    message: str = ""
+    seed: Optional[str] = None
+    n_pages: int = 0
+    n_anchors: int = 0
+    # Whether this index would actually be used for grounding (status == "ok").
+    useful: bool = False
+    pages: list[CrawledRoute] = []
+    # Routes discovered but not visited because the page cap was hit.
+    unvisited: list[str] = []
+    sample_anchors: list[CrawlAnchor] = []
+    elapsed_ms: int = 0
+
+
 # ── Auth ─────────────────────────────────────
 
 class SignupRequest(BaseModel):

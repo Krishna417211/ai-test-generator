@@ -495,6 +495,42 @@ export async function generateTests(
   return res.json();
 }
 
+export interface CrawlRoute {
+  path: string;
+  n_anchors: number;
+}
+
+export interface CrawlAnchor {
+  kind: string;
+  value: string;
+}
+
+export interface CrawlPreview {
+  status: "ok" | "thin" | "unavailable" | "blocked" | "error";
+  message: string;
+  seed: string | null;
+  n_pages: number;
+  n_anchors: number;
+  useful: boolean;
+  pages: CrawlRoute[];
+  unvisited: string[];
+  sample_anchors: CrawlAnchor[];
+  elapsed_ms: number;
+}
+
+/** Run the live crawler on a URL by itself so the user can see whether it works
+ *  — routes rendered, anchors indexed — without spending a generation credit.
+ *  This drives the "Preview crawl" tool in the generate flow. */
+export async function previewCrawl(url: string): Promise<CrawlPreview> {
+  const res = await fetch(`${API_BASE}/api/crawl-preview`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) await parseError(res, "Crawl preview failed");
+  return res.json();
+}
+
 export function streamGeneration(
   jobId: string, framework: string, language: string, testFlows: string, baseUrl: string,
   onChunk: (chunk: string) => void, onProvider: (provider: string) => void,
