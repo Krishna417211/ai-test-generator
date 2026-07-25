@@ -33,7 +33,9 @@ from config import settings
 from logging_config import configure_logging, request_id_var
 from ratelimit import rate_limit, analyze_limiter, generate_limiter, email_limiter, otp_limiter
 from agents.filter_agent import FilterAgent, NoTestableUIError
-from agents.writer_agent import WriterAgent
+from agents.writer_agent import WriterAgent, CRAWL_MAX_PAGES
+from services import live_crawler as crawler_svc
+from services import grounding as grounding_svc
 from models.schemas import (
     GenerateRequest, GenerateResponse, GeneratedFile,
     ProjectAnalysis, FilePreview, StatusResponse, ProviderStatus,
@@ -44,6 +46,7 @@ from models.schemas import (
     UserSettings, UserSettingsResponse,
     AdminUser, AdminUserList, AdminUserDetail, AdminSetPlanRequest,
     AdminSuspendRequest, AdminSetUsageRequest, AdminOverview, AdminSystem,
+    CrawlPreviewRequest, CrawlPreviewResponse, CrawledRoute, CrawlAnchor,
 )
 from services.file_extractor import extract_zip, filter_for_push
 from services.github_service import GitHubService, parse_github_url, RepoNotFoundError, RepoAccessError
@@ -302,6 +305,76 @@ async def analyze_repo(payload: GenerateRequest, ctx: dict = Depends(require_use
         return _analysis_body(result, ctx["user_id"], payload.model_dump(), tier)
 
     return ndjson(work)
+
+
+# ─────────────────────────────────────────────
+# Live-crawl preview: exercise the crawler on its own
+# ─────────────────────────────────────────────
+
+@app.post("/api/crawl-preview", response_model=CrawlPreviewResponse,
+          dependencies=[Depends(rate_limit(analyze_limiter))])
+async def crawl_preview(payload: CrawlPreviewRequest,
+                        ctx: dict = Depends(require_user)):
+    """Run the live crawler (services/live_crawler.py) standalone and report what
+    it saw — routes rendered, anchors indexed, links discovered — so the crawler
+    is observable in the generate flow before a full run.
+
+    This is the very same crawl the writer performs in Mode 2 (see
+    agents/writer_agent.py), just surfaced on its own. It costs no generation
+    credit and nothing is ever executed: the crawler only reads rendered DOM,
+    behind the same SSRF/scope guard as static grounding.
+    """
+    url = (payload.url or "").strip()
+    if not url:
+        raise HTTPException(400, "A URL is required.")
+
+    started = time.monotonic()
+
+    def elapsed_ms() -> int:
+        return int((time.monotonic() - started) * 1000)
+
+    try:
+        result = await crawler_svc.crawl(url, max_pages=CRAWL_MAX_PAGES)
+    except ScanError as e:
+        # Private / out-of-scope target — the same gate static grounding hits.
+        return CrawlPreviewResponse(status="blocked", message=str(e),
+                                    elapsed_ms=elapsed_ms())
+    except crawler_svc.CrawlUnavailable as e:
+        logger.info(f"Crawl preview unavailable for {url}: {e}")
+        return CrawlPreviewResponse(
+            status="unavailable",
+            message="A headless browser isn't available here, so the live crawl "
+                    "can't run. Generation would fall back to a single-page fetch.",
+            elapsed_ms=elapsed_ms())
+    except Exception as e:
+        logger.warning(f"Crawl preview failed for {url}: {e}")
+        return CrawlPreviewResponse(
+            status="error",
+            message="The crawl couldn't complete. Check the URL is reachable "
+                    "and publicly accessible, then try again.",
+            elapsed_ms=elapsed_ms())
+
+    # "Useful" mirrors exactly what the writer checks before it grounds against a
+    # crawl (writer_agent.py) — so this preview tells the same truth the real run
+    # would: a thin crawl is reported as "thin", not dressed up as a success.
+    useful = bool(result.pages) and grounding_svc.dom_index_is_useful(result.index)
+    sample = [CrawlAnchor(kind=a.kind, value=a.value)
+              for a in list(result.index.anchors)[:12]]
+    return CrawlPreviewResponse(
+        status="ok" if useful else "thin",
+        message="" if useful else (
+            "The crawl rendered the site but found too few anchors to ground a "
+            "suite against — a real run would fall back to source-only grounding."),
+        seed=result.seed,
+        n_pages=result.n_pages,
+        n_anchors=result.n_anchors,
+        useful=useful,
+        pages=[CrawledRoute(path=p.path, n_anchors=p.n_anchors)
+               for p in result.pages],
+        unvisited=result.unvisited,
+        sample_anchors=sample,
+        elapsed_ms=elapsed_ms(),
+    )
 
 
 # ─────────────────────────────────────────────
