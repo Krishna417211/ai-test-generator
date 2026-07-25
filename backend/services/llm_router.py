@@ -485,6 +485,7 @@ class LLMRouter:
         Falls back to non-streaming if provider doesn't support it.
         """
         last_error = None
+        emitted = 0                      # chunks forwarded to the caller, any provider
 
         for provider in PROVIDER_PRIORITY[tier]:
             if provider not in self._providers:
@@ -500,10 +501,13 @@ class LLMRouter:
             await self._broadcast_status(f"Streaming from {spec.id}...")
 
             t0 = time.perf_counter()
+            provider_emitted = 0
             try:
                 async for chunk in self._stream_provider(
                     provider, api_key, prompt, system_prompt, temperature, json_mode, spec
                 ):
+                    emitted += 1
+                    provider_emitted += 1
                     yield chunk
                 latency_ms = round((time.perf_counter() - t0) * 1000)
                 api_key.record_success()
@@ -527,6 +531,43 @@ class LLMRouter:
                 api_key.mark_exhausted(COOLDOWN[provider] // 2)
                 last_error = str(e)
                 continue
+            except Exception as e:
+                # Transport-level failure: a TLS record-layer error, a dropped
+                # connection, or a proxy/VPN that mangles long-lived streaming
+                # sockets while leaving ordinary request/response calls intact.
+                # The KEY itself is fine, so we deliberately do NOT cool it down
+                # — doing so would starve the non-streaming fallback below of the
+                # very key it needs. If we had already forwarded part of this
+                # stream we can't cleanly restart it, so re-raise; otherwise move
+                # on and let the fallback finish the job.
+                api_key.error_count += 1
+                last_error = f"{provider.value} stream transport error: {e}"
+                logger.warning(
+                    f"[{provider.value}] streaming failed ({e}); "
+                    f"falling back to non-streaming"
+                )
+                if provider_emitted:
+                    raise
+                continue
+
+        # Nothing streamed from any provider — e.g. every streaming socket was
+        # killed at the TLS layer. Streaming is only a delivery detail, not the
+        # result, so fall back to a single non-streaming completion and hand the
+        # caller the whole text at once. This keeps generation working on
+        # networks that break streaming but pass normal requests (proven: a
+        # stream:true call fails "bad record mac" where stream:false returns 200).
+        if emitted == 0:
+            logger.info(
+                "Streaming unavailable across all providers — "
+                "falling back to a non-streaming completion"
+            )
+            text = await self.complete(
+                prompt, system_prompt=system_prompt, temperature=temperature,
+                context_hint=context_hint, json_mode=json_mode, tier=tier,
+            )
+            if text:
+                yield text
+                return
 
         raise AllProvidersExhausted(f"All providers failed streaming. Last: {last_error}")
 

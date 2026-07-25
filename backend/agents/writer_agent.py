@@ -12,13 +12,14 @@ Framework support: Playwright (JS/TS/Python), Cypress (JS/TS), Selenium (Python/
 
 import re
 import json
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import AsyncGenerator, Optional
 
 from agents import scaffold
 from agents.filter_agent import FilterResult
-from services.llm_router import router, Tier
+from services.llm_router import router, Tier, AllProvidersExhausted
 from services.validator import validate_files
 from services import grounding as grounding_svc
 from services import fragility as fragility_svc
@@ -29,6 +30,28 @@ from services import live_crawler as crawler_svc
 # before it stops. Enough to reach the login/signup/checkout surfaces that the
 # landing page never shows; capped so a large site can't stall a generation.
 CRAWL_MAX_PAGES = 20
+
+# The raw source of a large repo can exceed a model's context window — Groq, for
+# one, rejects an oversized prompt with a 400 "reduce the length of the messages"
+# rather than truncating it, which fails the whole generation. The selectors the
+# model must ground against are already extracted and passed separately and
+# compactly, so the full source dump is a helpful-but-trimmable extra: cap it to
+# a character budget that leaves ample room for the rest of the prompt and the
+# model's own output. A model's *usable* request size is often far below its
+# advertised window on lower tiers (Groq's free tier rejects a large body with a
+# 413 well before 128k tokens), so keep this conservative — ~28k chars (~7k
+# tokens) still grounds the model on the most relevant source while fitting a
+# small per-request allowance. Raise this one number on a roomier/paid tier.
+SOURCE_CONTEXT_BUDGET_CHARS = 6_000
+
+# Free-tier providers meter tokens *per minute*, so a burst of per-file calls
+# trips a 429 after the first one or two and every provider ends up cooling at
+# once. Rather than abandon the file, wait out the (short) cooldown and retry —
+# this paces a multi-file suite through a small per-minute budget instead of
+# failing it. Bounded so a genuinely dead account (no quota, no credit) still
+# gives up in reasonable time instead of hanging forever.
+RATE_RETRY_MAX_ATTEMPTS = 8
+RATE_RETRY_WAIT_SECONDS = 25
 
 logger = logging.getLogger(__name__)
 
@@ -755,6 +778,34 @@ Your tests:
 Framework: {framework_key}
 {FRAMEWORK_INSTRUCTIONS.get(framework_key, '')}"""
 
+    def _source_context(self, files: dict[str, str]) -> str:
+        """Serialize the repo's source for the prompt, capped so a large repo
+        can't overflow the model's context window (which makes providers reject
+        the whole call). Whole files are kept until the budget is spent; any
+        remainder is listed by name so the model still knows they exist — and the
+        AVAILABLE SELECTORS block, extracted from *every* file, already carries
+        the grounding, so trimming raw source never drops a real selector."""
+        budget = SOURCE_CONTEXT_BUDGET_CHARS
+        kept: dict[str, str] = {}
+        omitted: list[str] = []
+        used = 0
+        for path, content in files.items():
+            content = content or ""
+            entry = len(path) + len(content) + 8      # ~JSON punctuation overhead
+            if used + entry <= budget:
+                kept[path] = content
+                used += entry
+            else:
+                omitted.append(path)
+        body = json.dumps(kept, indent=2)
+        if omitted:
+            body += (
+                f"\n\n// {len(omitted)} more file(s) omitted to fit the context "
+                f"window; their selectors are already in AVAILABLE SELECTORS above: "
+                f"{', '.join(omitted[:40])}"
+            )
+        return body
+
     def _build_prompt(
         self,
         filter_result: FilterResult,
@@ -763,8 +814,8 @@ Framework: {framework_key}
         base_url: str,
         language: str,
     ) -> str:
-        # Serialize the filtered files
-        files_json = json.dumps(filter_result.files, indent=2)
+        # Serialize the filtered files (capped to fit the model's context window)
+        files_json = self._source_context(filter_result.files)
 
         # Ground the model on selectors that ACTUALLY exist in the source.
         sel = self._extract_available_selectors(filter_result.files)
@@ -868,18 +919,41 @@ Generate comprehensive tests now:
         last_error: Optional[Exception] = None
 
         for spec in plan:
-            try:
-                content = await self._generate_one_file(
-                    spec, manifest, filter_result, framework_key, test_flows, base_url, language, tier
-                )
-            except Exception as e:
-                # Log per file. Only the *last* error is kept for re-raising, so
-                # without this the first N failures of a run vanish and there is
-                # no way to tell a rate limit from a bad JSON response.
-                logger.warning(f"Planned file failed to generate: {spec['filename']} — {e!r}")
-                failed.append(spec["filename"])
-                last_error = e
-                continue
+            content = None
+            # Retry only the rate-limit case (every provider cooling at once):
+            # wait out the cooldown and try again so a small per-minute budget
+            # can still produce the whole suite. Any other error fails the file
+            # immediately — retrying a bad-JSON or oversized-prompt response just
+            # burns time and quota, since waiting doesn't change the outcome.
+            for attempt in range(RATE_RETRY_MAX_ATTEMPTS + 1):
+                try:
+                    content = await self._generate_one_file(
+                        spec, manifest, filter_result, framework_key, test_flows, base_url, language, tier
+                    )
+                    break
+                except AllProvidersExhausted as e:
+                    last_error = e
+                    if attempt < RATE_RETRY_MAX_ATTEMPTS:
+                        logger.info(
+                            f"All providers cooling — waiting {RATE_RETRY_WAIT_SECONDS}s "
+                            f"then retrying {spec['filename']} "
+                            f"(attempt {attempt + 1}/{RATE_RETRY_MAX_ATTEMPTS})"
+                        )
+                        await asyncio.sleep(RATE_RETRY_WAIT_SECONDS)
+                        continue
+                    logger.warning(
+                        f"Planned file failed after {RATE_RETRY_MAX_ATTEMPTS} "
+                        f"rate-limit retries: {spec['filename']} — {e!r}"
+                    )
+                    failed.append(spec["filename"])
+                except Exception as e:
+                    # Log per file. Only the *last* error is kept for re-raising, so
+                    # without this the first N failures of a run vanish and there is
+                    # no way to tell a rate limit from a bad JSON response.
+                    logger.warning(f"Planned file failed to generate: {spec['filename']} — {e!r}")
+                    failed.append(spec["filename"])
+                    last_error = e
+                    break
             if content and content.strip():
                 files.append(GeneratedFile(
                     filename=spec["filename"],
@@ -960,12 +1034,15 @@ Return ONLY JSON (no markdown, no prose):
         def _fmt(items: list[str], n: int) -> str:
             return ", ".join(items[:n]) if items else "(none found)"
 
+        # Keep this list short: on a small per-minute token budget every extra
+        # selector is tokens spent, and the source excerpt below already shows
+        # the real markup. A representative sample is enough to ground on.
         available = (
-            f"data-testid: {_fmt(sel['testids'], 60)}\n"
-            f"data-cy:     {_fmt(sel['data_cy'], 60)}\n"
-            f"id:          {_fmt(sel['ids'], 60)}\n"
-            f"name:        {_fmt(sel['names'], 60)}\n"
-            f"class:       {_fmt(sel['classes'], 80)}"
+            f"data-testid: {_fmt(sel['testids'], 15)}\n"
+            f"data-cy:     {_fmt(sel['data_cy'], 15)}\n"
+            f"id:          {_fmt(sel['ids'], 15)}\n"
+            f"name:        {_fmt(sel['names'], 15)}\n"
+            f"class:       {_fmt(sel['classes'], 20)}"
         )
         prompt = f"""Generate ONE file of an E2E test suite ({framework_key}) for this {filter_result.framework} app.
 
@@ -993,7 +1070,7 @@ Return ONLY JSON (no markdown, no prose):
 {available}
 
 ## SOURCE CODE
-{json.dumps(filter_result.files, indent=2)}
+{self._source_context(filter_result.files)}
 
 Output ONLY the raw contents of {spec['filename']} — no JSON, no markdown fences, no
 commentary. Use only selectors that exist above; if you must guess, add a comment
