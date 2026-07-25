@@ -111,3 +111,35 @@ class TestStripFence:
         assert w._strip_fence("```json\n{\"a\":1}\n```") == '{"a":1}'
         assert w._strip_fence("```ts\nconst a = 1;\n```") == "const a = 1;"
         assert w._strip_fence("no fence here") == "no fence here"
+
+
+class TestCrawlOnlyPrompt:
+    """When a crawl index is set, the prompt is built from live anchors and the
+    source-code blob is dropped — the token-saving, higher-quality path."""
+
+    def _fr(self):
+        from agents.filter_agent import FilterResult
+        # Non-empty files: proves the switch is the crawl index, not empty files.
+        return FilterResult("app", [], [], ["/login"], "react", [],
+                            {"src/Login.tsx": "<form id=src-only>"}, 0, 1)
+
+    def _index(self):
+        from services.grounding import GroundIndex, Anchor, KIND_ROLE, KIND_TEXT
+        idx = GroundIndex(source="dom")
+        idx.anchors = {Anchor(KIND_ROLE, "button"), Anchor(KIND_TEXT, "Log in")}
+        return idx
+
+    def test_crawl_only_omits_source_and_uses_live_anchors(self):
+        w = WriterAgent()
+        w._crawl_index = self._index()
+        p = w._build_prompt(self._fr(), "playwright_ts", "login", "https://app.example", "typescript")
+        assert "SOURCE CODE FILES" not in p          # no source blob
+        assert "src-only" not in p                    # source markup not leaked
+        assert "rendered from the LIVE site" in p     # crawl heading
+        assert "Log in" in p and "button" in p        # live anchors present
+
+    def test_default_path_still_embeds_source(self):
+        w = WriterAgent()                             # no crawl index
+        p = w._build_prompt(self._fr(), "playwright_ts", "login", "https://app.example", "typescript")
+        assert "SOURCE CODE FILES" in p
+        assert "src-only" in p

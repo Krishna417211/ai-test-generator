@@ -444,6 +444,26 @@ export async function analyzeRepo(
   }, onProgress, "Analysis failed");
 }
 
+/** Crawl-first entrypoint: renders + crawls the hosted site (the source the AI
+ *  writes from) and creates the job. Requires a connected GitHub account, a repo
+ *  URL, and a hosted URL. Throws with an honest reason if the site can't be
+ *  crawled — there is no repo-file fallback. */
+export async function analyzeCrawl(
+  repoUrl: string, liveUrl: string, framework: string, language: string, testFlows: string,
+  githubToken?: string,
+): Promise<{ job_id: string; analysis: any; crawl?: { n_pages: number; n_anchors: number; seed: string }; provenance?: Provenance | null }> {
+  const res = await fetch(`${API_BASE}/api/analyze-crawl`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      repo_url: repoUrl, live_url: liveUrl, framework, language,
+      test_flows: testFlows, github_token: githubToken || undefined,
+    }),
+  });
+  if (!res.ok) await parseError(res, "Crawl failed");
+  return res.json();
+}
+
 // Server-enforced upload cap (MAX_REPO_SIZE_MB). Refreshed by getAuthConfig();
 // the fallback only matters before that resolves, and the server re-checks anyway.
 let maxUploadMb = 50;

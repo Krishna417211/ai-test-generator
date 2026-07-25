@@ -1,20 +1,18 @@
 import { Check } from "lucide-react";
 
-type Step = "input" | "analyzing" | "preview" | "configure" | "generating" | "done";
+type Step = "input" | "configure" | "generating" | "done";
 
 const STEPS: { id: Step; label: string }[] = [
   { id: "input", label: "Input" },
-  { id: "preview", label: "Preview" },
   { id: "configure", label: "Configure" },
   { id: "done", label: "Download" },
 ];
 
 function getVisualIndex(step: Step): number {
   // Map wizard steps to visual step indices
-  if (step === "input" || step === "analyzing") return 0;
-  if (step === "preview") return 1;
-  if (step === "configure") return 2;
-  if (step === "generating" || step === "done") return 3;
+  if (step === "input") return 0;
+  if (step === "configure") return 1;
+  if (step === "generating" || step === "done") return 2;
   return 0;
 }
 
