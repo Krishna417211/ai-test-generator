@@ -1,152 +1,118 @@
-import { useState, useRef, useEffect } from "react";
-import { Github, Upload, ArrowRight, Lock, Loader2 } from "lucide-react";
-import { validateZip, getAuthConfig } from "../utils/api";
-import { formatBytes } from "../utils/format";
+import { useState, useEffect } from "react";
+import { Github, Globe, ArrowRight, Loader2, ShieldCheck } from "lucide-react";
+import { getAuthConfig, githubLoginUrl } from "../utils/api";
 import { useAuth } from "../context/AuthContext";
 
 interface Props {
-  onAnalyze: (input: { type: "url"; url: string; token?: string } | { type: "zip"; file: File }) => void;
+  /** Both URLs are required; the hosted URL is the site the AI writes tests from,
+   *  the repo URL is used to confirm access and publish the suite back. */
+  onContinue: (input: { repoUrl: string; hostedUrl: string }) => void;
   loading: boolean;
   error: string | null;
 }
 
-export default function GenerateInput({ onAnalyze, loading, error }: Props) {
+export default function GenerateInput({ onContinue, loading, error }: Props) {
   const { user, refresh } = useAuth();
   const githubConnected = Boolean(user?.github_connected);
-  const [mode, setMode] = useState<"url" | "zip">("url");
-  const [url, setUrl] = useState("");
-  const [token, setToken] = useState("");
-  const [showToken, setShowToken] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
-  const [fileError, setFileError] = useState<string | null>(null);
-  // A failed analyze left its error on screen while the user typed a new URL or
-  // picked a new file. Editing the input dismisses it; the parent clears `error`
-  // before each attempt, so a repeat failure surfaces again.
+  const [repoUrl, setRepoUrl] = useState("");
+  const [hostedUrl, setHostedUrl] = useState("");
   const [dismissed, setDismissed] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
 
-  // Picks up the server's upload cap so validateZip can use it, and the
-  // session-derived github_connected flag (a password login's response can't
-  // carry it — only /api/auth/me knows).
+  // Only /api/auth/me knows the session-derived github_connected flag, so refresh
+  // it on mount — a password login's response can't carry it.
   useEffect(() => { getAuthConfig().catch(() => {}); refresh().catch(() => {}); }, []);
   useEffect(() => { if (error) setDismissed(false); }, [error]);
 
-  const selectFile = (f: File | undefined) => {
-    if (!f) return;
-    setDismissed(true);
-    const invalid = validateZip(f);
-    setFileError(invalid);
-    setFile(invalid ? null : f);
-  };
-
+  const ready = repoUrl.trim() && hostedUrl.trim();
   const submit = () => {
-    if (mode === "url") {
-      if (!url.trim()) return;
-      onAnalyze({ type: "url", url: url.trim(), token: token || undefined });
-    } else if (file) {
-      onAnalyze({ type: "zip", file });
-    }
+    if (!ready) return;
+    onContinue({ repoUrl: repoUrl.trim(), hostedUrl: hostedUrl.trim() });
   };
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    selectFile(e.dataTransfer.files[0]);
-  };
+  // Hard gate: generation is crawl-first and publishes back to GitHub, so a
+  // connected account is required before anything else is shown.
+  if (!githubConnected) {
+    return (
+      <div className="w-full max-w-xl mx-auto">
+        <div className="glass rounded-3xl p-8 text-center space-y-4 shadow-card">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-white/5 flex items-center justify-center">
+            <Github size={26} className="text-white/80" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">Connect GitHub to generate</h3>
+            <p className="text-sm text-grey-400 mt-1.5 max-w-sm mx-auto">
+              Testra reads your deployed site to write real tests and publishes the
+              suite back to your repo. Connect your GitHub account to continue.
+            </p>
+          </div>
+          <a
+            href={githubLoginUrl("/generate")}
+            className="inline-flex items-center justify-center gap-2 py-3 px-5 rounded-xl btn-primary font-semibold text-sm"
+          >
+            <Github size={16} /> Connect GitHub
+          </a>
+          <p className="flex items-center justify-center gap-1.5 text-xs text-grey-500">
+            <ShieldCheck size={12} /> Only repo access — nothing is executed on your site.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-xl mx-auto">
-      <div className="glass rounded-3xl p-2 shadow-card">
-        <div className="flex rounded-2xl bg-black/20 p-1 mb-1">
-          {[
-            { id: "url", label: "GitHub URL", icon: Github },
-            { id: "zip", label: "Upload ZIP", icon: Upload },
-          ].map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => { setMode(id as "url" | "zip"); setDismissed(true); setFileError(null); }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                mode === id ? "bg-white/10 text-white shadow-inner-hi" : "text-white/65 hover:text-white/80"
-              }`}
-            >
-              <Icon size={15} /> {label}
-            </button>
-          ))}
+      <div className="glass rounded-3xl p-5 shadow-card space-y-4">
+        <p className="flex items-center gap-1.5 text-xs text-emerald-300/80">
+          <Github size={12} /> Connected as {user?.github_login}.
+        </p>
+
+        {/* Repo URL */}
+        <div>
+          <label className="block text-sm font-semibold text-white mb-2">GitHub repository</label>
+          <div className="relative">
+            <Github size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-grey-500" />
+            <input
+              type="url"
+              value={repoUrl}
+              onChange={(e) => { setRepoUrl(e.target.value); setDismissed(true); }}
+              placeholder="https://github.com/owner/repo"
+              className="w-full pl-10 pr-4 py-3.5 rounded-xl bg-black/30 border border-grey-700 text-white placeholder:text-grey-400 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm"
+            />
+          </div>
         </div>
 
-        <div className="p-4">
-          {mode === "url" ? (
-            <div className="space-y-3">
-              <div className="relative">
-                <Github size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-grey-500" />
-                <input
-                  type="url"
-                  value={url}
-                  onChange={(e) => { setUrl(e.target.value); setDismissed(true); }}
-                  onKeyDown={(e) => e.key === "Enter" && submit()}
-                  placeholder="https://github.com/owner/repo"
-                  className="w-full pl-10 pr-4 py-3.5 rounded-xl bg-black/30 border border-grey-700 text-white placeholder:text-grey-400 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm"
-                />
-              </div>
-              {/* Signed in with GitHub? Private repos already work — the server
-                  reads them with the session's token. Offering a PAT box here
-                  would ask for a credential we hold a better one for. */}
-              {githubConnected ? (
-                <p className="flex items-center gap-1.5 text-xs text-emerald-300/80">
-                  <Github size={12} /> Private repos included — signed in as {user?.github_login}.
-                </p>
-              ) : (
-                <button onClick={() => setShowToken(!showToken)} className="flex items-center gap-1.5 text-xs text-grey-500 hover:text-grey-400 transition-colors">
-                  <Lock size={12} /> {showToken ? "Hide" : "Private repo?"} Add GitHub token
-                </button>
-              )}
-              {showToken && !githubConnected && (
-                <input
-                  type="password"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  placeholder="ghp_xxxxxxxxxxxx"
-                  className="w-full px-4 py-3 rounded-xl bg-black/30 border border-grey-700 text-white placeholder:text-grey-400 focus:outline-none focus:border-brand-500/70 transition-colors text-sm font-mono"
-                />
-              )}
-            </div>
-          ) : (
-            <div
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={handleDrop}
-              onClick={() => fileRef.current?.click()}
-              className={`w-full h-44 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 cursor-pointer transition-all ${
-                dragOver ? "border-brand-400 bg-brand-500/10 scale-[1.01]"
-                  : file ? "border-emerald-500/50 bg-emerald-500/10"
-                  : "border-white/15 bg-black/20 hover:border-white/30"
-              }`}
-            >
-              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${file ? "bg-emerald-500/20" : "bg-white/5"}`}>
-                <Upload size={22} className={file ? "text-emerald-400" : "text-grey-500"} />
-              </div>
-              <div className="text-center">
-                <p className="text-sm text-white/75">{file ? file.name : "Drop your repo ZIP here"}</p>
-                <p className="text-xs text-grey-500 mt-1">{file ? formatBytes(file.size) : "or click to browse"}</p>
-              </div>
-              <input ref={fileRef} type="file" accept=".zip" className="hidden" onChange={(e) => selectFile(e.target.files?.[0])} />
-            </div>
-          )}
-
-          {(fileError || (error && !dismissed)) && (
-            <div className="mt-4 px-4 py-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-sm text-rose-300">{fileError || error}</div>
-          )}
-
-          <button
-            onClick={submit}
-            disabled={loading || (mode === "url" ? !url.trim() : !file)}
-            className="mt-4 w-full flex items-center justify-center gap-2 py-3.5 rounded-xl btn-primary disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-sm"
-          >
-            {loading ? (<><Loader2 size={16} className="animate-spin" /> Analyzing repository...</>)
-              : (<>Analyze repository <ArrowRight size={16} /></>)}
-          </button>
+        {/* Hosted URL */}
+        <div>
+          <label className="block text-sm font-semibold text-white mb-2">Hosted website URL</label>
+          <div className="relative">
+            <Globe size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-grey-500" />
+            <input
+              type="url"
+              value={hostedUrl}
+              onChange={(e) => { setHostedUrl(e.target.value); setDismissed(true); }}
+              onKeyDown={(e) => e.key === "Enter" && submit()}
+              placeholder="https://your-app.com"
+              className="w-full pl-10 pr-4 py-3.5 rounded-xl bg-black/30 border border-grey-700 text-white placeholder:text-grey-400 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm font-mono"
+            />
+          </div>
+          <p className="text-xs text-grey-500 mt-1.5">
+            The deployed, publicly-reachable site. Testra renders it and writes tests
+            from its real elements — nothing is executed, we only read the page.
+          </p>
         </div>
+
+        {error && !dismissed && (
+          <div className="px-4 py-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-sm text-rose-300">{error}</div>
+        )}
+
+        <button
+          onClick={submit}
+          disabled={loading || !ready}
+          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl btn-primary disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-sm"
+        >
+          {loading ? (<><Loader2 size={16} className="animate-spin" /> Working…</>)
+            : (<>Continue <ArrowRight size={16} /></>)}
+        </button>
       </div>
     </div>
   );

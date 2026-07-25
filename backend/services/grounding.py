@@ -188,6 +188,24 @@ def build_dom_index(html: str) -> GroundIndex:
     return GroundIndex(source="dom", anchors=parser.anchors)
 
 
+def index_to_dicts(index: GroundIndex) -> list[dict]:
+    """Flatten an index's anchors to JSON-friendly dicts.
+
+    The session store is JSON, not pickle, so a GroundIndex (a set of frozen
+    Anchors) can't be stashed directly. A crawl-first run indexes once at the
+    entrypoint and must carry that ground truth to the streaming/finalize steps;
+    this is how it travels.
+    """
+    return [{"kind": a.kind, "value": a.value} for a in index.anchors]
+
+
+def dicts_to_index(dicts: list[dict], source: str = "dom") -> GroundIndex:
+    """Rebuild a GroundIndex from `index_to_dicts` output."""
+    idx = GroundIndex(source=source)
+    idx.anchors = {Anchor(d["kind"], d["value"]) for d in (dicts or [])}
+    return idx
+
+
 # ── is the fetched DOM actually usable? ───────────────────────────────────────
 #
 # We fetch *static* HTML and never execute it (see fetch_dom). For a

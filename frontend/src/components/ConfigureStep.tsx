@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  Play, Settings, AlertTriangle, Globe, Loader2, CheckCircle2, XCircle, Ban,
+  Play, AlertTriangle, Globe, Loader2, CheckCircle2, XCircle, Ban,
 } from "lucide-react";
 import type { Framework, Language } from "../types";
 import { previewCrawl, type CrawlPreview } from "../utils/api";
@@ -9,15 +9,13 @@ interface Config {
   framework: Framework;
   language: Language;
   testFlows: string;
-  baseUrl: string;
   includeCi: boolean;
-  /** Optional deployed URL the user owns. When set, generated selectors are
-   *  verified against the live DOM and self-healed if they miss. */
-  liveUrl: string;
 }
 
 interface Props {
-  detectedFramework: string;
+  /** The hosted URL collected in the previous step — the site the suite is
+   *  generated from. Shown here read-only and used for the "Preview crawl" tool. */
+  hostedUrl: string;
   onGenerate: (config: Config) => void;
   loading: boolean;
   /** A failed generation returns the user to this step. Without surfacing the
@@ -48,22 +46,20 @@ const LANGUAGES: Record<Framework, { id: Language; label: string }[]> = {
   ],
 };
 
-export default function ConfigureStep({ detectedFramework, onGenerate, loading, error }: Props) {
+export default function ConfigureStep({ hostedUrl, onGenerate, loading, error }: Props) {
   const [framework, setFramework] = useState<Framework>("playwright");
   const [language, setLanguage] = useState<Language>("typescript");
   const [testFlows, setTestFlows] = useState("");
-  const [baseUrl, setBaseUrl] = useState("http://localhost:3000");
   const [includeCi, setIncludeCi] = useState(true);
-  const [liveUrl, setLiveUrl] = useState("");
 
-  // "Preview crawl" — run the live crawler on liveUrl by itself so the user can
-  // confirm it actually renders their site before spending a generation credit.
+  // "Preview crawl" — run the live crawler on the hosted URL by itself so the user
+  // can confirm it renders their site before spending a generation credit.
   const [crawl, setCrawl] = useState<CrawlPreview | null>(null);
   const [crawling, setCrawling] = useState(false);
   const [crawlError, setCrawlError] = useState<string | null>(null);
 
   const runPreview = async () => {
-    const url = liveUrl.trim();
+    const url = hostedUrl.trim();
     if (!url || crawling) return;
     setCrawling(true);
     setCrawlError(null);
@@ -88,8 +84,8 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading, 
   return (
     <div className="w-full max-w-2xl mx-auto space-y-6">
       <div className="flex items-center gap-2 text-grey-500 text-xs mb-2">
-        <Settings size={13} />
-        <span>Detected: <span className="text-grey-300">{detectedFramework}</span></span>
+        <Globe size={13} />
+        <span>Generating from <span className="text-grey-300 font-mono">{hostedUrl}</span></span>
       </div>
 
       {/* Framework */}
@@ -154,61 +150,32 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading, 
         </p>
       </div>
 
-      {/* Base URL */}
+      {/* Preview crawl — exercises the live crawler on the hosted URL so you can
+          see it working (routes rendered, anchors indexed) before generating.
+          This is the very crawl the suite is written from. */}
       <div>
-        <label className="block text-sm font-semibold text-white mb-2">Base URL</label>
-        <input
-          type="url"
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          className="w-full px-4 py-3 rounded-xl bg-black/20 border border-grey-700 text-white focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm font-mono"
-        />
-      </div>
-
-      {/* Live URL — optional. Its presence is what upgrades grounding from
-          "selectors exist in your source" to "selectors match your live site",
-          and turns on the self-heal loop for the ones that don't. */}
-      <div>
-        <label className="block text-sm font-semibold text-white mb-2">
-          Live site URL <span className="font-normal text-grey-500">— optional</span>
-        </label>
-        <input
-          type="url"
-          value={liveUrl}
-          onChange={(e) => setLiveUrl(e.target.value)}
-          placeholder="https://your-app.com"
-          className="w-full px-4 py-3 rounded-xl bg-black/20 border border-grey-700 text-white placeholder:text-grey-500 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm font-mono"
-        />
-        <p className="text-xs text-grey-500 mt-1">
-          If it&apos;s deployed and you own it, we&apos;ll verify every selector against the live
-          DOM and auto-fix the ones that don&apos;t match. Nothing is executed — we only read the page.
+        <label className="block text-sm font-semibold text-white mb-2">Preview the live crawl</label>
+        <button
+          type="button"
+          onClick={runPreview}
+          disabled={!hostedUrl.trim() || crawling}
+          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-grey-700 bg-white/[0.02] text-sm text-grey-300 hover:border-grey-600 hover:text-white disabled:opacity-40 disabled:hover:border-grey-700 transition-all"
+        >
+          {crawling ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
+          {crawling ? "Crawling your site…" : "Preview live crawl"}
+        </button>
+        <p className="text-xs text-grey-500 mt-1.5">
+          Renders your site and follows its own links — the same crawl the tests are written from. No credit spent.
         </p>
 
-        {/* Preview crawl — exercises the live crawler on its own so you can see
-            it working (routes rendered, anchors indexed) before generating. */}
-        <div className="mt-3">
-          <button
-            type="button"
-            onClick={runPreview}
-            disabled={!liveUrl.trim() || crawling}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-grey-700 bg-white/[0.02] text-sm text-grey-300 hover:border-grey-600 hover:text-white disabled:opacity-40 disabled:hover:border-grey-700 transition-all"
-          >
-            {crawling ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
-            {crawling ? "Crawling your site…" : "Preview live crawl"}
-          </button>
-          <p className="text-xs text-grey-500 mt-1.5">
-            Renders your site and follows its own links — the same crawl used for grounding. No credit spent.
-          </p>
+        {crawlError && (
+          <div className="mt-3 flex items-start gap-2.5 px-4 py-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-sm text-rose-300">
+            <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+            <span>{crawlError}</span>
+          </div>
+        )}
 
-          {crawlError && (
-            <div className="mt-3 flex items-start gap-2.5 px-4 py-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-sm text-rose-300">
-              <AlertTriangle size={15} className="shrink-0 mt-0.5" />
-              <span>{crawlError}</span>
-            </div>
-          )}
-
-          {crawl && <CrawlResultCard crawl={crawl} />}
-        </div>
+        {crawl && <CrawlResultCard crawl={crawl} />}
       </div>
 
       {/* CI toggle — a real switch, so the whole row (not just the 40px track)
@@ -244,7 +211,7 @@ export default function ConfigureStep({ detectedFramework, onGenerate, loading, 
       )}
 
       <button
-        onClick={() => onGenerate({ framework, language, testFlows, baseUrl, includeCi, liveUrl })}
+        onClick={() => onGenerate({ framework, language, testFlows, includeCi })}
         disabled={loading}
         className="w-full flex items-center justify-center gap-2 py-4 rounded-xl btn-primary disabled:opacity-40 font-semibold"
       >

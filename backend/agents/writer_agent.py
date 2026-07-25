@@ -234,6 +234,12 @@ class WriterAgent:
     - If too large → generate POM classes first, then test specs separately
     """
 
+    # Crawl-only mode: when set (by run/stream_run), the prompt is built from the
+    # live-crawl DOM anchors instead of repo source files — no source-code blob is
+    # sent to the model. Default None keeps the repo-file behaviour for any caller
+    # that doesn't opt in. Instance state, set per request (agent is per-request).
+    _crawl_index = None
+
     async def run(
         self,
         filter_result: FilterResult,
@@ -247,10 +253,15 @@ class WriterAgent:
         max_heal_attempts: int = 1,
         tier: Tier = Tier.FREE,         # model quality this caller's plan entitles them to
         live_url: Optional[str] = None,  # a deployed URL the user owns → DOM grounding
+        crawl_index=None,               # pre-computed live-crawl GroundIndex → crawl-only mode
     ) -> WriterResult:
 
         framework_key = self._normalize_framework(framework, language)
         self._failed_files: list[str] = []
+        # Crawl-only: the entrypoint already ran the live crawl, so the prompt is
+        # built from its anchors and the same index is reused for grounding below
+        # (no second crawl/render).
+        self._crawl_index = crawl_index
 
         # If the SSE stream already generated the suite, reuse it instead of
         # making a second (costly) LLM call — but only if it parsed cleanly.
@@ -280,7 +291,17 @@ class WriterAgent:
         # whole generation. Nothing is ever executed; we only read the HTML.
         dom_index = None
         dom_note = None
-        if live_url:
+        if self._crawl_index is not None:
+            # Crawl-only mode: the entrypoint already crawled the deployed site
+            # and handed us the index. Reuse it directly for grounding/heal — the
+            # suite was written from these very anchors, so it is the right and
+            # only ground truth, and re-crawling here would be wasteful.
+            dom_index = self._crawl_index
+            logger.info(
+                f"DOM grounding (crawl-only): {len(dom_index.anchors)} anchors "
+                f"reused from the generation crawl"
+            )
+        elif live_url:
             # Mode 2 (live crawl): render *and* walk the deployed site's own
             # routes, merging every page's real anchors into one index. This is
             # strictly richer than the single-page render below — a landing page
@@ -712,9 +733,11 @@ role locators. Leave everything else unchanged."""
         test_flows: str,
         base_url: str = "http://localhost:3000",
         tier: Tier = Tier.FREE,
+        crawl_index=None,               # pre-computed live-crawl GroundIndex → crawl-only mode
     ) -> AsyncGenerator[str, None]:
         """Streaming version — yields content chunks for real-time display."""
         framework_key = self._normalize_framework(framework, language)
+        self._crawl_index = crawl_index
         prompt = self._build_prompt(filter_result, framework_key, test_flows, base_url, language)
 
         async for chunk in router.stream_complete(
@@ -814,22 +837,36 @@ Framework: {framework_key}
         base_url: str,
         language: str,
     ) -> str:
-        # Serialize the filtered files (capped to fit the model's context window)
-        files_json = self._source_context(filter_result.files)
+        if self._crawl_index is not None:
+            # Crawl-only: ground on the anchors the live site actually rendered.
+            # No source-code blob — these selectors are real, not guessed from src.
+            selectors_heading = (
+                "## AVAILABLE SELECTORS (rendered from the LIVE site — these are real; "
+                "prefer data-testid and role/text locators)"
+            )
+            available_selectors = self._available_anchor_hint(None, self._crawl_index)
+            source_block = ""
+        else:
+            # Serialize the filtered files (capped to fit the model's context window)
+            files_json = self._source_context(filter_result.files)
+            # Ground the model on selectors that ACTUALLY exist in the source.
+            sel = self._extract_available_selectors(filter_result.files)
 
-        # Ground the model on selectors that ACTUALLY exist in the source.
-        sel = self._extract_available_selectors(filter_result.files)
+            def _fmt(items: list[str], n: int) -> str:
+                return ", ".join(items[:n]) if items else "(none found)"
 
-        def _fmt(items: list[str], n: int) -> str:
-            return ", ".join(items[:n]) if items else "(none found)"
-
-        available_selectors = (
-            f"data-testid: {_fmt(sel['testids'], 60)}\n"
-            f"data-cy:     {_fmt(sel['data_cy'], 60)}\n"
-            f"id:          {_fmt(sel['ids'], 60)}\n"
-            f"name (form fields): {_fmt(sel['names'], 60)}\n"
-            f"class (sample):     {_fmt(sel['classes'], 80)}"
-        )
+            selectors_heading = (
+                "## AVAILABLE SELECTORS (extracted from the real source — prefer these; "
+                "anything else is a guess)"
+            )
+            available_selectors = (
+                f"data-testid: {_fmt(sel['testids'], 60)}\n"
+                f"data-cy:     {_fmt(sel['data_cy'], 60)}\n"
+                f"id:          {_fmt(sel['ids'], 60)}\n"
+                f"name (form fields): {_fmt(sel['names'], 60)}\n"
+                f"class (sample):     {_fmt(sel['classes'], 80)}"
+            )
+            source_block = f"\n## SOURCE CODE FILES\n{files_json}\n"
 
         return f"""
 Generate a complete E2E test suite for this {filter_result.framework} web application.
@@ -854,12 +891,9 @@ Generate a complete E2E test suite for this {filter_result.framework} web applic
 
 ## NAVIGATION RULES
 {self._navigation_hint(filter_result.framework)}
-## AVAILABLE SELECTORS (extracted from the real source — prefer these; anything else is a guess)
+{selectors_heading}
 {available_selectors}
-
-## SOURCE CODE FILES
-{files_json}
-
+{source_block}
 ## YOUR TASK
 Generate a complete, production-ready test suite using {framework_key}.
 
@@ -880,7 +914,7 @@ Return a JSON object with this exact structure:
 }}
 
 CRITICAL RULES:
-1. Only use selectors (IDs, class names, data attributes) that ACTUALLY EXIST in the source code above
+1. Only use selectors (IDs, data attributes, roles, visible text, names) from the AVAILABLE SELECTORS list above — those are the ones that actually exist
 2. If you must guess a selector, add a comment: // ⚠️ WARNING: Selector may need verification
 3. Generate at least 3 test cases per major page/flow
 4. Include positive AND negative test cases (happy path + error states)
@@ -1029,21 +1063,36 @@ Return ONLY JSON (no markdown, no prose):
         tier: Tier = Tier.FREE,
     ) -> str:
         """Generate the raw contents of a single planned file (small output → no truncation)."""
-        sel = self._extract_available_selectors(filter_result.files)
+        if self._crawl_index is not None:
+            # Crawl-only: real anchors from the rendered site, no source blob.
+            selectors_heading = (
+                "## AVAILABLE SELECTORS (rendered from the LIVE site — real; "
+                "prefer data-testid and role/text locators)"
+            )
+            available = self._available_anchor_hint(None, self._crawl_index)
+            source_block = ""
+        else:
+            sel = self._extract_available_selectors(filter_result.files)
 
-        def _fmt(items: list[str], n: int) -> str:
-            return ", ".join(items[:n]) if items else "(none found)"
+            def _fmt(items: list[str], n: int) -> str:
+                return ", ".join(items[:n]) if items else "(none found)"
 
-        # Keep this list short: on a small per-minute token budget every extra
-        # selector is tokens spent, and the source excerpt below already shows
-        # the real markup. A representative sample is enough to ground on.
-        available = (
-            f"data-testid: {_fmt(sel['testids'], 15)}\n"
-            f"data-cy:     {_fmt(sel['data_cy'], 15)}\n"
-            f"id:          {_fmt(sel['ids'], 15)}\n"
-            f"name:        {_fmt(sel['names'], 15)}\n"
-            f"class:       {_fmt(sel['classes'], 20)}"
-        )
+            # Keep this list short: on a small per-minute token budget every extra
+            # selector is tokens spent, and the source excerpt below already shows
+            # the real markup. A representative sample is enough to ground on.
+            selectors_heading = (
+                "## AVAILABLE SELECTORS (from the real source — prefer these; "
+                "anything else is a guess)"
+            )
+            available = (
+                f"data-testid: {_fmt(sel['testids'], 15)}\n"
+                f"data-cy:     {_fmt(sel['data_cy'], 15)}\n"
+                f"id:          {_fmt(sel['ids'], 15)}\n"
+                f"name:        {_fmt(sel['names'], 15)}\n"
+                f"class:       {_fmt(sel['classes'], 20)}"
+            )
+            source_block = f"\n## SOURCE CODE\n{self._source_context(filter_result.files)}\n"
+
         prompt = f"""Generate ONE file of an E2E test suite ({framework_key}) for this {filter_result.framework} app.
 
 ## FILE TO WRITE
@@ -1066,12 +1115,9 @@ Return ONLY JSON (no markdown, no prose):
 
 ## NAVIGATION RULES
 {self._navigation_hint(filter_result.framework)}
-## AVAILABLE SELECTORS (from the real source — prefer these; anything else is a guess)
+{selectors_heading}
 {available}
-
-## SOURCE CODE
-{self._source_context(filter_result.files)}
-
+{source_block}
 Output ONLY the raw contents of {spec['filename']} — no JSON, no markdown fences, no
 commentary. Use only selectors that exist above; if you must guess, add a comment
 `// ⚠️ WARNING: Selector may need verification`. For spec files, include at least 3

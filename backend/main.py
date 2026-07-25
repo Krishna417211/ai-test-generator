@@ -32,7 +32,7 @@ from fastapi.responses import StreamingResponse, RedirectResponse
 from config import settings
 from logging_config import configure_logging, request_id_var
 from ratelimit import rate_limit, analyze_limiter, generate_limiter, email_limiter, otp_limiter
-from agents.filter_agent import FilterAgent, NoTestableUIError
+from agents.filter_agent import FilterAgent, FilterResult, NoTestableUIError
 from agents.writer_agent import WriterAgent, CRAWL_MAX_PAGES
 from services import live_crawler as crawler_svc
 from services import grounding as grounding_svc
@@ -48,7 +48,7 @@ from models.schemas import (
     AdminSuspendRequest, AdminSetUsageRequest, AdminOverview, AdminSystem,
     CrawlPreviewRequest, CrawlPreviewResponse, CrawledRoute, CrawlAnchor,
 )
-from services.file_extractor import extract_zip, filter_for_push
+from services.file_extractor import extract_zip, filter_for_push, detect_framework
 from services.github_service import GitHubService, parse_github_url, RepoNotFoundError, RepoAccessError
 from services.git_publisher import GitPublisher, GitPublishError
 from services.security_scanner import SecurityScanner, ScanError, precheck_target
@@ -375,6 +375,114 @@ async def crawl_preview(payload: CrawlPreviewRequest,
         sample_anchors=sample,
         elapsed_ms=elapsed_ms(),
     )
+
+
+# Manifest files whose contents decide the app's stack. We fetch only these (not
+# the whole repo) so framework detection stays cheap in the crawl-first flow.
+_FRAMEWORK_MANIFESTS = (
+    "package.json", "requirements.txt", "pyproject.toml", "Pipfile", "setup.py",
+    "pom.xml", "composer.json", "Gemfile", "angular.json",
+)
+
+
+@app.post("/api/analyze-crawl", dependencies=[Depends(rate_limit(analyze_limiter))])
+async def analyze_crawl(payload: GenerateRequest, ctx: dict = Depends(require_user)):
+    """Crawl-first entrypoint: the deployed site is the source the suite is written
+    from.
+
+    Requires a connected GitHub account, a repo URL, and a hosted URL. It renders
+    and crawls the hosted site (services/live_crawler.py) for the real, rendered
+    selectors — no repo file contents are ever sent to the model (WriterAgent
+    crawl-only mode). The repo is touched only to confirm access, detect the
+    stack, and later publish the suite back. If the site can't be crawled we stop
+    with an honest reason: there is deliberately no repo-file fallback.
+    """
+    # Hard GitHub gate — a connected session (or a pasted PAT) is required.
+    github_token = ctx["session"].get("github_token") or payload.github_token
+    if not github_token:
+        raise HTTPException(403, "Connect your GitHub account to generate tests.")
+    if not payload.repo_url:
+        raise HTTPException(400, "A GitHub repository URL is required.")
+    if not payload.live_url:
+        raise HTTPException(400, "A hosted website URL is required.")
+    try:
+        repo_info = parse_github_url(payload.repo_url)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    # 1) Crawl the hosted site FIRST. Everything downstream depends on it, so its
+    #    failure short-circuits before we spend anything on the repo. No fallback.
+    try:
+        crawl = await crawler_svc.crawl(payload.live_url, max_pages=CRAWL_MAX_PAGES)
+    except ScanError as e:
+        raise HTTPException(400, f"That hosted URL can't be crawled: {e}")
+    except crawler_svc.CrawlUnavailable:
+        raise HTTPException(
+            503, "A headless browser isn't available here, so the live crawl can't "
+                 "run right now. Please try again shortly.")
+    except Exception as e:
+        logger.warning(f"analyze-crawl: crawl failed for {payload.live_url}: {e}")
+        raise HTTPException(
+            400, "The crawl couldn't complete. Check the hosted URL is reachable and "
+                 "publicly accessible, then try again.")
+    if not (crawl.pages and grounding_svc.dom_index_is_useful(crawl.index)):
+        raise HTTPException(
+            422, "The hosted site rendered but exposed too few elements to build a "
+                 "suite from — it may be behind a login, still loading, or nearly "
+                 "empty. Generation needs a reachable, public page with real content.")
+
+    # 2) Touch the repo (no LLM, no whole-repo download): confirm access and grab
+    #    just the manifest files so we can name the stack. File *contents* never
+    #    reach the model; the repo is for access + publishing tests back.
+    gh = GitHubService(token=github_token)
+    try:
+        tree = await gh.get_file_tree(repo_info)
+    except RepoNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except RepoAccessError as e:
+        raise HTTPException(403, str(e))
+    paths = [item["path"] for item in tree]
+    manifest_paths = [p for p in paths if p.split("/")[-1] in _FRAMEWORK_MANIFESTS][:8]
+    manifests = await gh.fetch_files(repo_info, manifest_paths, concurrency=8) if manifest_paths else []
+    signal = {p: "" for p in paths}          # paths for extension checks…
+    for f in manifests:
+        signal[f.path] = f.content           # …contents for the authoritative ones
+    framework = detect_framework(signal) or "web app"
+
+    tier = tier_for_user(ctx["user_id"])
+    routes = [p.path for p in crawl.pages]
+    summary = (
+        f"Crawl-first suite for {repo_info.owner}/{repo_info.repo} ({framework}). "
+        f"Grounded on {crawl.n_anchors} live anchors across {crawl.n_pages} rendered "
+        f"routes of {crawl.seed}.")
+    # files={} — crawl-only generation grounds against the live DOM, not source.
+    fr = FilterResult(
+        project_summary=summary,
+        key_pages=[{"path": r, "importance": 8} for r in routes],
+        key_components=[], routes=routes, framework=framework,
+        testing_challenges=[], files={}, total_tokens=0, file_count=0,
+    )
+
+    job_id = str(uuid.uuid4())
+    store.create(job_id, {
+        "user_id": ctx["user_id"],
+        "files": {},
+        "filter_result": fr,
+        # The crawl's ground truth, JSON-safe, for stream/generate to rebuild.
+        "crawl_anchors": grounding_svc.index_to_dicts(crawl.index),
+        "request": payload.model_dump(),
+    })
+    return {
+        "job_id": job_id,
+        "analysis": ProjectAnalysis(
+            project_summary=summary, framework=framework, key_pages=fr.key_pages,
+            key_components=[], routes=routes, testing_challenges=[],
+            file_count=0, total_tokens=0, file_previews=[],
+        ).model_dump(),
+        "crawl": {"n_pages": crawl.n_pages, "n_anchors": crawl.n_anchors,
+                  "seed": crawl.seed},
+        "provenance": provenance_report(tier),
+    }
 
 
 # ─────────────────────────────────────────────
@@ -2164,6 +2272,10 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
         raise HTTPException(403, "This job belongs to another account.")
 
     filter_result = session["filter_result"]
+    # Crawl-first jobs carry the live-crawl anchors instead of source files; rebuild
+    # the index so the writer generates AND grounds against the real rendered DOM.
+    crawl_index = (grounding_svc.dicts_to_index(session["crawl_anchors"])
+                   if session.get("crawl_anchors") else None)
     agent = WriterAgent()
     started = time.monotonic()
     start_provenance()
@@ -2184,6 +2296,7 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
             self_heal=payload.self_heal,
             tier=tier,
             live_url=payload.live_url,
+            crawl_index=crawl_index,
         )
     except AllProvidersExhausted as e:
         # Our shared API keys are dry — this is an outage on our side and hits
@@ -2281,6 +2394,9 @@ async def stream_generation(
         raise HTTPException(403, "This job belongs to another account.")
 
     filter_result = session["filter_result"]
+    # Crawl-first jobs stream from the live-crawl anchors, not source files.
+    crawl_index = (grounding_svc.dicts_to_index(session["crawl_anchors"])
+                   if session.get("crawl_anchors") else None)
     agent = WriterAgent()
 
     # Quota is the cap on generations, but the expensive work is the LLM run that
@@ -2320,6 +2436,7 @@ async def stream_generation(
                 test_flows=test_flows or session["request"].get("test_flows", ""),
                 base_url=base_url,
                 tier=tier_for_user(ctx["user_id"]),
+                crawl_index=crawl_index,
             ):
                 buffer += chunk
                 # Send status updates if any are queued (non-blocking)
