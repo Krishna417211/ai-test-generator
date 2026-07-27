@@ -338,12 +338,3 @@ export interface Dashboard {
   };
 }
 
-export interface AppState {
-  step: "input" | "analyzing" | "preview" | "configure" | "generating" | "done";
-  jobId: string | null;
-  analysis: ProjectAnalysis | null;
-  result: GenerateResponse | null;
-  error: string | null;
-  currentProvider: string;
-  streamOutput: string;
-}

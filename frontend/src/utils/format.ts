@@ -13,12 +13,6 @@ export function formatBytes(bytes: number): string {
 }
 
 /** Token count → compact label. Under 1k stays exact rather than "~0k". */
-export function formatTokens(tokens: number): string {
-  if (tokens < 1000) return `${tokens}`;
-  if (tokens < 10_000) return `~${(tokens / 1000).toFixed(1)}k`;
-  return `~${Math.round(tokens / 1000)}k`;
-}
-
 /** The API returns the writer agent's internal prompt-template key
  *  ("playwright_js"), which is not a name to show a user. */
 const FRAMEWORK_LABELS: Record<string, string> = {
