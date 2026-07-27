@@ -75,6 +75,9 @@ class Target:
         return bool(self.serve_command)
 
 
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+
+
 def _is_local_url(url: str) -> tuple[bool, int]:
     """Whether a URL points at this machine, and the port it names."""
     try:
@@ -82,7 +85,7 @@ def _is_local_url(url: str) -> tuple[bool, int]:
     except ValueError:
         return False, 0
     host = (parsed.hostname or "").lower()
-    if host not in {"localhost", "127.0.0.1", "0.0.0.0", "::1"}:
+    if host not in _LOCAL_HOSTS:
         return False, 0
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     return True, port
@@ -141,8 +144,24 @@ def normalize_base_url(base_url: str) -> str:
     See also _navigation_hint in writer_agent: the other half of the rule is that
     tests must not write a leading slash, which resets to the host root and
     discards the sub-path just as thoroughly.
+
+    The scheme is supplied when the user omits it. `testra.duckdns.org` is what a
+    person types, but it is not a URL: Selenium rejects it outright
+    (InvalidArgumentException) and `new URL()` reads it as a relative path, so a
+    scheme-less entry poisoned every generated config with a base that could
+    never load. https is the right guess for a real host and http for localhost,
+    where a dev server almost never has a certificate.
     """
     url = (base_url or "").strip() or "http://localhost:3000"
+    if "://" not in url:
+        authority = url.split("/", 1)[0]
+        # [::1]:8080 keeps its colons inside the brackets; localhost:3000 does not.
+        host = (
+            authority[1:].split("]", 1)[0]
+            if authority.startswith("[")
+            else authority.split(":", 1)[0]
+        )
+        url = ("http://" if host.lower() in _LOCAL_HOSTS else "https://") + url
     return url if url.endswith("/") else url + "/"
 
 
@@ -267,10 +286,13 @@ def package_json(framework_key: str, target: Target) -> str:
 
 def requirements_txt(framework_key: str) -> str:
     if framework_key == "selenium_python":
+        # No webdriver-manager. Selenium 4.6+ ships Selenium Manager, which
+        # resolves the driver itself, so the extra package is dead weight that
+        # still runs at import time and still fetches a binary over the network —
+        # a supply-chain surface the suite gets nothing back for.
         return (
             f"selenium=={_SELENIUM_PY_VERSION}\n"
             "pytest==8.3.3\n"
-            "webdriver-manager==4.0.2\n"
         )
     return (
         f"playwright=={_PLAYWRIGHT_PY_VERSION}\n"
@@ -446,6 +468,151 @@ def cypress_tsconfig() -> str:
     ) + "\n"
 
 
+# Appended to every Python conftest. A raw Selenium traceback names the
+# exception class and nothing else, so the first thing anyone does with a red
+# suite is paste it somewhere and ask what it means. This answers that in the
+# terminal, at the moment of failure, with the one thing a traceback never
+# carries: what to change.
+#
+# Keyed on the exception's class *name*, as a string, so this block imports
+# neither Selenium nor Playwright and can ship in a suite using either.
+_FAILURE_EXPLAINER = '''
+
+# ── Failure diagnostics ──────────────────────────────────────────────────────
+
+# Matched against the exception message first, because a bare WebDriverException
+# covers everything from "no Chrome installed" to "the site is down" and the
+# class name alone cannot tell those apart. First substring wins.
+_MESSAGE_HINTS = (
+    ("ERR_CONNECTION_REFUSED", "Nothing is listening at the URL under test.",
+     "Start the app, or point the suite elsewhere with BASE_URL=..."),
+    ("ERR_NAME_NOT_RESOLVED", "The hostname in the URL does not resolve.",
+     "Check BASE_URL for a typo, and that the host is reachable from here."),
+    ("ERR_CONNECTION_TIMED_OUT", "The host accepted nothing before the timeout.",
+     "The app may be down or firewalled off from this machine."),
+    ("ERR_CERT", "The site's TLS certificate was rejected.",
+     "Expected on a self-signed staging cert. Use http:// locally, or install the CA."),
+    ("cannot find Chrome binary", "Chrome is not installed where Selenium looks.",
+     "Install Google Chrome or Chromium, then re-run."),
+    ("session not created", "Chrome and its driver are different versions.",
+     "Update Chrome. Selenium Manager fetches the matching driver on the next run."),
+    ("DevToolsActivePort", "Chrome could not start in this environment.",
+     "Usually a container with no /dev/shm and no display. Run with HEADLESS=1."),
+)
+
+# Fallback, keyed on the exception class.
+_DIAGNOSIS = {
+    "NoSuchElementException": (
+        "The locator matched no element on the page.",
+        "Inspect the real element and correct the locator in tests/pages/. "
+        "Prefer a data-testid attribute — it survives restyling.",
+    ),
+    "TimeoutException": (
+        "The element never reached the expected state before the wait expired.",
+        "Either it renders later than the timeout allows, or it never renders. "
+        "Load the page yourself and confirm the element is really there.",
+    ),
+    "ElementClickInterceptedException": (
+        "Something is covering the element, so the click landed on the overlay.",
+        "Usually a cookie banner, modal or sticky header. Dismiss it first.",
+    ),
+    "ElementNotInteractableException": (
+        "The element exists but cannot be typed into or clicked.",
+        "It is hidden, disabled, or zero-sized. Wait for the state that enables it.",
+    ),
+    "StaleElementReferenceException": (
+        "The page re-rendered between finding the element and using it.",
+        "Re-find the element immediately before acting on it, inside the wait.",
+    ),
+    "InvalidArgumentException": (
+        "The browser rejected the URL it was asked to open.",
+        "Almost always a missing scheme — BASE_URL needs https:// or http://.",
+    ),
+    "InvalidSelectorException": (
+        "The browser rejected the selector as malformed.",
+        "Check the CSS or XPath syntax in the page object.",
+    ),
+    "AssertionError": (
+        "The page loaded, but it did not do what the test expected.",
+        "This is the useful kind of failure: either the app has a real bug, or "
+        "the expectation is out of date. Compare the assertion with the live page.",
+    ),
+    "AttributeError": (
+        "The test called something that does not exist.",
+        "A bug in the generated code, not in your app. Check the spelling against "
+        "the library's API — e.g. expected_conditions.presence_of_element_located.",
+    ),
+    "ModuleNotFoundError": (
+        "A dependency is missing from this environment.",
+        "Run `pip install -r requirements.txt` from the suite directory.",
+    ),
+}
+
+
+def _redacted(url: str) -> str:
+    """The URL under test, with any embedded credentials removed.
+
+    A base URL can carry basic-auth userinfo (https://user:pass@host). This line
+    is printed to a terminal and, in CI, into a log that outlives the run — so
+    the credentials come out before it is written anywhere.
+    """
+    from urllib.parse import urlsplit, urlunsplit
+
+    parts = urlsplit(url)
+    if parts.netloc and "@" in parts.netloc:
+        parts = parts._replace(netloc=parts.netloc.rsplit("@", 1)[1])
+    return urlunsplit(parts)
+
+
+def _explain(exc: BaseException) -> tuple[str, str]:
+    message = str(exc)
+    for needle, cause, fix in _MESSAGE_HINTS:
+        if needle in message:
+            return cause, fix
+    return _DIAGNOSIS.get(
+        type(exc).__name__,
+        ("The test raised an error before it could finish.",
+         "Read the traceback above — the top frame inside tests/ is the line to look at."),
+    )
+
+
+def pytest_exception_interact(node, call, report):
+    """Print a plain-language cause and fix next to every failure."""
+    if call.excinfo is None:
+        return
+    exc = call.excinfo.value
+    cause, fix = _explain(exc)
+
+    # Selenium messages carry a full remote stacktrace; the first line is the
+    # only part that identifies the failure.
+    detail = str(exc).strip().splitlines()
+    detail = detail[0][:200] if detail else ""
+
+    rule = "─" * 78
+    lines = [
+        "", rule,
+        f"✗ {node.nodeid}",
+        f"  Error  {type(exc).__name__}" + (f": {detail}" if detail else ""),
+        f"  Cause  {cause}",
+        f"  Fix    {fix}",
+        f"  URL    {_redacted(BASE_URL)}",
+    ]
+    # `-x` has no option of its own: it is a shortcut that sets maxfail to 1.
+    if node.config.getoption("maxfail", 0):
+        lines.append("  Stopping here. After fixing, `pytest --lf` re-runs just this test.")
+    lines += [rule, ""]
+
+    # Through the reporter, not print(): pytest's output capture is still active
+    # at this point, and a print would be swallowed or shown far from the failure.
+    reporter = node.config.pluginmanager.getplugin("terminalreporter")
+    if reporter is not None:
+        for line in lines:
+            reporter.write_line(line)
+    else:
+        print("\\n".join(lines))
+'''
+
+
 def pytest_conftest(target: Target) -> str:
     """conftest.py carrying base_url — and, for a local target, the app itself.
 
@@ -472,7 +639,7 @@ BASE_URL = os.environ.get("BASE_URL") or {target.base_url!r}
 def base_url() -> str:
     """The root URL of the app under test."""
     return BASE_URL
-'''
+''' + _FAILURE_EXPLAINER
 
     return f'''"""Shared pytest fixtures — generated by Testra.
 
@@ -573,13 +740,171 @@ def _app_under_test():
         yield
     finally:
         _stop(proc)
+''' + _FAILURE_EXPLAINER
+
+
+def selenium_driver_conftest() -> str:
+    """The Chrome fixture for a Selenium suite — headed, paced, and watchable.
+
+    This used to be the model's to write, and the model wrote what it was asked
+    for: a hardcoded `--headless=new`. That is the right default for CI and the
+    wrong one for a person who has just downloaded a suite and wants to watch it
+    drive their site. Nothing in a driver factory needs a language model's
+    judgement, so it moved here — deterministic, and one less file of output
+    tokens per generation.
+    """
+    return r'''"""Chrome WebDriver fixture — generated by Testra.
+
+Runs **headed by default**. A real browser window opens, and you watch the suite
+work through your site: each element is outlined in red a moment before it is
+clicked or typed into, and the same step is printed in the terminal as it
+happens, so the window and the log tell you the same story.
+
+    pytest                      # watch it run
+    pytest -k login             # watch one flow
+    HEADLESS=1 pytest           # no window (CI does this automatically)
+    STEP_PAUSE_MS=0 pytest      # still narrated, but at full speed
+"""
+
+import os
+import time
+
+import pytest
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.remote.webelement import WebElement
+
+
+def _flag(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"", "0", "false", "no", "off"}
+
+
+# CI has no display and nobody watching, so it opts itself out of the window, the
+# narration and the pacing alike — the suite must not get slower or noisier just
+# because the default suits a human.
+HEADLESS = _flag("HEADLESS", default=_flag("CI"))
+WATCH = not HEADLESS
+
+# Milliseconds to hold on each element before acting on it. Selenium clicks far
+# faster than an eye can follow; without this, a headed run is a blur.
+STEP_PAUSE_MS = int(os.environ.get("STEP_PAUSE_MS") or (0 if HEADLESS else 400))
+
+# Outlines the element and describes it in one round trip. Two calls would be a
+# second of latency across a suite this chatty, for the same two facts.
+_ANNOTATE = r"""
+var e = arguments[0];
+e.style.outline = '3px solid #e11d48';
+e.style.outlineOffset = '2px';
+e.scrollIntoView({block: 'center', behavior: 'instant'});
+var id = e.getAttribute('data-testid') || e.getAttribute('data-cy');
+var name = e.tagName.toLowerCase()
+    + (id ? '[data-testid="' + id + '"]' : (e.id ? '#' + e.id : ''));
+var text = (e.innerText || e.value || e.getAttribute('aria-label') || '').trim();
+return name + (text ? '  "' + text.replace(/\s+/g, ' ').slice(0, 40) + '"' : '');
+"""
+
+# Set once the session starts. Written through rather than print()ed because
+# pytest captures stdout during a test, which would hold every line back until
+# the test ended — the exact opposite of watching it happen.
+_reporter = None
+
+
+def _narrate(line: str) -> None:
+    if _reporter is not None:
+        _reporter.write_line(line)
+    else:
+        print(line, flush=True)
+
+
+def _show(element: WebElement, action: str) -> None:
+    """Point at the element about to be used, in the browser and the terminal."""
+    try:
+        label = element.parent.execute_script(_ANNOTATE, element)
+    except Exception:
+        label = "<element>"  # Narration only. Never fail a test over a label.
+    _narrate(f"    → {action:<5} {label}")
+    time.sleep(STEP_PAUSE_MS / 1000)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _watchable_run(pytestconfig):
+    """Make every click and keystroke visible, once per session.
+
+    Patching WebElement rather than wrapping the driver is what makes this work
+    with page objects that were never written with it in mind: the pause lands on
+    the element the test actually touched, however it was found — directly, or
+    handed back by a WebDriverWait.
+    """
+    if not WATCH:
+        yield
+        return
+
+    global _reporter
+    _reporter = pytestconfig.pluginmanager.getplugin("terminalreporter")
+
+    originals = {name: getattr(WebElement, name) for name in ("click", "send_keys")}
+
+    def traced(original, action):
+        def wrapper(self, *args, **kwargs):
+            _show(self, action)
+            return original(self, *args, **kwargs)
+        return wrapper
+
+    for name, action in (("click", "click"), ("send_keys", "type")):
+        setattr(WebElement, name, traced(originals[name], action))
+    try:
+        yield
+    finally:
+        # Restored on the way out: the patch is global to the class, and leaving
+        # it in place would follow anything else that imports Selenium in-process.
+        for name, original in originals.items():
+            setattr(WebElement, name, original)
+        _reporter = None
+
+
+@pytest.fixture
+def driver():
+    options = Options()
+    if HEADLESS:
+        options.add_argument("--headless=new")
+        options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--disable-dev-shm-usage")
+
+    # --no-sandbox only when Chrome would otherwise refuse to start, which means
+    # running as root — the usual state inside a CI container. It switches off the
+    # process sandbox, the main thing standing between a hostile page and the
+    # machine, so a normal desktop account keeps it on.
+    if getattr(os, "geteuid", lambda: -1)() == 0:
+        options.add_argument("--no-sandbox")
+
+    # No implicit wait. Mixing one with WebDriverWait makes every poll inside the
+    # wait block for the implicit timeout first, so a 10s explicit wait gets two
+    # attempts instead of twenty and a missing element takes seconds to report.
+    # The page objects wait explicitly; that is the only clock in the suite.
+    chrome = webdriver.Chrome(options=options)
+    try:
+        yield chrome
+    finally:
+        chrome.quit()
 '''
 
 
 def pytest_ini() -> str:
+    """pytest settings for the generated suite.
+
+    `-x` is the deliberate one. A browser suite fails in cascades — one dead
+    selector on a shared header takes out every test that navigates through it —
+    so a full run buries the first real failure under twenty consequences of it.
+    Stopping on the first keeps the terminal showing the thing to fix, which is
+    also what makes the diagnostics block in conftest.py worth reading.
+    """
     return """[pytest]
 testpaths = tests
-addopts = -v --tb=short
+addopts = -v -x --tb=short
 """
 
 
@@ -835,6 +1160,286 @@ _RUN_COMMANDS = {
 }
 
 
+# Where the suite's own directory sits once the user has adopted it, and what a
+# reader needs to see to believe it will not collide with their app.
+_ADOPT_TREES = {
+    "python": "    ├── conftest.py\n    ├── requirements.txt\n    └── tests/",
+    "js": "    ├── package.json\n    └── tests/",
+    "java": "    ├── pom.xml\n    └── src/test/java/",
+}
+
+_IGNORES = {
+    "playwright_python": f"{SUITE_DIR}/.venv/\n{SUITE_DIR}/.pytest_cache/\n{SUITE_DIR}/__pycache__/\n{SUITE_DIR}/test-results/",
+    "selenium_python": f"{SUITE_DIR}/.venv/\n{SUITE_DIR}/.pytest_cache/\n{SUITE_DIR}/__pycache__/",
+    "playwright_js": f"{SUITE_DIR}/node_modules/\n{SUITE_DIR}/test-results/\n{SUITE_DIR}/playwright-report/",
+    "cypress_js": f"{SUITE_DIR}/node_modules/\n{SUITE_DIR}/cypress/videos/\n{SUITE_DIR}/cypress/screenshots/",
+    "selenium_java": f"{SUITE_DIR}/target/",
+}
+
+
+def _lang(framework_key: str) -> str:
+    if is_python(framework_key):
+        return "python"
+    return "js" if is_js(framework_key) else "java"
+
+
+def _headless_run(framework_key: str, run: str) -> str:
+    """The same run command, with the window switched off.
+
+    Only the Selenium suite has a window to switch off by hand; Playwright and
+    Cypress are headless unless asked otherwise, and Java's fixture is the
+    model's. Getting this wrong would put a no-op environment variable in front
+    of a command and imply the default is wrong.
+    """
+    return f"HEADLESS=1 {run}" if framework_key == "selenium_python" else run
+
+
+def _readme_watching(framework_key: str) -> str:
+    """What the first run looks like — the section that sells the rest.
+
+    Selenium only: it is the one framework here whose fixture this module writes,
+    so it is the only one whose on-screen behaviour we can promise.
+    """
+    if framework_key != "selenium_python":
+        return ""
+    return """## What you'll see
+
+`pytest` opens a real Chrome window and drives your site in front of you. Each
+element is outlined in red just before it is used, and the same step is printed
+in the terminal as it happens:
+
+```
+tests/test_navigation.py::test_navigate_from_home_to_login
+    → click a[data-testid="login"]  "Log in"
+    → type  input#email
+tests/test_navigation.py::test_navigate_from_home_to_login PASSED
+```
+
+At the first failure it stops and tells you what to change:
+
+```
+✗ tests/test_navigation.py::test_navigate_from_home_to_login
+  Error  NoSuchElementException: Unable to locate element: a[href="/login"]
+  Cause  The locator matched no element on the page.
+  Fix    Inspect the real element and correct the locator in tests/pages/.
+         Prefer a data-testid attribute — it survives restyling.
+  Stopping here. After fixing, `pytest --lf` re-runs just this test.
+```
+
+| Command | What it does |
+|---|---|
+| `pytest` | headed and narrated — the default |
+| `pytest -k login` | one flow only |
+| `pytest --lf` | just what failed last time |
+| `STEP_PAUSE_MS=1000 pytest` | slower, for a demo |
+| `HEADLESS=1 pytest` | no window, no narration |
+
+"""
+
+
+def _readme_adopt(framework_key: str, install: str, run: str, target: Target) -> str:
+    """Step 1: the archive becomes part of the user's repository.
+
+    The suite arrives as a zip, which makes "where does this go?" the first real
+    question — and nothing about a zip answers it. Everything here is the part a
+    hand-written suite would never need to say because its author already knew.
+    """
+    lang = _lang(framework_key)
+    if lang == "python":
+        isolate = f"""```bash
+cd {SUITE_DIR}
+python3 -m venv .venv
+source .venv/bin/activate      # Windows: .venv\\Scripts\\activate
+{install}
+```"""
+        why = "The virtualenv keeps the suite's dependencies out of your app's."
+    elif lang == "js":
+        isolate = f"""```bash
+cd {SUITE_DIR}
+{install}
+```"""
+        why = (f"Installing inside `{SUITE_DIR}/` keeps a separate `node_modules`, so your "
+               "app's lockfile is untouched.")
+    else:
+        isolate = f"""```bash
+cd {SUITE_DIR}
+{install}
+```"""
+        why = "The suite's `pom.xml` is separate from your app's build."
+
+    pointing = (
+        f"""It points at `{target.base_url}` by default. Override that per run:
+
+```bash
+BASE_URL=http://localhost:3000 {run}
+```"""
+        if not target.is_local else
+        f"""With `BASE_URL` unset it starts your app itself:
+
+```
+{target.serve_command}
+```
+
+If your app starts differently, change `SERVE_COMMAND` in `{SUITE_DIR}/conftest.py`.
+Set `BASE_URL` to test something already running instead."""
+    )
+
+    return f"""## 1 · Add it to your project
+
+Copy `{SUITE_DIR}/` to the **root of your repository**:
+
+```
+your-project/
+├── src/
+├── package.json
+└── {SUITE_DIR}/          ← this archive
+{_ADOPT_TREES[lang]}
+```
+
+It never writes outside its own folder, and nothing in your app imports it.
+
+**Install its dependencies**
+
+{isolate}
+
+{why}
+
+**Point it at your app**
+
+{pointing}
+
+**Ignore the build output** — add to your `.gitignore`:
+
+```gitignore
+{_IGNORES[framework_key]}
+```
+
+Commit everything else. The tests and page objects are source: reviewing a
+selector change in a pull request is the reason they live in the repo.
+
+"""
+
+
+def _readme_prepush(framework_key: str, run: str) -> str:
+    """Step 2: the tests run before a push leaves the machine.
+
+    This is the half of "catch it early" that CI cannot do. CI tells you the
+    build is broken after the commit is already on the branch; a pre-push hook
+    refuses the push. Both are worth having, and they fail at different moments.
+    """
+    lang = _lang(framework_key)
+    headless = _headless_run(framework_key, run)
+    runner = {
+        "python": f"cd {SUITE_DIR} && .venv/bin/{headless.split()[-1]}",
+        "js": f"npm --prefix {SUITE_DIR} test",
+        "java": f"mvn -B -f {SUITE_DIR}/pom.xml test",
+    }[lang]
+    if lang == "python" and framework_key == "selenium_python":
+        runner = f"cd {SUITE_DIR} && HEADLESS=1 .venv/bin/pytest"
+
+    return f"""## 2 · Run it before every push
+
+A `pre-push` hook fails the push when the suite is red, so a broken flow never
+reaches the branch in the first place.
+
+```bash
+cat > .git/hooks/pre-push <<'EOF'
+#!/bin/sh
+{runner} || {{
+  echo
+  echo "E2E tests failed — push aborted."
+  echo "Run them yourself to watch it happen:  cd {SUITE_DIR} && {run}"
+  exit 1
+}}
+EOF
+chmod +x .git/hooks/pre-push
+```
+
+Skip it for one push with `git push --no-verify`.
+
+> `.git/hooks/` is not versioned, so each clone installs the hook once. That is
+> why the pipeline below is still worth adding — it is the check nobody can
+> forget to install.
+
+"""
+
+
+def _readme_ci(framework_key: str, target: Target, ci_as_files: bool) -> str:
+    """Step 3: the same suite, running in a pipeline.
+
+    Two deliveries, one YAML. When Testra pushes to a repository it created, the
+    workflow is written in — that is the feature the user asked for, and telling
+    them to paste a file they already have is nonsense. When they downloaded an
+    archive, the workflow is quoted instead: they will unzip it into a project
+    that usually already has a pipeline, and a second workflow duplicating their
+    test job is a surprise, not a feature.
+
+    Both branches read from github_workflow/gitlab_ci, so the instructions cannot
+    describe a pipeline different from the one that shipped.
+    """
+    if ci_as_files:
+        return """## 3 · The pipeline is already wired up
+
+`.github/workflows/e2e-tests.yml` runs this suite on every push and pull
+request, and `.gitlab-ci.yml` does the same on GitLab. Both install from the
+manifest in the suite directory — nothing else to set up.
+
+To test a deployed environment instead of the default, set a `BASE_URL`
+variable in your repository settings (GitHub: *Settings → Secrets and variables
+→ Actions → Variables*). Leave it unset and the pipeline uses the default.
+
+"""
+
+    return f"""## 3 · Add it to your pipeline
+
+Optional, and only if you want the suite to run on every push and pull request
+as well. Save this as `.github/workflows/e2e-tests.yml` in your repo:
+
+```yaml
+{github_workflow(framework_key, target).rstrip()}
+```
+
+<details>
+<summary>GitLab CI — <code>.gitlab-ci.yml</code></summary>
+
+```yaml
+{gitlab_ci(framework_key, target).rstrip()}
+```
+
+</details>
+
+Set a `BASE_URL` variable in your repository settings to test a deployed
+environment; leave it unset and the pipeline uses the default above.
+
+"""
+
+
+def _readme_failures(framework_key: str, challenges: str) -> str:
+    """What to do about a red suite — the section people arrive at in a hurry."""
+    where = {
+        "python": "`tests/pages/`, one class per page",
+        "js": "the page objects, one per page",
+        "java": "the page objects, as `@FindBy` fields",
+    }[_lang(framework_key)]
+
+    return f"""## When a test fails
+
+A failing test usually means the UI moved, not that the suite is broken. The
+terminal names the file and the locator to change.
+
+- **Selectors live in {where}** — one UI change is one edit, however many tests
+  depend on it.
+- **Add a `data-testid` to anything you keep testing.** It is the one attribute
+  a redesign will not silently take away, and it is the first thing the
+  generator looks for — ahead of element IDs, ARIA roles, then CSS classes.
+- **Anything marked `selector not verified`** was not found in the source that
+  was read. Confirm those before trusting the test.
+
+**Known gaps:** {challenges}
+
+"""
+
+
 def readme(
     *,
     framework_key: str,
@@ -845,41 +1450,31 @@ def readme(
     project_summary: str,
     testing_challenges: list[str],
     ci_included: bool = True,
+    ci_as_files: bool = False,
     failed_files: list[str] | None = None,
     test_count: int | None = None,
 ) -> str:
     """Setup instructions for the framework that was actually generated.
 
-    The version this replaces printed `npm install` and `npx playwright test`
-    for every framework, so a Selenium/pytest user was told to run Playwright.
+    Three things this has to get right, each of which it once got wrong:
 
-    It also described the CI pipeline unconditionally, while the writer agent
-    withholds that pipeline whenever a planned file failed to generate. A user
-    whose run lost its spec files therefore got a README promising a workflow
-    that wasn't in the archive, next to a suite that collects zero tests — the
-    incomplete run was indistinguishable from a complete one. The suite's own
-    README is the last thing standing between that run and a confused user, so
-    it now states what is missing before it states how to run anything.
+    * **The right framework.** It printed `npm install` and `npx playwright test`
+      for every framework, so a Selenium/pytest user was told to run Playwright.
+
+    * **An honest account of the archive.** It described a CI pipeline
+      unconditionally, while the writer agent withholds output whenever a planned
+      file fails to generate — so a run that lost its specs shipped a README
+      promising files that weren't there, next to a suite collecting zero tests.
+      The incomplete run was indistinguishable from a complete one. It now says
+      what is missing before it says how to run anything.
+
+    * **One place per fact.** Base URL, run command and install steps each used to
+      appear in two or three sections that could drift apart. The structure below
+      is a sequence — see it run, adopt it, guard the push, wire the pipeline —
+      and each fact belongs to exactly one step of it.
     """
-    install, run, run_remote = _RUN_COMMANDS.get(framework_key, _RUN_COMMANDS["playwright_js"])
-    file_list = "\n".join(f"- `{f.filename}` — {f.description}" for f in files)
-
-    if target.is_local:
-        serving = f"""The config boots the app for you before the tests run:
-
-```
-{target.serve_command}
-```
-
-If your app starts differently, edit the `webServer` command in the config file.
-"""
-    else:
-        serving = (
-            f"Tests run against `{target.base_url}`, which is expected to be "
-            "already deployed and reachable.\n"
-        )
-
-    challenges = "\n".join(f"- {c}" for c in testing_challenges) or "None recorded."
+    install, run, _ = _RUN_COMMANDS.get(framework_key, _RUN_COMMANDS["playwright_js"])
+    challenges = "; ".join(testing_challenges) or "none recorded."
 
     # ── incomplete-run banner ────────────────────────────────────────────────
     # Two separate failures, either of which makes the archive unrunnable:
@@ -893,10 +1488,7 @@ If your app starts differently, edit the `webServer` command in the config file.
         if missing:
             shown = ", ".join(f"`{f}`" for f in missing[:5])
             more = f" (and {len(missing) - 5} more)" if len(missing) > 5 else ""
-            lines += [
-                f"> **{len(missing)} planned file(s) were never generated:** {shown}{more}",
-                ">",
-            ]
+            lines += [f"> **{len(missing)} planned file(s) were never generated:** {shown}{more}", ">"]
         if test_count == 0:
             lines += [
                 "> **No test cases were produced.** What shipped are page objects and",
@@ -904,43 +1496,34 @@ If your app starts differently, edit the `webServer` command in the config file.
                 ">",
             ]
         lines += [
-            "> The CI pipeline was deliberately left out, because an incomplete suite",
-            "> cannot pass it. This usually means the run hit a provider rate limit or",
-            "> quota partway through — regenerating once capacity is back normally",
-            "> produces the full suite.",
+            "> This usually means the run hit a provider rate limit or quota partway",
+            "> through — regenerating once capacity is back normally produces the full",
+            "> suite.",
             "",
         ]
         banner = "\n".join(lines) + "\n"
 
-    if ci_included:
-        ci_section = f"""## CI
+    tree = "\n".join(
+        f"- `{f.filename[len(SUITE_DIR) + 1:] if f.filename.startswith(SUITE_DIR + '/') else f.filename}`"
+        f" — {f.description}"
+        for f in files if f.description
+    )
 
-`.github/workflows/e2e-tests.yml` (and `.gitlab-ci.yml`) run this suite on every
-push and pull request. Both install from the manifest in `{SUITE_DIR}/` — nothing
-else to wire up.
+    sections = "".join([
+        _readme_watching(framework_key),
+        _readme_adopt(framework_key, install, run, target),
+        _readme_prepush(framework_key, run),
+        _readme_ci(framework_key, target, ci_as_files) if ci_included else "",
+        _readme_failures(framework_key, challenges),
+    ])
 
-To test a deployed environment instead of booting the app in CI, set a `BASE_URL`
-repository variable (GitHub: *Settings → Secrets and variables → Actions →
-Variables*). Leave it unset and CI starts the app itself.
-"""
-    else:
-        ci_section = """## CI
+    return f"""{banner}# E2E Test Suite
 
-**No CI pipeline was included.** It is withheld whenever the suite is incomplete,
-since the workflow runs the whole suite and would fail on the first push.
-Regenerate to get `.github/workflows/e2e-tests.yml` and `.gitlab-ci.yml`.
-"""
+Generated by [Testra](https://testra.duckdns.org) for a **{stack}** app, using
+**{framework_key}** ({language}). {project_summary}
 
-    return f"""{banner}# Generated E2E Test Suite
-
-Auto-generated by [Testra](https://testra.duckdns.org) for a **{stack}** application.
-
-- **Framework:** {framework_key} ({language})
-- **Lives in:** `{SUITE_DIR}/` — self-contained, with its own dependency manifest,
-  so it never collides with your app's.
-
-## Project summary
-{project_summary}
+Everything lives in `{SUITE_DIR}/` and ships with its own dependency manifest, so
+it never collides with your app's.
 
 ## Quick start
 
@@ -950,36 +1533,10 @@ cd {SUITE_DIR}
 {run}
 ```
 
-## Choosing an environment
+{sections}## What's in here
 
-`BASE_URL` overrides everything else, so the same suite runs anywhere:
-
-```bash
-BASE_URL=https://staging.example.com {run_remote}
-```
-
-Default target: `{target.base_url}`
-
-{serving}
-{ci_section}
-## Generated files
-{file_list}
-
-## Selector strategy
-Selectors are taken from your source, in this priority order:
-
-1. `data-testid` / `data-cy` attributes (most stable)
-2. Element IDs
-3. ARIA roles and accessible names
-4. CSS classes
-
-> ⚠️ Anything marked `selector not verified` was not found in the source Testra
-> read. Confirm those before relying on the test.
-
-## Known gaps
-{challenges}
+{tree}
 
 ---
-*Generated by Testra. These tests passed a static check, not a real run — the
-first `{run}` is yours.*
+*These tests passed a static check, not a real run — the first `{run}` is yours.*
 """

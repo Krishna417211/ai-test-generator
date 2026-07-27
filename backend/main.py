@@ -1921,6 +1921,10 @@ async def _publish_work(
                 test_flows=test_flows,
                 base_url=base_url,
                 include_ci=True,
+                # This push creates the repository, so the workflow belongs in
+                # it — that is what the user ticked the CI/CD box for. The
+                # download flow quotes the same YAML instead of writing it.
+                ci_as_files=True,
                 self_heal=True,
                 max_heal_attempts=4,
                 tier=tier,
