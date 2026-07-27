@@ -131,6 +131,11 @@ jobs:
           # reads them from /var/data/testra.env, which only the box can see.
           REMOTE=$(cat <<REMOTE_EOF
           set -euo pipefail
+          # 'set -e' aborts at the failing line and says nothing about the box,
+          # and SSM truncation can eat the error itself — which is how a deploy
+          # failed with its cause invisible, leaving only pull progress in the
+          # log. Print the two things that actually diagnose it on the way out.
+          trap 'echo "--- DEPLOY FAILED; state follows ---"; df -h / /var/data || true; docker ps -a || true' ERR
           cd /opt/testra
           # Match the compose file to the images being deployed.
           git fetch --depth 1 origin ${SHA}
@@ -193,8 +198,29 @@ jobs:
             docker image prune -af || true
             df -h / || true
           fi
-          docker compose -f deploy/docker-compose.prod.yml --profile zap pull || true
-          docker compose -f deploy/docker-compose.prod.yml --profile zap up -d --remove-orphans
+          # App first, sidecar second, and never the other way round. Bringing
+          # the whole --profile zap set up in one command lets an optional
+          # sidecar take the SITE with it: the previous deploy stopped the stack
+          # to reclaim space, then died during a 1.2GB ZAP pull, and the site
+          # stayed down. The backend degrades to passive scanning on its own, so
+          # ZAP must never be able to hold the app hostage. Note the reclaim path
+          # above makes this MORE likely, not less — pruning -af untags the ZAP
+          # image too, so the recovery deploy is exactly the one that has to
+          # re-pull it.
+          #
+          # --quiet-pull is load-bearing, not tidiness. SSM caps command output
+          # and layer-by-layer progress runs to thousands of lines: it blew the
+          # cap and truncated the log mid-pull, taking StandardErrorContent with
+          # it, so the deploy failed with its own cause scrolled off. Quiet pulls
+          # keep the buffer for the part someone has to read.
+          docker compose -f deploy/docker-compose.prod.yml pull --quiet backend web || true
+          docker compose -f deploy/docker-compose.prod.yml up -d --quiet-pull backend web
+          echo "--- app containers ---"
+          docker compose -f deploy/docker-compose.prod.yml ps --format '{{.Service}} {{.State}}' || true
+          # Past this line the site is already serving; everything below is
+          # best-effort and must not be able to fail the release.
+          docker compose -f deploy/docker-compose.prod.yml --profile zap pull --quiet zap || true
+          docker compose -f deploy/docker-compose.prod.yml --profile zap up -d --quiet-pull --remove-orphans zap || true
           docker image prune -f
           # Post-roll headroom check. A deploy that succeeds with the disk nearly
           # full is the next deploy's failure, and the log above is the only place
