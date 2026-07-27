@@ -159,10 +159,52 @@ jobs:
           # never touched. Rollback images stay available in ECR to re-pull.
           docker image prune -af
           docker container prune -f
+          docker builder prune -af || true
           df -h / /var/lib/docker /var/data || true
+          # The prune above cannot touch images the *running* release still
+          # references, so on a full disk it reclaims almost nothing (81MB on the
+          # deploy that added Playwright, against a 420MB Chromium layer). Root is
+          # 8G and the backend image now carries a browser, so old + new no longer
+          # fit side by side and the pull dies with "no space left on device"
+          # mid-layer — after the images are already built and pushed.
+          #
+          # Only when actually short of space, stop the stack first: that releases
+          # the running images so -af can drop them, which is the only space left
+          # to reclaim. Costs the pull's worth of downtime, so it is deliberately
+          # NOT the default path — a box with room keeps the zero-downtime roll.
+          # 'down' takes no -v and every mount here is a bind under /var/data, so
+          # the database, certs and env file are untouched.
+          # \$ throughout this block: the heredoc delimiter is unquoted so that
+          # \${BACKEND_IMAGE} and friends interpolate here on the runner. An
+          # unescaped \$(df ...) would therefore measure the RUNNER's disk and
+          # bake that number into the remote script — the check would silently
+          # describe the wrong machine. Escaped, it reaches the instance intact.
+          # tr -dc keeps digits only. --output=avail is a GNU coreutils
+          # extension: where it is missing the command fails and tail yields the
+          # header, and a bare [ "Avail" -lt 3000 ] is a syntax error that
+          # 'set -e' turns into a dead deploy. Stripping to digits and defaulting
+          # to 0 makes an unreadable disk take the recovery path — slower, but it
+          # completes, which is the right way to be wrong here.
+          AVAIL_MB=\$(df --output=avail -m / 2>/dev/null | tail -1 | tr -dc '0-9' || true)
+          echo "root volume free: \${AVAIL_MB:-unknown}MB"
+          if [ "\${AVAIL_MB:-0}" -lt 3000 ]; then
+            echo "under 3000MB — stopping the stack to reclaim its images"
+            docker compose -f deploy/docker-compose.prod.yml --profile zap down --remove-orphans || true
+            docker image prune -af || true
+            df -h / || true
+          fi
           docker compose -f deploy/docker-compose.prod.yml --profile zap pull || true
           docker compose -f deploy/docker-compose.prod.yml --profile zap up -d --remove-orphans
           docker image prune -f
+          # Post-roll headroom check. A deploy that succeeds with the disk nearly
+          # full is the next deploy's failure, and the log above is the only place
+          # anyone would see it coming.
+          AVAIL_AFTER=\$(df --output=avail -m / 2>/dev/null | tail -1 | tr -dc '0-9' || true)
+          echo "root volume free after roll: \${AVAIL_AFTER:-unknown}MB"
+          if [ "\${AVAIL_AFTER:-0}" -lt 1500 ]; then
+            echo "WARNING: under 1500MB free — grow the root volume or move"
+            echo "docker's data-root onto /var/data before the next release."
+          fi
           # The pull above is deliberately '|| true' so a bad ZAP image can never
           # fail a release — but that also means "the sidecar silently never came
           # up" looks exactly like a green deploy, which is how active scanning
