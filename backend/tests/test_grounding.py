@@ -190,6 +190,33 @@ def test_empty_suite_has_none_rate():
 
 # ── DOM fetch reuses the scanner's SSRF guard ────────────────────────────────
 
+def test_checked_against_names_only_ground_truths_that_exist():
+    """A crawl-only run has no source files, and must not claim it checked them.
+
+    `checked_against` is what the TrustPanel prints as the evidence behind the
+    rate; listing "source" for a run that fetched none credits the report with a
+    check it never performed.
+    """
+    from services.grounding import GroundIndex, Anchor, KIND_ID
+
+    class F:
+        filename = "x.ts"
+        content = 'locator("#real")'
+
+    dom = GroundIndex(source="dom")
+    dom.anchors = {Anchor(KIND_ID, "real")}
+
+    crawl_only = grounding.ground_suite([F()], {}, dom_index=dom)
+    assert crawl_only.checked_against == ["dom"]
+    assert (crawl_only.verified, crawl_only.total) == (1, 1)
+
+    both = grounding.ground_suite([F()], {"a.html": '<div id="real">'}, dom_index=dom)
+    assert both.checked_against == ["source", "dom"]
+
+    source_only = grounding.ground_suite([F()], {"a.html": '<div id="real">'})
+    assert source_only.checked_against == ["source"]
+
+
 def test_fetch_dom_rejects_private_address(monkeypatch):
     import asyncio
     # validate_target should refuse a private host before any request is made.

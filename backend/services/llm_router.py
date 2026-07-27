@@ -12,6 +12,8 @@ All providers are FREE tier — no credit card required.
 """
 
 import os
+import re
+import ssl
 import time
 import asyncio
 import logging
@@ -90,19 +92,43 @@ _ENV_PREFIXES: dict[Provider, str] = {
 }
 
 
-def is_hard_quota(text: str) -> bool:
-    """True when a provider is out of credit or has burned a daily quota.
+# A provider telling us when to come back is the strongest possible evidence the
+# limit is temporary — stronger than anything we can infer from its prose.
+# Matches Gemini's `"retryDelay": "21s"` and Groq's `try again in 1h26m46.464s`.
+_RETRY_HINT_RE = re.compile(
+    r'retrydelay"?\s*:\s*"?(\d[\dhms.]*)|try again in\s+(\d[\dhms.]*)', re.IGNORECASE
+)
 
-    Distinct from a per-minute 429: waiting won't clear these, so they're the
-    only thing that justifies telling a user capacity is genuinely gone.
+# Spent for the day/project and no retry hint offered. Waiting still fixes these
+# eventually, but not within a request, so they count as capacity being gone.
+_DAILY_EXHAUSTED_MARKERS = ("perdayperproject", "requestsperday")
+
+# The account cannot serve *any* request until a human acts. Only these justify
+# telling a user that capacity is genuinely gone.
+_OUT_OF_CREDIT_MARKERS = ("credit balance is too low", "insufficient_quota")
+
+
+def is_hard_quota(text: str) -> bool:
+    """True when waiting will NOT bring this key back.
+
+    Biased deliberately toward "recoverable". A false negative costs one wasted
+    retry; a false positive marks the key dead for the life of the process
+    (`hard_blocked` clears only on a success), tells the user "out of credit"
+    for what may be a 21-second wait, and silently drops the Pro upgrade prompt
+    via `upgrade_would_change_model`.
+
+    The previous test — `"billing" in t and "quota" in t` — did exactly that.
+    Gemini appends "please check your plan and billing details" to *every* 429,
+    including the per-minute ones, so a routine rate limit permanently disabled
+    Gemini and produced an "every provider is out of credit" message while the
+    response's own `retryDelay` said 21 seconds.
     """
     t = text.lower()
-    return (
-        "credit balance is too low" in t                 # Anthropic: no credits
-        or "generaterequestsperdayperproject" in t.replace("_", "").lower()  # Gemini: daily free quota
-        or "insufficient_quota" in t
-        or "billing" in t and "quota" in t
-    )
+    if any(m in t for m in _OUT_OF_CREDIT_MARKERS):
+        return True                       # no amount of waiting adds money
+    if _RETRY_HINT_RE.search(t):
+        return False                      # the provider itself says it recovers
+    return any(m in t.replace("_", "") for m in _DAILY_EXHAUSTED_MARKERS)
 
 
 @dataclass
@@ -194,14 +220,38 @@ class ModelSpec:
 # both are Anthropic's, because that is where a materially stronger model is
 # actually available to us: Gemini and Groq stay on their free-tier models and
 # serve as capacity, not as the quality story.
+# A Gemini model swap here is not cosmetic: Google zeroed the free-tier quota for
+# gemini-2.0-flash, and a model with no allocation fails as `limit: 0` on the
+# per-minute metric rather than as a used-up daily cap. That reads exactly like
+# exhaustion, so it burns both keys and their cooldowns on every call before
+# falling through — while looking like traffic we caused. If Gemini starts
+# failing wholesale on a fresh day, check the quota metric for `limit: 0` before
+# assuming usage.
+#
+# The model must also be one that EVERY Gemini key can serve, which is a
+# stricter test than "it works". Keys live in different Google projects, and a
+# project created after a model closed to new users gets a 404 for it forever
+# — `gemini-2.5-flash` works on the older project here and 404s on the newer
+# one. A per-(provider, tier) model is shared by every key in rotation, so
+# picking one grandfathered into only some projects silently strands the rest.
+# Verified on both keys before changing. Avoid `-preview` (withdrawn without
+# notice) and `-latest` (drifts under you, changing output with no code change).
 MODELS: dict[tuple[Provider, Tier], ModelSpec] = {
-    (Provider.GEMINI, Tier.FREE): ModelSpec("gemini-2.0-flash", 8192),
-    (Provider.GEMINI, Tier.PRO):  ModelSpec("gemini-2.0-flash", 8192),
+    (Provider.GEMINI, Tier.FREE): ModelSpec("gemini-3.6-flash", 8192),
+    (Provider.GEMINI, Tier.PRO):  ModelSpec("gemini-3.6-flash", 8192),
     (Provider.GROQ,   Tier.FREE): ModelSpec("llama-3.3-70b-versatile", 4096),
     (Provider.GROQ,   Tier.PRO):  ModelSpec("llama-3.3-70b-versatile", 4096),
     (Provider.CLAUDE, Tier.FREE): ModelSpec("claude-haiku-4-5", 4096),
+    # Sonnet rather than Opus: a test suite is bounded, well-specified work, and
+    # Sonnet 5 clears it at $3/$15 per MTok against Opus 4.8's $5/$25 — ~40%
+    # cheaper, so a fixed credit balance goes ~1.7x further (~2.5x while Sonnet 5
+    # introductory pricing lasts). Opus is the better model, but not by enough
+    # here to justify draining the Pro tier's balance that much faster — running
+    # out of credit is what actually takes the provider off the board. Same
+    # request surface as Opus 4.7+: sampling params are rejected and thinking
+    # depth is set with `effort`, so the flags below are unchanged.
     (Provider.CLAUDE, Tier.PRO):  ModelSpec(
-        "claude-opus-4-8",
+        "claude-sonnet-5",
         max_output_tokens=16000,   # non-streaming ceiling that stays under the HTTP timeout
         accepts_temperature=False,
         adaptive_thinking=True,
@@ -226,6 +276,19 @@ COOLDOWN = {
     Provider.GROQ:     30,
     Provider.CLAUDE:   120,
 }
+
+# A key that failed to *connect* is not rate-limited and has consumed nothing, so
+# it comes back quickly — long enough only to prefer a different key on the next
+# attempt rather than hammering a socket that just broke.
+TRANSPORT_COOLDOWN = 15
+
+# How many times to reconnect on the same key before giving up on it. A TLS or
+# connection failure is usually per-socket and clears on the next attempt, so a
+# couple of quick retries recover the call without touching another provider's
+# quota — which matters most when the other providers are exactly the ones
+# already dry.
+TRANSPORT_RETRIES = 2
+TRANSPORT_RETRY_DELAY = 1.5
 
 
 def model_for(provider: Provider, tier: Tier) -> ModelSpec:
@@ -271,7 +334,7 @@ def upgrade_would_change_model(tier: Tier) -> bool:
     2. The Pro provider must be reachable. This one was added after running it
        against the real keys: Anthropic was out of credit, so Pro resolved to
        the same Groq model Free was already getting — while the UI cheerfully
-       advertised "Pro runs claude-opus-4-8". Selling an upgrade to a model we
+       advertised the Pro model by name. Selling an upgrade to a model we
        cannot currently serve is the exact dishonesty this panel exists to
        avoid, and no unit test would have caught it.
 
@@ -408,7 +471,7 @@ class LLMRouter:
             _last_usage.set(None)
             t0 = time.perf_counter()
             try:
-                result = await self._call_provider(
+                result = await self._retry_transport(
                     provider, api_key, prompt, system_prompt, temperature, json_mode, spec
                 )
                 latency_ms = round((time.perf_counter() - t0) * 1000)
@@ -435,6 +498,24 @@ class LLMRouter:
                 logger.error(f"[{provider}] Error: {e}")
                 api_key.hard_blocked = is_hard_quota(str(e))
                 api_key.mark_exhausted(COOLDOWN[provider] // 2)
+                last_error = e
+                continue
+
+            except (httpx.HTTPError, ssl.SSLError) as e:
+                # A transport failure — TLS handshake, reset connection, read
+                # timeout — says nothing about the request, and every other key
+                # and provider may well be reachable. Without this branch it
+                # escaped `complete()` raw: no rotation, no fallback, the whole
+                # call dead because one socket to one key misbehaved. Observed as
+                # `SSLError: RECORD_LAYER_FAILURE` losing one file of a suite and
+                # taking the CI pipeline down with it (the suite was then
+                # incomplete, so scaffold correctly withheld the workflow).
+                #
+                # Cooled briefly rather than for the provider's rate-limit period:
+                # nothing was consumed, so the key is fine — it is this connection
+                # that was not.
+                logger.warning(f"[{provider}] Transport error: {e!r}")
+                api_key.mark_exhausted(TRANSPORT_COOLDOWN)
                 last_error = e
                 continue
 
@@ -592,15 +673,35 @@ class LLMRouter:
         return any(not k.hard_blocked for k in state.keys)
 
     def get_status(self) -> dict:
-        """Return current health of all providers (for the UI status panel)."""
+        """Return current health of all providers (for the UI status panel).
+
+        "Available" means the same thing here as in get_key_health: not cooling
+        AND not hard-blocked. It used to count only the cooldown timer, so a key
+        that was out of credit — which no amount of waiting fixes — was reported
+        as an available key on a healthy provider. The public status page then
+        said "All systems operational" for an account that could not serve a
+        single request, which is precisely the moment a status page has to be
+        right.
+
+        What this still cannot know is quota it has not yet been refused for:
+        key state lives in memory, so after a restart every key reads healthy
+        until something actually tries it. `never_used` lets the UI distinguish
+        "confirmed working" from "not tried since boot" instead of implying the
+        first when it only knows the second.
+        """
         status = {}
         for provider, state in self._providers.items():
-            available = sum(1 for k in state.keys if k.is_available)
+            available = sum(1 for k in state.keys if k.is_available and not k.hard_blocked)
+            calls = sum(k.call_count for k in state.keys)
             status[provider.value] = {
                 "total_keys": len(state.keys),
                 "available_keys": available,
-                "total_calls": sum(k.call_count for k in state.keys),
+                "total_calls": calls,
                 "healthy": available > 0,
+                "hard_blocked_keys": sum(1 for k in state.keys if k.hard_blocked),
+                # No successful call since this process started — the provider is
+                # unproven, not proven good.
+                "never_used": calls == 0,
             }
         return status
 
@@ -638,6 +739,41 @@ class LLMRouter:
     # ─────────────────────────────────────────
     # Provider-specific HTTP calls
     # ─────────────────────────────────────────
+
+    async def _retry_transport(
+        self,
+        provider: Provider,
+        api_key: APIKey,
+        prompt: str,
+        system_prompt: str,
+        temperature: float,
+        json_mode: bool,
+        spec: ModelSpec,
+    ) -> str:
+        """Call a provider, retrying the SAME key on a transport failure.
+
+        A TLS/connection error is a property of the socket, not of the key or the
+        request: observed here as `SSL: RECORD_LAYER_FAILURE` hitting roughly half
+        of connections to one provider, landing on a different key each time. The
+        outer loop's response — cool this key, try the next provider — is the wrong
+        move for that, and actively harmful when the other providers are dry: one
+        unlucky socket then fails the whole call, which is how a generation died at
+        the file-planning step with two healthy keys available.
+        """
+        for attempt in range(TRANSPORT_RETRIES + 1):
+            try:
+                return await self._call_provider(
+                    provider, api_key, prompt, system_prompt, temperature, json_mode, spec
+                )
+            except (httpx.HTTPError, ssl.SSLError) as e:
+                if attempt >= TRANSPORT_RETRIES:
+                    raise
+                logger.info(
+                    f"[{provider}] transport error on key #{api_key.index} "
+                    f"({e!r}) — reconnecting (attempt {attempt + 1}/{TRANSPORT_RETRIES})"
+                )
+                await asyncio.sleep(TRANSPORT_RETRY_DELAY * (attempt + 1))
+        raise AssertionError("unreachable")     # pragma: no cover
 
     async def _call_provider(
         self,

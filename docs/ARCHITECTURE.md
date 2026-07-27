@@ -143,6 +143,29 @@ All of this surfaces in the frontend `TrustPanel`: the live-DOM badge, the
 per-selector provenance, and the durability grade — each a real measurement,
 never dressed up as a prediction that the suite passes.
 
+### `services/live_crawler.py` — what the suite is actually written from
+
+The crawl-first flow grounds generation on the deployed site, so this module's
+reach *is* the product's ceiling: anything it cannot render, the suite cannot
+test. Three things it does beyond fetching pages, each because the naive version
+produced a suite that tested a login form and invented the rest:
+
+* **Routes come from the app's JavaScript, not just `a[href]`.** The entry point
+  of most apps worth testing is a sign-in screen that links nowhere and navigates
+  in script (`location.replace('products.html')`). Route-shaped literals in
+  inline and same-origin scripts are followed too.
+* **It can sign in first** (`LoginSpec`). A guarded app bounces every route back
+  to its login page, so an anonymous crawl of one indexes a single screen no
+  matter how many routes exist. A requested sign-in that doesn't take is a hard
+  failure (`CrawlLoginFailed`), never a silent downgrade — the caller gave
+  credentials precisely because the content is behind them. Credentials are
+  per-request: dropped before the job is persisted, and kept out of logs.
+  Logout links are never followed, or the crawl would end its own session.
+* **It counts what it really rendered.** Redirects are resolved to their final
+  URL before indexing, so a login wall is one page rather than one per guarded
+  route, and near-identical instances of a template (`product.html?id=1..500`)
+  are capped so the page budget reaches distinct routes like checkout.
+
 ### `agents/scaffold.py` — the runnable skeleton
 The dependency manifest, framework config, CI pipelines and README: boilerplate
 with one correct answer per framework, so it is templated rather than asked of

@@ -412,8 +412,12 @@ def ground_suite(
     from services.fragility import extract_selectors   # local import: avoid cycle
 
     source_index = build_source_index(source_files)
+    # Only name a ground truth that exists. A crawl-only run has no source files,
+    # and listing "source" there would credit the report with a check it never
+    # performed — the same overclaim `dom_index_is_useful` refuses to make in the
+    # other direction.
     report = GroundingReport(
-        checked_against=["source"] + (["dom"] if dom_index else [])
+        checked_against=(["source"] if source_files else []) + (["dom"] if dom_index else [])
     )
     for f in files:
         for sel in extract_selectors(getattr(f, "content", "")):

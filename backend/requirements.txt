@@ -12,13 +12,16 @@ bcrypt>=4.0            # password hashing for email/password auth
 cryptography>=42.0     # encrypt linked GitHub tokens at rest (Fernet)
 aiosmtplib>=3.0,<5.0   # transactional email (verification, reset, login OTP)
 
-# Optional — headless-browser DOM rendering (services/renderer.py). Lets DOM
-# grounding verify against the real, JavaScript-rendered DOM of SPA apps instead
-# of declining their empty shell. Entirely optional: without it (or without a
-# browser binary) rendering falls back to the static fetch and the product runs
-# unchanged. To enable, uncomment the pin and install the browser binary:
-#     pip install playwright && playwright install chromium
-# playwright>=1.40
+# Headless browser — REQUIRED, not optional. It was optional while a live crawl
+# only *improved* grounding (services/renderer.py would fall back to a static
+# fetch). The crawl-first generate flow changed that: POST /api/analyze-crawl
+# renders the deployed site to get the selectors the suite is written from, and
+# deliberately has no repo-file fallback, so without a browser every generation
+# fails with 503 "a headless browser isn't available here".
+#
+# The pip package alone is not enough — the browser binary must also be
+# installed (`playwright install --with-deps chromium`); see backend/Dockerfile.
+playwright>=1.40
 
 # Dev / test
 pytest>=8.0

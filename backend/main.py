@@ -188,16 +188,12 @@ async def metrics():
 @app.get("/api/status", response_model=StatusResponse)
 async def get_status(ctx: dict = Depends(require_user)):
     status = llm_router.get_status()
-    providers = [
-        ProviderStatus(
-            name=name,
-            total_keys=info["total_keys"],
-            available_keys=info["available_keys"],
-            total_calls=info["total_calls"],
-            healthy=info["healthy"],
-        )
-        for name, info in status.items()
-    ]
+    # Splatted rather than copied field-by-field: the hand-written list silently
+    # dropped every field added to get_status() after it was written, and because
+    # the schema supplies defaults the response still looked valid — it just
+    # reported `hard_blocked_keys: 0` for a provider that was hard-blocked. A
+    # mismatch now fails loudly at construction instead of lying quietly.
+    providers = [ProviderStatus(name=name, **info) for name, info in status.items()]
     return StatusResponse(
         providers=providers,
         call_log=llm_router.get_call_log(limit=20),
@@ -334,7 +330,14 @@ async def crawl_preview(payload: CrawlPreviewRequest,
         return int((time.monotonic() - started) * 1000)
 
     try:
-        result = await crawler_svc.crawl(url, max_pages=CRAWL_MAX_PAGES)
+        result = await crawler_svc.crawl(url, max_pages=CRAWL_MAX_PAGES,
+                                         login=_login_spec(payload))
+    except crawler_svc.CrawlLoginFailed as e:
+        # Its own status: this is the one preview failure the user can fix from
+        # the form in front of them, and it is worth being able to check before
+        # spending a generation on it.
+        return CrawlPreviewResponse(status="login_failed", message=str(e),
+                                    elapsed_ms=elapsed_ms())
     except ScanError as e:
         # Private / out-of-scope target — the same gate static grounding hits.
         return CrawlPreviewResponse(status="blocked", message=str(e),
@@ -377,6 +380,45 @@ async def crawl_preview(payload: CrawlPreviewRequest,
     )
 
 
+def _login_spec(payload) -> "crawler_svc.LoginSpec | None":
+    """Turn a request's optional site_login into a crawler LoginSpec.
+
+    Returns None unless a username AND password were supplied — a half-filled
+    form should crawl anonymously rather than fail a sign-in nobody asked for.
+    """
+    sl = getattr(payload, "site_login", None)
+    if not sl or not sl.is_set:
+        return None
+    return crawler_svc.LoginSpec(
+        url=sl.url or "/",
+        username=sl.username,
+        password=sl.password,
+        username_selector=sl.username_selector,
+        password_selector=sl.password_selector,
+        submit_selector=sl.submit_selector,
+    )
+
+
+def _without_credentials(request: dict) -> dict:
+    """A request dict safe to persist in the job store.
+
+    The job row outlives the request by up to a day and is read back by
+    /api/stream and /api/generate, neither of which needs the site credentials —
+    the crawl has already happened and only its anchors are carried forward. So
+    the password is dropped here rather than sitting at rest in SQLite for the
+    TTL. Keeping the non-secret fields makes the stored request still describe
+    what was asked for.
+    """
+    safe = dict(request)
+    sl = safe.get("site_login")
+    if isinstance(sl, dict):
+        safe["site_login"] = {
+            **{k: v for k, v in sl.items() if k != "password"},
+            "password": "",
+        }
+    return safe
+
+
 # Manifest files whose contents decide the app's stack. We fetch only these (not
 # the whole repo) so framework detection stays cheap in the crawl-first flow.
 _FRAMEWORK_MANIFESTS = (
@@ -413,13 +455,30 @@ async def analyze_crawl(payload: GenerateRequest, ctx: dict = Depends(require_us
     # 1) Crawl the hosted site FIRST. Everything downstream depends on it, so its
     #    failure short-circuits before we spend anything on the repo. No fallback.
     try:
-        crawl = await crawler_svc.crawl(payload.live_url, max_pages=CRAWL_MAX_PAGES)
+        crawl = await crawler_svc.crawl(payload.live_url, max_pages=CRAWL_MAX_PAGES,
+                                        login=_login_spec(payload))
+    except crawler_svc.CrawlLoginFailed as e:
+        # The user asked us to sign in and we couldn't. Not a degraded anonymous
+        # crawl: they gave credentials because the content is behind them, so a
+        # suite grounded on the login page is not what they asked for.
+        raise HTTPException(400, str(e))
     except ScanError as e:
         raise HTTPException(400, f"That hosted URL can't be crawled: {e}")
-    except crawler_svc.CrawlUnavailable:
+    except crawler_svc.CrawlUnavailable as e:
+        # "Try again shortly" is only true for the transient case. A server with
+        # no Playwright package and no browser binary will answer this way
+        # forever, and telling that user to wait sends them to retry something
+        # that cannot fix itself — the reason is known here, so say which it is.
+        logger.error(f"analyze-crawl: browser unavailable for {payload.live_url}: {e}")
+        permanent = "not installed" in str(e) or "Could not launch" in str(e)
         raise HTTPException(
-            503, "A headless browser isn't available here, so the live crawl can't "
-                 "run right now. Please try again shortly.")
+            503,
+            "This server has no headless browser installed, so it can't render "
+            "your site. Waiting won't help — the server needs Playwright and its "
+            "Chromium binary (see backend/Dockerfile). Contact whoever deploys it."
+            if permanent else
+            "The browser couldn't start, so the live crawl can't run right now. "
+            "Please try again shortly.")
     except Exception as e:
         logger.warning(f"analyze-crawl: crawl failed for {payload.live_url}: {e}")
         raise HTTPException(
@@ -470,7 +529,7 @@ async def analyze_crawl(payload: GenerateRequest, ctx: dict = Depends(require_us
         "filter_result": fr,
         # The crawl's ground truth, JSON-safe, for stream/generate to rebuild.
         "crawl_anchors": grounding_svc.index_to_dicts(crawl.index),
-        "request": payload.model_dump(),
+        "request": _without_credentials(payload.model_dump()),
     })
     return {
         "job_id": job_id,

@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
-import { Github, Globe, ArrowRight, Loader2, ShieldCheck } from "lucide-react";
-import { getAuthConfig, githubLoginUrl } from "../utils/api";
+import { Github, Globe, ArrowRight, Loader2, ShieldCheck, Lock } from "lucide-react";
+import { getAuthConfig, githubLoginUrl, type SiteLogin } from "../utils/api";
 import { useAuth } from "../context/AuthContext";
 
 interface Props {
   /** Both URLs are required; the hosted URL is the site the AI writes tests from,
-   *  the repo URL is used to confirm access and publish the suite back. */
-  onContinue: (input: { repoUrl: string; hostedUrl: string }) => void;
+   *  the repo URL is used to confirm access and publish the suite back.
+   *  `siteLogin` is optional and only set when the site needs signing into. */
+  onContinue: (input: { repoUrl: string; hostedUrl: string; siteLogin: SiteLogin | null }) => void;
   loading: boolean;
   error: string | null;
 }
@@ -17,16 +18,31 @@ export default function GenerateInput({ onContinue, loading, error }: Props) {
   const [repoUrl, setRepoUrl] = useState("");
   const [hostedUrl, setHostedUrl] = useState("");
   const [dismissed, setDismissed] = useState(false);
+  // Optional site sign-in. Collapsed by default: a public site needs none, and
+  // asking every user for credentials up front would be the wrong default.
+  const [needsLogin, setNeedsLogin] = useState(false);
+  const [loginUrl, setLoginUrl] = useState("");
+  const [loginUser, setLoginUser] = useState("");
+  const [loginPass, setLoginPass] = useState("");
 
   // Only /api/auth/me knows the session-derived github_connected flag, so refresh
   // it on mount — a password login's response can't carry it.
   useEffect(() => { getAuthConfig().catch(() => {}); refresh().catch(() => {}); }, []);
   useEffect(() => { if (error) setDismissed(false); }, [error]);
 
-  const ready = repoUrl.trim() && hostedUrl.trim();
+  // A half-filled login is worse than none: it would fail the sign-in and stop
+  // the run, so both fields are required once the box is ticked.
+  const loginReady = !needsLogin || (loginUser.trim() && loginPass);
+  const ready = repoUrl.trim() && hostedUrl.trim() && loginReady;
   const submit = () => {
     if (!ready) return;
-    onContinue({ repoUrl: repoUrl.trim(), hostedUrl: hostedUrl.trim() });
+    onContinue({
+      repoUrl: repoUrl.trim(),
+      hostedUrl: hostedUrl.trim(),
+      siteLogin: needsLogin
+        ? { url: loginUrl.trim(), username: loginUser.trim(), password: loginPass }
+        : null,
+    });
   };
 
   // Hard gate: generation is crawl-first and publishes back to GitHub, so a
@@ -99,6 +115,58 @@ export default function GenerateInput({ onContinue, loading, error }: Props) {
             The deployed, publicly-reachable site. Testra renders it and writes tests
             from its real elements — nothing is executed, we only read the page.
           </p>
+        </div>
+
+        {/* Optional sign-in. Without it an auth-guarded app shows the crawler
+            nothing but its login screen, and the suite can only test that. */}
+        <div className="rounded-xl border border-grey-700/70 p-4 space-y-3">
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={needsLogin}
+              onChange={(e) => { setNeedsLogin(e.target.checked); setDismissed(true); }}
+              className="mt-0.5 accent-brand-500"
+            />
+            <span>
+              <span className="flex items-center gap-1.5 text-sm font-semibold text-white">
+                <Lock size={13} /> This site needs a login
+              </span>
+              <span className="block text-xs text-grey-500 mt-1">
+                We'll sign in first so the crawl can reach the pages behind it —
+                otherwise the tests can only cover your sign-in screen.
+              </span>
+            </span>
+          </label>
+
+          {needsLogin && (
+            <div className="space-y-2.5 pl-6">
+              <input
+                type="text" value={loginUrl}
+                onChange={(e) => { setLoginUrl(e.target.value); setDismissed(true); }}
+                placeholder="Sign-in page (e.g. /login) — optional"
+                className="w-full px-3.5 py-2.5 rounded-lg bg-black/30 border border-grey-700 text-white placeholder:text-grey-500 focus:outline-none focus:border-brand-500/70 text-sm font-mono"
+              />
+              <div className="grid grid-cols-2 gap-2.5">
+                <input
+                  type="text" value={loginUser} autoComplete="off"
+                  onChange={(e) => { setLoginUser(e.target.value); setDismissed(true); }}
+                  placeholder="Username or email"
+                  className="w-full px-3.5 py-2.5 rounded-lg bg-black/30 border border-grey-700 text-white placeholder:text-grey-500 focus:outline-none focus:border-brand-500/70 text-sm"
+                />
+                <input
+                  type="password" value={loginPass} autoComplete="new-password"
+                  onChange={(e) => { setLoginPass(e.target.value); setDismissed(true); }}
+                  placeholder="Password"
+                  className="w-full px-3.5 py-2.5 rounded-lg bg-black/30 border border-grey-700 text-white placeholder:text-grey-500 focus:outline-none focus:border-brand-500/70 text-sm"
+                />
+              </div>
+              <p className="flex items-center gap-1.5 text-xs text-grey-500">
+                <ShieldCheck size={12} />
+                Used for this crawl only — never saved, and dropped before the job is stored.
+                Use a test account.
+              </p>
+            </div>
+          )}
         </div>
 
         {error && !dismissed && (

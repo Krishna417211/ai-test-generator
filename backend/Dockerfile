@@ -6,6 +6,18 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# The browser the crawl-first generate flow runs on. `pip install playwright`
+# ships the client library only — the binary is a separate download, and without
+# it every /api/analyze-crawl fails with 503 "a headless browser isn't available
+# here" while the image looks correctly built. --with-deps pulls the system
+# libraries Chromium needs on slim, which are not in the base image.
+#
+# Chromium only: the crawl uses one browser, and installing all three would add
+# roughly half a gigabyte to every deploy for engines nothing launches.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY . .
 
 EXPOSE 8000
