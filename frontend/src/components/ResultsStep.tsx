@@ -134,7 +134,7 @@ export default function ResultsStep({ result, onReset }: Props) {
   const groups = [
     { label: "Test Specs", files: byKind(["spec"]) },
     { label: "Page Objects", files: byKind(["pom"]) },
-    { label: "Config & CI/CD", files: byKind(["ci", "config", "docs"]) },
+    { label: "Config & Docs", files: byKind(["ci", "config", "docs"]) },
   ].filter(g => g.files.length > 0);
 
   return (
@@ -206,9 +206,9 @@ export default function ResultsStep({ result, onReset }: Props) {
               </li>
             )}
             <li className="text-xs text-red-200/50">
-              The CI pipeline was left out, since an incomplete suite can't pass it.
-              This usually means a provider rate limit mid-run — regenerating
-              normally produces the full suite.
+              The README's pipeline setup was left out too, since an incomplete suite
+              can't pass it. This usually means a provider rate limit mid-run —
+              regenerating normally produces the full suite.
             </li>
           </ul>
         </div>
