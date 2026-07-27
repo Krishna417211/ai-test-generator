@@ -118,14 +118,20 @@ Generate tests using Cypress with JavaScript/TypeScript.
 - Include cypress.config.ts with baseUrl and viewport settings
 """,
     "selenium_python": """
-Generate tests using Selenium WebDriver with Python.
-- Use unittest.TestCase or pytest
-- WebDriverWait with expected_conditions for all dynamic interactions
+Generate tests using Selenium WebDriver with pytest.
 - Page Object Model: one class per page in tests/pages/
+- Every test takes the `driver` fixture as its argument. Do NOT write
+  tests/conftest.py or any driver factory — the fixture is generated for you and
+  yours would be discarded. Do not call webdriver.Chrome() anywhere.
+- WebDriverWait + expected_conditions for every interaction. There is no implicit
+  wait, so a bare find_element on anything dynamic will flake.
+- Use only these expected_conditions, spelled exactly: presence_of_element_located,
+  visibility_of_element_located, element_to_be_clickable, url_contains,
+  text_to_be_present_in_element. Anything else is likely a hallucinated name that
+  fails at runtime with AttributeError.
 - Use By.CSS_SELECTOR, By.ID, By.XPATH (in that priority order)
-- Include setup_class / teardown_class
-- Driver factory in tests/conftest.py or tests/driver_factory.py
-- Support headless Chrome by default
+- Read the base URL from the environment, never hardcode it:
+  `os.environ.get("BASE_URL", "<the base url given below>")`
 """,
     "selenium_java": """
 Generate tests using Selenium WebDriver with Java (TestNG or JUnit 5).
@@ -264,6 +270,13 @@ class WriterAgent:
         test_flows: str,             # user's free-text description of what to test
         base_url: str = "http://localhost:3000",
         include_ci: bool = True,
+        # Whether the pipeline ships as files or as instructions. A push to a real
+        # repository wants the workflow written into it — that is the feature the
+        # user asked for. A downloadable archive does not: the user unzips it into
+        # a project that usually already has a pipeline, and a second workflow
+        # duplicating their test job is a surprise. Same YAML either way; only the
+        # delivery differs, and the README says which one happened.
+        ci_as_files: bool = False,
         pregenerated_raw: Optional[str] = None,  # reuse output already produced by stream_run
         self_heal: bool = False,        # re-prompt the LLM to fix files that don't parse
         max_heal_attempts: int = 1,
@@ -407,7 +420,7 @@ class WriterAgent:
         # that scaffold owns (a config, a manifest) is dropped in favour of the
         # generated one. Relative imports between specs and page objects survive
         # the move because every file shifts by the same prefix.
-        generated_files = self._place_in_suite_dir(generated_files)
+        generated_files = self._place_in_suite_dir(generated_files, framework_key)
 
         # Post-processing: selector validation. Runs before the scaffold is added
         # so a config file can't produce "selector not found" noise.
@@ -433,22 +446,22 @@ class WriterAgent:
         target = scaffold.plan_target(filter_result.framework, base_url, framework_key)
         generated_files.extend(self._scaffold_files(framework_key, target))
 
-        # CI last, and only for a complete suite: the workflow runs the whole
-        # suite, so shipping it next to missing files guarantees a red pipeline
-        # on the first push.
+        # CI last, and only for a complete suite: a workflow runs the whole suite,
+        # so shipping — or recommending — one next to missing files guarantees a
+        # red pipeline on the first push.
         #
-        # A suite with no test cases is the same failure wearing a different
-        # hat: if every spec failed and only page objects survived, the archive
-        # looks plausible but collects zero tests. Withhold CI for that too.
+        # A suite with no test cases is the same failure wearing a different hat:
+        # if every spec failed and only page objects survived, the archive looks
+        # plausible but collects zero tests. Withhold CI for that too.
         suite_incomplete = bool(self._failed_files) or test_count == 0
         if include_ci and suite_incomplete:
             logger.warning(
-                f"Skipping CI workflow — incomplete suite "
+                f"Withholding CI — incomplete suite "
                 f"({len(self._failed_files)} planned file(s) never generated: "
                 f"{', '.join(self._failed_files[:5]) or 'none'}; test_count={test_count})"
             )
         ci_included = include_ci and not suite_incomplete
-        if ci_included:
+        if ci_included and ci_as_files:
             generated_files.append(GeneratedFile(
                 filename=".github/workflows/e2e-tests.yml",
                 content=scaffold.github_workflow(framework_key, target),
@@ -472,6 +485,7 @@ class WriterAgent:
                 project_summary=filter_result.project_summary,
                 testing_challenges=filter_result.testing_challenges,
                 ci_included=ci_included,
+                ci_as_files=ci_as_files,
                 failed_files=self._failed_files,
                 test_count=test_count,
             ),
@@ -543,13 +557,26 @@ class WriterAgent:
         "tsconfig.json", "serve.json", "readme.md",
     )
 
-    def _place_in_suite_dir(self, files: list[GeneratedFile]) -> list[GeneratedFile]:
+    # Owned only for the frameworks that actually generate them. tests/conftest.py
+    # is scaffold's for Selenium (it is the driver fixture) but stays the model's
+    # for playwright_python, where pytest-playwright already supplies the browser
+    # and that file is a place for real per-suite fixtures.
+    _SCAFFOLD_OWNED_BY_FRAMEWORK = {
+        "selenium_python": ("tests/conftest.py",),
+    }
+
+    def _place_in_suite_dir(
+        self, files: list[GeneratedFile], framework_key: str = ""
+    ) -> list[GeneratedFile]:
         """Move the model's files under SUITE_DIR and drop the ones we own.
 
         The suite gets its own directory because the repo root is already taken:
         a React app has a package.json there, and writing ours over it would
         destroy the manifest of the app under test.
         """
+        owned = self._SCAFFOLD_OWNED + self._SCAFFOLD_OWNED_BY_FRAMEWORK.get(
+            framework_key, ()
+        )
         placed: list[GeneratedFile] = []
         for f in files:
             name = f.filename.lstrip("./")
@@ -557,7 +584,7 @@ class WriterAgent:
             # that would land ON one of ours conflicts. A nested
             # tests/README.md or a fixture named package.json is the model's to
             # keep, and dropping those silently lost real work.
-            if name.lower() in self._SCAFFOLD_OWNED:
+            if name.lower() in owned:
                 logger.info(f"Dropping model-written {name} — scaffold owns this file")
                 continue
             if not name.startswith(f"{scaffold.SUITE_DIR}/"):
@@ -624,13 +651,19 @@ class WriterAgent:
             out.append(GeneratedFile(
                 f"{d}/conftest.py",
                 scaffold.pytest_conftest(target),
-                "Shared pytest fixtures, including the base URL",
+                "Shared pytest fixtures, the base URL, and plain-language failure diagnostics",
             ))
             out.append(GeneratedFile(
                 f"{d}/pytest.ini",
                 scaffold.pytest_ini(),
-                "pytest configuration",
+                "pytest configuration — stops at the first failure",
             ))
+            if framework_key == "selenium_python":
+                out.append(GeneratedFile(
+                    f"{d}/tests/conftest.py",
+                    scaffold.selenium_driver_conftest(),
+                    "Chrome fixture — headed and paced by default, headless in CI",
+                ))
 
         return out
 
