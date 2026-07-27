@@ -450,7 +450,7 @@ export async function analyzeRepo(
  *  crawled — there is no repo-file fallback. */
 export async function analyzeCrawl(
   repoUrl: string, liveUrl: string, framework: string, language: string, testFlows: string,
-  githubToken?: string,
+  siteLogin?: SiteLogin | null, githubToken?: string,
 ): Promise<{ job_id: string; analysis: any; crawl?: { n_pages: number; n_anchors: number; seed: string }; provenance?: Provenance | null }> {
   const res = await fetch(`${API_BASE}/api/analyze-crawl`, {
     method: "POST",
@@ -458,6 +458,7 @@ export async function analyzeCrawl(
     body: JSON.stringify({
       repo_url: repoUrl, live_url: liveUrl, framework, language,
       test_flows: testFlows, github_token: githubToken || undefined,
+      ...loginPayload(siteLogin),
     }),
   });
   if (!res.ok) await parseError(res, "Crawl failed");
@@ -525,8 +526,25 @@ export interface CrawlAnchor {
   value: string;
 }
 
+/** Credentials for the site under test, so the crawl can get past its sign-in.
+ *  Most apps put their content behind a login; without this the crawl bounces off
+ *  the wall and the whole suite is grounded on one form. Held in component state
+ *  for the request only — never persisted client-side, and the server drops the
+ *  password before storing the job. */
+export interface SiteLogin {
+  url: string;
+  username: string;
+  password: string;
+}
+
+/** Omit an unfilled login entirely rather than sending empty strings. */
+const loginPayload = (l?: SiteLogin | null) =>
+  l && l.username && l.password
+    ? { site_login: { url: l.url || "", username: l.username, password: l.password } }
+    : {};
+
 export interface CrawlPreview {
-  status: "ok" | "thin" | "unavailable" | "blocked" | "error";
+  status: "ok" | "thin" | "unavailable" | "blocked" | "login_failed" | "error";
   message: string;
   seed: string | null;
   n_pages: number;
@@ -541,11 +559,11 @@ export interface CrawlPreview {
 /** Run the live crawler on a URL by itself so the user can see whether it works
  *  — routes rendered, anchors indexed — without spending a generation credit.
  *  This drives the "Preview crawl" tool in the generate flow. */
-export async function previewCrawl(url: string): Promise<CrawlPreview> {
+export async function previewCrawl(url: string, siteLogin?: SiteLogin | null): Promise<CrawlPreview> {
   const res = await fetch(`${API_BASE}/api/crawl-preview`, {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, ...loginPayload(siteLogin) }),
   });
   if (!res.ok) await parseError(res, "Crawl preview failed");
   return res.json();

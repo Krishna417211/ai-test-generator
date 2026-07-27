@@ -3,7 +3,7 @@ import {
   Play, AlertTriangle, Globe, Loader2, CheckCircle2, XCircle, Ban,
 } from "lucide-react";
 import type { Framework, Language } from "../types";
-import { previewCrawl, type CrawlPreview } from "../utils/api";
+import { previewCrawl, type CrawlPreview, type SiteLogin } from "../utils/api";
 
 interface Config {
   framework: Framework;
@@ -16,6 +16,10 @@ interface Props {
   /** The hosted URL collected in the previous step — the site the suite is
    *  generated from. Shown here read-only and used for the "Preview crawl" tool. */
   hostedUrl: string;
+  /** Passed straight through to the preview so it exercises the *same* crawl the
+   *  real run will do — a preview that skipped the sign-in would report a
+   *  login-page-only crawl and contradict the generation that follows it. */
+  siteLogin?: SiteLogin | null;
   onGenerate: (config: Config) => void;
   loading: boolean;
   /** A failed generation returns the user to this step. Without surfacing the
@@ -46,7 +50,7 @@ const LANGUAGES: Record<Framework, { id: Language; label: string }[]> = {
   ],
 };
 
-export default function ConfigureStep({ hostedUrl, onGenerate, loading, error }: Props) {
+export default function ConfigureStep({ hostedUrl, siteLogin, onGenerate, loading, error }: Props) {
   const [framework, setFramework] = useState<Framework>("playwright");
   const [language, setLanguage] = useState<Language>("typescript");
   const [testFlows, setTestFlows] = useState("");
@@ -65,7 +69,7 @@ export default function ConfigureStep({ hostedUrl, onGenerate, loading, error }:
     setCrawlError(null);
     setCrawl(null);
     try {
-      setCrawl(await previewCrawl(url));
+      setCrawl(await previewCrawl(url, siteLogin));
     } catch (e) {
       setCrawlError(e instanceof Error ? e.message : "Crawl preview failed");
     } finally {
@@ -233,6 +237,7 @@ const STATUS: Record<
   thin:        { icon: AlertTriangle, label: "Rendered, but thin", ring: "border-amber-500/30 bg-amber-500/[0.07]",   tint: "text-amber-300" },
   unavailable: { icon: Ban,          label: "Crawler unavailable", ring: "border-amber-500/30 bg-amber-500/[0.07]",   tint: "text-amber-300" },
   blocked:     { icon: Ban,          label: "URL blocked",        ring: "border-rose-500/30 bg-rose-500/[0.07]",     tint: "text-rose-300" },
+  login_failed:{ icon: XCircle,      label: "Sign-in failed",     ring: "border-rose-500/30 bg-rose-500/[0.07]",     tint: "text-rose-300" },
   error:       { icon: XCircle,      label: "Crawl failed",       ring: "border-rose-500/30 bg-rose-500/[0.07]",     tint: "text-rose-300" },
 };
 

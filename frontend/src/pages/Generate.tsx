@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { Sparkles } from "lucide-react";
 import type { GenerateResponse } from "../types";
-import { analyzeCrawl, generateTests, streamGeneration, QuotaExceededError } from "../utils/api";
+import { analyzeCrawl, generateTests, streamGeneration, QuotaExceededError, type SiteLogin } from "../utils/api";
 import UpgradeModal from "../components/UpgradeModal";
 import Page from "../components/Page";
 import PageHeader from "../components/PageHeader";
@@ -22,6 +22,8 @@ export default function Generate() {
   // from, the repo URL confirms access and is where the suite publishes back.
   const [repoUrl, setRepoUrl] = useState("");
   const [hostedUrl, setHostedUrl] = useState("");
+  // Kept in memory for the run only — deliberately not persisted anywhere.
+  const [siteLogin, setSiteLogin] = useState<SiteLogin | null>(null);
   const [result, setResult] = useState<GenerateResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentProvider, setCurrentProvider] = useState("");
@@ -32,16 +34,19 @@ export default function Generate() {
   const reset = () => {
     setStep("input"); setResult(null); setError(null);
     setCurrentProvider(""); setStreamOutput(""); setSteps({});
+    setSiteLogin(null);          // credentials never outlive the run that used them
   };
 
   // Input step → just capture the two URLs and advance. No backend call yet; the
   // crawl runs at generate time so the framework/language choice is made first.
-  const handleContinue = useCallback((input: { repoUrl: string; hostedUrl: string }) => {
-    setRepoUrl(input.repoUrl);
-    setHostedUrl(input.hostedUrl);
-    setError(null);
-    setStep("configure");
-  }, []);
+  const handleContinue = useCallback(
+    (input: { repoUrl: string; hostedUrl: string; siteLogin: SiteLogin | null }) => {
+      setRepoUrl(input.repoUrl);
+      setHostedUrl(input.hostedUrl);
+      setSiteLogin(input.siteLogin);
+      setError(null);
+      setStep("configure");
+    }, []);
 
   const handleGenerate = useCallback(
     async (config: { framework: string; language: string; testFlows: string; includeCi: boolean }) => {
@@ -55,7 +60,7 @@ export default function Generate() {
       setSteps((s) => applyStep(s, { id: "crawl", state: "running" }));
       let job: string;
       try {
-        const a = await analyzeCrawl(repoUrl, hostedUrl, config.framework, config.language, config.testFlows);
+        const a = await analyzeCrawl(repoUrl, hostedUrl, config.framework, config.language, config.testFlows, siteLogin);
         job = a.job_id;
         setSteps((s) => applyStep(s, {
           id: "crawl", state: "done",
@@ -96,7 +101,7 @@ export default function Generate() {
         (err) => { setStep("configure"); setError(err); },
         (quotaErr) => { setStep("configure"); setQuotaHit(quotaErr); }
       );
-    }, [repoUrl, hostedUrl]);
+    }, [repoUrl, hostedUrl, siteLogin]);
 
   return (
     <Page>
@@ -112,7 +117,7 @@ export default function Generate() {
         <div className="flex gap-8 pt-4">
           <div className="flex-1 min-w-0">
             <div className="flex justify-center mb-10"><StepIndicator currentStep={step} /></div>
-            {step === "configure" && <ConfigureStep hostedUrl={hostedUrl} onGenerate={handleGenerate} loading={false} error={error} />}
+            {step === "configure" && <ConfigureStep hostedUrl={hostedUrl} siteLogin={siteLogin} onGenerate={handleGenerate} loading={false} error={error} />}
             {step === "generating" && (
               <div className="space-y-5">
                 <FlowPipeline flow="generate" states={steps} title="Writing your tests" />

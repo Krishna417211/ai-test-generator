@@ -30,7 +30,22 @@ Always run the generated suite against your app before trusting it in CI.
   narrow the "what to test" scope and regenerate.
 - **Free-tier providers.** Generation quality/latency depends on whichever free
   provider is available (Gemini → Groq → Claude). Under rate limits it
-  falls back automatically, so results can vary run to run.
+  falls back automatically, so results can vary run to run. The free tiers also
+  meter tokens *per day*, not just per minute: a large suite can exhaust a day's
+  budget in one run, and every provider being dry is a plain 503 (never an
+  upgrade prompt — see `services/quota.py`), because paying wouldn't fix it.
+- **What the crawl can reach is what the suite can test.** The generate flow
+  writes tests from the live site, so anything the crawler can't see, it can't
+  test. Two cases bite:
+  - *Behind a sign-in.* Tick **"This site needs a login"** and the crawl signs in
+    first, which is usually the difference between grounding on one form and
+    grounding on the app (measured on a demo store: 21 anchors → 129, and
+    checkout/confirmation reachable at all). Without it, a guarded app shows the
+    crawler nothing but its login screen. Wrong credentials fail the run loudly
+    rather than quietly crawling the login page.
+  - *Behind an interaction.* A modal, a wizard step or a menu that only opens on
+    click is not visited — the crawl follows links and app routes, it does not
+    drive the UI. Selectors that only exist in those states won't be grounded.
 
 ## Data handling
 

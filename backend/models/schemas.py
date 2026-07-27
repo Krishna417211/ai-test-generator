@@ -22,6 +22,30 @@ class Language(str, Enum):
 
 # ── Requests ─────────────────────────────────
 
+class SiteLogin(BaseModel):
+    """Credentials for the app under test, so the crawl can get past its sign-in.
+
+    Most apps worth testing put their content behind a login: an anonymous crawl
+    of one bounces off the wall and grounds the whole suite on a single form. The
+    selectors are optional — the common field shapes are auto-detected — and are
+    the escape hatch for a form that isn't one of them.
+
+    These are the user's credentials for their own site. They are used for the
+    one crawl and never stored: `main.analyze_crawl` strips them before the job
+    is persisted, and `LoginSpec.__repr__` keeps the password out of logs.
+    """
+    url: str = ""                            # sign-in page; relative to the site root is fine
+    username: str = ""
+    password: str = ""
+    username_selector: str = ""
+    password_selector: str = ""
+    submit_selector: str = ""
+
+    @property
+    def is_set(self) -> bool:
+        return bool(self.username and self.password)
+
+
 class GenerateRequest(BaseModel):
     repo_url: Optional[str] = None          # GitHub URL (mutually exclusive with zip)
     github_token: Optional[str] = None      # PAT for private repos
@@ -34,6 +58,9 @@ class GenerateRequest(BaseModel):
     # A deployed URL the user owns. When present, selectors are also verified
     # against the live DOM (services/grounding.py) and healed if they miss.
     live_url: Optional[str] = None
+    # Optional sign-in for the crawl. Without it, an auth-guarded app exposes
+    # only its login screen to the crawler.
+    site_login: Optional[SiteLogin] = None
 
     @field_validator("repo_url")
     @classmethod
@@ -51,6 +78,7 @@ class CrawlPreviewRequest(BaseModel):
     """A single deployed URL to render-and-crawl on its own, so the user can see
     whether the live crawler works before spending a generation credit."""
     url: str
+    site_login: Optional[SiteLogin] = None
 
 
 # ── Responses (live-crawl preview) ────────────
@@ -74,6 +102,8 @@ class CrawlPreviewResponse(BaseModel):
                     back to source-only grounding (so we say so, not "success").
       unavailable — no headless browser on the server (CrawlUnavailable).
       blocked     — the URL is private/out-of-scope (the SSRF/scope guard).
+      login_failed— credentials were given but the app rejected them, so the
+                    crawl would only have seen the sign-in page.
       error       — the crawl couldn't complete (unreachable host, etc.).
     """
     status: str
@@ -375,6 +405,15 @@ class ProviderStatus(BaseModel):
     available_keys: int
     total_calls: int
     healthy: bool
+    # Keys that are out of credit or have burned a daily quota. Distinct from a
+    # 429 cooldown: waiting does not fix these, so a status page that lumps them
+    # in with "available" tells the user to keep waiting for a provider that is
+    # never coming back on its own.
+    hard_blocked_keys: int = 0
+    # No successful call since this process started. Key state is in memory, so
+    # after a restart every provider reads healthy until something actually
+    # tries it — this says "unproven" rather than letting the UI imply "good".
+    never_used: bool = True
 
 
 class StatusResponse(BaseModel):

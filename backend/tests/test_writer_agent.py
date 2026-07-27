@@ -1,5 +1,7 @@
 """test_writer_agent.py — Unit tests for the Writer Agent's pure logic."""
 
+import pytest
+
 from agents.writer_agent import WriterAgent, GeneratedFile
 
 
@@ -50,6 +52,105 @@ class TestValidateSelectors:
 
         from agents.writer_agent import Grounding
         assert Grounding(selectors_total=0, selectors_verified=0).selector_rate is None
+
+    # ── crawl-only: the live DOM is the ground truth ──
+    #
+    # A crawl-first run has no source files at all, so validating against source
+    # marked every selector unverified: the results screen reported "0/N verified"
+    # beside a panel showing N/N from the same run, and stamped
+    # "⚠️ selector not verified" into code whose selectors were read straight off
+    # the rendered page.
+
+    def _dom(self):
+        from services.grounding import (
+            GroundIndex, Anchor, KIND_ID, KIND_TESTID, KIND_CLASS,
+        )
+        idx = GroundIndex(source="dom")
+        idx.anchors = {Anchor(KIND_ID, "real"), Anchor(KIND_TESTID, "t1"),
+                       Anchor(KIND_CLASS, "ok")}
+        return idx
+
+    def test_live_anchors_verify_when_there_is_no_source(self):
+        w = WriterAgent()
+        warns, total, verified = w._validate_selectors(
+            list(self._GEN), {}, dom_index=self._dom()
+        )
+        assert (total, verified) == (6, 3)      # the 3 real ones verified off the DOM
+        assert "not found on the live site" in "\n".join(warns)   # names what was checked
+
+    def test_dom_and_source_are_merged_not_replaced(self):
+        """A repo *and* a live URL: either ground truth may prove a selector."""
+        from services.grounding import GroundIndex, Anchor, KIND_ID
+        dom = GroundIndex(source="dom")
+        dom.anchors = {Anchor(KIND_ID, "fake")}   # rendered, but absent from source
+        w = WriterAgent()
+        _, total, verified = w._validate_selectors(
+            list(self._GEN), self._SRC, dom_index=dom
+        )
+        assert (total, verified) == (6, 4)        # 3 from source + #fake from the DOM
+
+    def test_unverified_selector_is_still_flagged_in_crawl_mode(self):
+        w = WriterAgent()
+        gen = [GeneratedFile("x.ts", 'locator("#invented")', "")]
+        warns, total, verified = w._validate_selectors(gen, {}, dom_index=self._dom())
+        assert (total, verified) == (1, 0)
+        assert "invented" in "\n".join(warns)
+
+
+class TestPlanRetry:
+    """The plan call gates the whole run — it must retry like the files do.
+
+    Observed live: every per-file call had eight rate-limit retries while the
+    plan call that produces the file list had none, so a momentary provider
+    cooldown at exactly that step threw the generation away — after the crawl
+    had already been paid for.
+    """
+
+    def _agent(self, monkeypatch):
+        monkeypatch.setattr("agents.writer_agent.RATE_RETRY_WAIT_SECONDS", 0)
+        return WriterAgent()
+
+    def test_retries_until_a_provider_comes_back(self, monkeypatch):
+        import asyncio
+        from services.llm_router import AllProvidersExhausted
+        w = self._agent(monkeypatch)
+        calls = {"n": 0}
+
+        async def flaky():
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise AllProvidersExhausted("cooling", reason="rate_limited")
+            return [{"filename": "tests/specs/a.spec.ts"}]
+
+        got = asyncio.run(w._retry_rate_limited("file plan", flaky))
+        assert got == [{"filename": "tests/specs/a.spec.ts"}]
+        assert calls["n"] == 3
+
+    def test_gives_up_after_the_cap_rather_than_hanging(self, monkeypatch):
+        import asyncio
+        from services.llm_router import AllProvidersExhausted
+        monkeypatch.setattr("agents.writer_agent.RATE_RETRY_MAX_ATTEMPTS", 2)
+        w = self._agent(monkeypatch)
+
+        async def always_dry():
+            raise AllProvidersExhausted("out of credit", reason="quota_exhausted")
+
+        with pytest.raises(AllProvidersExhausted):
+            asyncio.run(w._retry_rate_limited("file plan", always_dry))
+
+    def test_does_not_retry_a_non_rate_limit_error(self, monkeypatch):
+        """Waiting doesn't fix bad JSON or an oversized prompt — fail fast."""
+        import asyncio
+        w = self._agent(monkeypatch)
+        calls = {"n": 0}
+
+        async def bad_request():
+            calls["n"] += 1
+            raise ValueError("malformed response")
+
+        with pytest.raises(ValueError):
+            asyncio.run(w._retry_rate_limited("file plan", bad_request))
+        assert calls["n"] == 1
 
 
 class TestNormalizeFramework:

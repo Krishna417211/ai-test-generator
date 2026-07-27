@@ -65,6 +65,22 @@ FRAMEWORK_INSTRUCTIONS = {
 Generate tests using Playwright with JavaScript/TypeScript.
 - Use @playwright/test with test() and expect() from '@playwright/test'
 - Page Object Model: create a class per page in a /pages/ directory
+- A page object must be USABLE BY THE SPEC WITHOUT REACHING INSIDE IT:
+  * declare the page field `readonly page: Page` (never `private`) — a spec that
+    touches `pageObject.page` must still compile;
+  * give every page object an `async goto()` that navigates to ITS OWN path, and
+    call that from the spec rather than a bare page.goto();
+  * expose each locator as a GETTER — `get emailField(): Locator { return
+    this.page.locator('#email'); }` — so a spec can write
+    `await expect(po.emailField).toBeVisible()` without awaiting it first.
+    NEVER as a class field initializer (`readonly emailField =
+    this.page.locator(...)`): field initializers run BEFORE the constructor body
+    assigns `this.page`, so every one of them throws "Cannot read properties of
+    undefined (reading 'locator')" the moment the page object is constructed.
+    Assigning locators inside the constructor body is the other correct option.
+- Only create a page object for a page you were actually given selectors for.
+  Do NOT invent one per imagined route, and do NOT add a getter for every class
+  name you were shown — write the elements the tests actually use.
 - Selectors priority: data-testid > aria-label > role > CSS class > XPath (last resort)
 - Prefer web-first assertions (await expect(locator).toBeVisible()) — they retry
   automatically. Do NOT use waitForLoadState('networkidle'); Playwright's own
@@ -395,8 +411,17 @@ class WriterAgent:
 
         # Post-processing: selector validation. Runs before the scaffold is added
         # so a config file can't produce "selector not found" noise.
+        #
+        # Which ground truth this checks against is not a detail. In crawl-only
+        # mode `filter_result.files` is empty by design — the suite was written
+        # from the live DOM and no source was ever fetched — so validating
+        # against source marked every selector unverified, reported "0/N verified"
+        # under a panel simultaneously showing 22/22 from the same run, and
+        # stamped `/* ⚠️ selector not verified */` into code whose selectors had
+        # just been read off the rendered page. The crawl index is the ground
+        # truth for a crawl-written suite.
         warnings, sel_total, sel_verified = self._validate_selectors(
-            generated_files, filter_result.files
+            generated_files, filter_result.files, dom_index=dom_index
         )
 
         # Count tests
@@ -500,9 +525,10 @@ class WriterAgent:
                 f"for {filter_result.framework} app using {framework_key}. "
                 f"{valid_count}/{len(checked)} code files parsed cleanly"
                 + (
-                    f"; {sel_verified}/{sel_total} selectors verified against your source."
+                    f"; {sel_verified}/{sel_total} selectors verified against "
+                    f"{'your live site' if crawl_index is not None else 'your source'}."
                     if sel_total
-                    else "; no selectors to verify against the source."
+                    else "; no selectors to verify."
                 )
             ),
         )
@@ -942,10 +968,23 @@ Generate comprehensive tests now:
         large suite can't be silently truncated the way the old single-JSON-blob
         approach was. Falls back to single-shot if planning yields nothing.
         """
-        plan = await self._plan_files(filter_result, framework_key, test_flows, base_url, tier)
+        # The plan call is the single point of failure for the whole run: without
+        # it there is no file list, and the only fallback is the single-shot path
+        # this design exists to avoid. It got no retry while every per-file call
+        # got eight — so a momentary rate limit at exactly this step threw away
+        # the generation, having spent the crawl already. Same wait-and-retry the
+        # files get.
+        plan = await self._retry_rate_limited(
+            "file plan",
+            lambda: self._plan_files(filter_result, framework_key, test_flows, base_url, tier),
+        )
         if not plan:
             logger.info("File planning produced nothing — falling back to single-shot generation")
-            return await self._generate_single_shot(filter_result, framework_key, test_flows, base_url, language, tier)
+            return await self._retry_rate_limited(
+                "single-shot generation",
+                lambda: self._generate_single_shot(
+                    filter_result, framework_key, test_flows, base_url, language, tier),
+            )
 
         manifest = [p["filename"] for p in plan]
         files: list[GeneratedFile] = []
@@ -979,15 +1018,18 @@ Generate comprehensive tests now:
                         f"Planned file failed after {RATE_RETRY_MAX_ATTEMPTS} "
                         f"rate-limit retries: {spec['filename']} — {e!r}"
                     )
-                    failed.append(spec["filename"])
                 except Exception as e:
                     # Log per file. Only the *last* error is kept for re-raising, so
                     # without this the first N failures of a run vanish and there is
                     # no way to tell a rate limit from a bad JSON response.
                     logger.warning(f"Planned file failed to generate: {spec['filename']} — {e!r}")
-                    failed.append(spec["filename"])
                     last_error = e
                     break
+            # One place decides a file failed, and it is the absence of content —
+            # the three paths that get here (retries spent, hard error, empty
+            # response) each used to record it themselves as well, so a file was
+            # listed twice and the README told the user two files were missing
+            # from a suite that was short exactly one.
             if content and content.strip():
                 files.append(GeneratedFile(
                     filename=spec["filename"],
@@ -995,7 +1037,7 @@ Generate comprehensive tests now:
                     description=spec.get("description", ""),
                 ))
             else:
-                logger.warning(f"Planned file came back empty: {spec['filename']}")
+                logger.warning(f"Planned file produced no content: {spec['filename']}")
                 failed.append(spec["filename"])
 
         # Nothing usable — fall back to single-shot, which raises if it also fails
@@ -1056,6 +1098,27 @@ Return ONLY JSON (no markdown, no prose):
         except Exception as e:
             logger.warning(f"File planning failed: {e}")
             return []
+
+    async def _retry_rate_limited(self, what: str, call):
+        """Run `call`, waiting out the cooldown when every provider is dry.
+
+        The same policy the per-file loop uses, factored out so the steps that
+        bracket it — planning the suite, and the single-shot fallback — get it
+        too. Only `AllProvidersExhausted` is retried: a bad-JSON or oversized
+        prompt fails the same way however long you wait.
+        """
+        for attempt in range(RATE_RETRY_MAX_ATTEMPTS + 1):
+            try:
+                return await call()
+            except AllProvidersExhausted:
+                if attempt >= RATE_RETRY_MAX_ATTEMPTS:
+                    raise
+                logger.info(
+                    f"All providers cooling — waiting {RATE_RETRY_WAIT_SECONDS}s then "
+                    f"retrying {what} (attempt {attempt + 1}/{RATE_RETRY_MAX_ATTEMPTS})"
+                )
+                await asyncio.sleep(RATE_RETRY_WAIT_SECONDS)
+        raise AssertionError("unreachable")     # pragma: no cover
 
     async def _generate_one_file(
         self, spec: dict, manifest: list[str], filter_result: FilterResult,
@@ -1224,15 +1287,24 @@ test cases covering positive and negative paths."""
         self,
         generated_files: list[GeneratedFile],
         source_files: dict[str, str],
+        dom_index=None,
     ) -> tuple[list[str], int, int]:
         """
         Check that selectors used in the generated tests actually exist in the
-        source. Validates ids, data-testid/data-cy, and bare class selectors
-        (not just ids). Flags suspected hallucinations and annotates the file.
+        ground truth. Validates ids, data-testid/data-cy, and bare class
+        selectors (not just ids). Flags suspected hallucinations and annotates
+        the file.
+
+        `dom_index`, when given, is a live-DOM `GroundIndex` and is merged with
+        whatever the source yields. It is the *stronger* evidence — an anchor the
+        browser really rendered — and in crawl-only mode it is the only evidence
+        there is, since no source was fetched. Merging rather than replacing
+        keeps the mode that has both (a repo plus a live URL) able to verify a
+        selector that either one proves.
 
         Returns (warnings, total_checked, verified). The counts are what the UI
         reports as grounding, so they are taken here — at the one place that
-        actually compares each selector against the source — rather than
+        actually compares each selector against the ground truth — rather than
         recovered later by counting warnings, which would only ever know about
         the failures and could not produce a denominator.
         """
@@ -1240,9 +1312,21 @@ test cases covering positive and negative paths."""
         source_ids = set(avail["ids"])
         source_testids = set(avail["testids"]) | set(avail["data_cy"])
         source_classes = set(avail["classes"])
+        if dom_index is not None:
+            for a in dom_index.anchors:
+                if a.kind == "id":
+                    source_ids.add(a.value)
+                elif a.kind == "testid":
+                    source_testids.add(a.value)
+                elif a.kind == "class":
+                    source_classes.add(a.value)
         warnings: list[str] = []
         total = 0
         verified = 0
+        # Name the ground truth the user's suite was actually checked against —
+        # "not found in source" is a confusing thing to read about a crawl-only
+        # run, where there is no source and the site is what was inspected.
+        where = "on the live site" if (dom_index is not None and not source_files) else "in source"
 
         for gf in generated_files:
             content = gf.content
@@ -1253,7 +1337,7 @@ test cases covering positive and negative paths."""
                 if id_ref in source_ids:
                     verified += 1
                 else:
-                    warnings.append(f"{gf.filename}: ID `#{id_ref}` not found in source — verify selector")
+                    warnings.append(f"{gf.filename}: ID `#{id_ref}` not found {where} — verify selector")
                     gf.content = gf.content.replace(
                         f'"#{id_ref}"', f'"#{id_ref}" /* ⚠️ selector not verified */'
                     )
@@ -1266,7 +1350,7 @@ test cases covering positive and negative paths."""
                 if t in source_testids:
                     verified += 1
                 else:
-                    warnings.append(f"{gf.filename}: test-id `{t}` not found in source — verify selector")
+                    warnings.append(f"{gf.filename}: test-id `{t}` not found {where} — verify selector")
 
             # Bare class selectors: ".some-class"
             for cls in set(re.findall(r'["\']\.([a-zA-Z][\w-]+)["\']', content)):
@@ -1274,7 +1358,7 @@ test cases covering positive and negative paths."""
                 if cls in source_classes:
                     verified += 1
                 else:
-                    warnings.append(f"{gf.filename}: class `.{cls}` not found in source — verify selector")
+                    warnings.append(f"{gf.filename}: class `.{cls}` not found {where} — verify selector")
 
         # De-duplicate and cap so a wall of warnings doesn't bury the signal.
         # The counts above are deliberately taken before this cap — they must

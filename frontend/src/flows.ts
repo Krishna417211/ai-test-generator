@@ -84,7 +84,13 @@ export const FLOWS: Flow[] = [
       },
       {
         id: "crawl",
-        driver: "server",
+        // `client`, not `server`: /api/analyze-crawl is a plain POST that returns
+        // JSON — it never opens an NDJSON stream, and "crawl" is deliberately
+        // absent from progress.py's KNOWN_STEPS. Generate.tsx sets this card from
+        // the request's own start and finish. Labelling it `server` claimed a
+        // step event that nothing emits, which is the exact drift the id contract
+        // exists to prevent.
+        driver: "client",
         lane: "server",
         title: "We render and crawl your live site",
         desc: "A headless browser runs your app, follows its own links, and indexes the real selectors every page actually renders — ids, data-testid, roles, visible text. Nothing is executed; we only read the DOM. If the site can't be crawled, we stop and say why.",

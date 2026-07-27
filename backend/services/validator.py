@@ -12,6 +12,8 @@ LLM output). This is what powers the self-heal loop and the "validated" signal.
 """
 
 import os
+import posixpath
+import re
 import shutil
 import tempfile
 import subprocess
@@ -143,8 +145,80 @@ def _validate_structural(content: str) -> tuple[bool, str]:
     return True, ""
 
 
+# A class field whose initializer reads `this.<something>` — e.g.
+#   readonly emailField = this.page.locator('#email');
+# Field initializers run BEFORE the constructor body, so if `this.page` is
+# assigned there (the Page Object Model shape this product emits by the
+# thousand) every such field throws at construction:
+#   TypeError: Cannot read properties of undefined (reading 'locator')
+#
+# This passes every check above it — it is syntactically perfect code — so
+# without this the suite ships graded "A, files parsed cleanly" and dies on the
+# first line of the first test. A syntax checker cannot see an ordering bug;
+# this is the one initialization order that is always wrong, so it is worth
+# naming specifically rather than reaching for a type checker we don't have.
+_FIELD_INIT_RE = re.compile(
+    r"^\s*(?:readonly\s+|public\s+|private\s+|protected\s+|static\s+)*"
+    r"(?!constructor\b)([A-Za-z_$][\w$]*)\s*(?::[^=;]+)?=\s*this\.([A-Za-z_$][\w$]*)",
+    re.MULTILINE,
+)
+_CTOR_ASSIGN_RE = re.compile(r"constructor\s*\([^)]*\)\s*\{(.*?)\n\s*\}", re.DOTALL)
+
+
+def _validate_field_init_order(content: str) -> tuple[bool, str]:
+    """Catch class fields initialized from `this.x` where x is set in the ctor."""
+    if "class " not in content:
+        return True, ""
+    assigned: set[str] = set()
+    for body in _CTOR_ASSIGN_RE.findall(content):
+        assigned |= set(re.findall(r"this\.([A-Za-z_$][\w$]*)\s*=", body))
+    if not assigned:
+        return True, ""
+    for field, dep in _FIELD_INIT_RE.findall(content):
+        if dep in assigned:
+            return False, (
+                f"field `{field}` is initialized from `this.{dep}`, which the "
+                f"constructor assigns afterwards — this throws at construction. "
+                f"Make it a getter, or assign it inside the constructor body."
+            )
+    return True, ""
+
+
+# Relative imports/requires in JS/TS — `from './x'`, `require('../pages/X')`.
+# Bare specifiers ('@playwright/test') are dependencies, resolved by the package
+# manager, and are none of our business.
+_RELATIVE_IMPORT_RE = re.compile(
+    r"""(?:from|import)\s+['"](\.[^'"]+)['"]|require\(\s*['"](\.[^'"]+)['"]\s*\)"""
+)
+
+# What a bare specifier may resolve to once the extension is added back.
+_MODULE_SUFFIXES = ("", ".ts", ".tsx", ".js", ".jsx", ".mjs",
+                    "/index.ts", "/index.js", "/index.tsx", "/index.jsx")
+
+
+def _unresolved_imports(content: str, filename: str, available: set[str]) -> list[str]:
+    """Relative imports in `filename` that no generated file satisfies."""
+    here = posixpath.dirname(filename)
+    missing = []
+    for m in _RELATIVE_IMPORT_RE.finditer(content):
+        spec = m.group(1) or m.group(2)
+        target = posixpath.normpath(posixpath.join(here, spec))
+        if not any(f"{target}{suf}" in available for suf in _MODULE_SUFFIXES):
+            missing.append(spec)
+    return missing
+
+
 def validate_files(files, framework_key: str = "") -> list[FileValidation]:
-    """Validate each generated file; skips non-code files (yaml/md/json)."""
+    """Validate each generated file; skips non-code files (yaml/md/json).
+
+    Checks run per file *and* across the set. The cross-file pass exists because
+    a dangling import is syntactically perfect — every file parses, the suite
+    reports valid, and `npx playwright test` dies on
+    `Cannot find module '../pages/LoginPage'` before a single test runs. That is
+    reachable whenever a planned file fails to generate (see `failed_files`)
+    while the spec importing it succeeds.
+    """
+    available = {f.filename.lstrip("./") for f in files}
     results: list[FileValidation] = []
     for f in files:
         name = f.filename.lower()
@@ -158,5 +232,16 @@ def validate_files(files, framework_key: str = "") -> list[FileValidation]:
         else:
             ok, err = True, ""  # config/docs — no deep validation
             checked = False
+        # Syntax-valid but dead on arrival. Only worth asking of code that parsed:
+        # a file that is already broken has a more important error to report.
+        if ok and checked and name.endswith((".ts", ".tsx", ".js", ".jsx")):
+            ok, err = _validate_field_init_order(f.content)
+            if ok:
+                missing = _unresolved_imports(
+                    f.content, f.filename.lstrip("./"), available)
+                if missing:
+                    ok = False
+                    err = (f"imports {', '.join(repr(m) for m in missing)}, which "
+                           f"no generated file provides — the suite cannot start")
         results.append(FileValidation(f.filename, ok, err, checked=checked))
     return results

@@ -11,7 +11,7 @@ import asyncio
 
 from services.llm_router import (
     LLMRouter, Provider, APIKey, ProviderState, Tier, model_for,
-    RateLimitError, ProviderError, AllProvidersExhausted,
+    RateLimitError, ProviderError, AllProvidersExhausted, is_hard_quota,
     start_provenance, record_provenance, ProviderCall, provenance_report,
     upgrade_would_change_model,
 )
@@ -122,6 +122,141 @@ class TestFailover:
 
 
 # ── Status reporting ─────────────────────────
+
+class TestTransportErrors:
+    """A TLS/connection failure is a property of the socket, not the key.
+
+    Observed live as `SSL: RECORD_LAYER_FAILURE` on roughly half of connections
+    to one provider, landing on a different key each time. Before this, such an
+    error escaped `complete()` raw — no reconnect, no rotation, no fallback — and
+    one unlucky socket failed a whole generation while healthy keys sat idle.
+    """
+
+    def test_reconnects_on_the_same_key_then_succeeds(self, monkeypatch):
+        import ssl
+        r = _router_with(Provider.GROQ)
+        seen, calls = [], {"n": 0}
+
+        async def flaky(provider, api_key, *a, **k):
+            calls["n"] += 1
+            seen.append(api_key.index)
+            if calls["n"] == 1:
+                raise ssl.SSLError("RECORD_LAYER_FAILURE")
+            return "ok"
+
+        monkeypatch.setattr(r, "_call_provider", flaky)
+        monkeypatch.setattr("services.llm_router.TRANSPORT_RETRY_DELAY", 0)
+        assert asyncio.run(r.complete("hi")) == "ok"
+        # Retried the SAME key rather than burning another provider's quota.
+        assert seen == [seen[0], seen[0]]
+
+    def test_falls_through_to_next_provider_when_retries_are_spent(self, monkeypatch):
+        import httpx
+        r = _router_with(Provider.GEMINI, Provider.GROQ)
+
+        async def fail_gemini(provider, api_key, *a, **k):
+            if provider is Provider.GEMINI:
+                raise httpx.ConnectError("dead socket")
+            return "from groq"
+
+        monkeypatch.setattr(r, "_call_provider", fail_gemini)
+        monkeypatch.setattr("services.llm_router.TRANSPORT_RETRY_DELAY", 0)
+        assert asyncio.run(r.complete("hi")) == "from groq"
+
+    def test_transport_failure_everywhere_raises_exhausted_not_raw_ssl(self, monkeypatch):
+        """The caller's retry logic keys on AllProvidersExhausted — a raw SSLError
+        escaping here is what bypassed it and killed the run."""
+        import ssl
+        r = _router_with(Provider.GROQ)
+
+        async def always_fail(*a, **k):
+            raise ssl.SSLError("RECORD_LAYER_FAILURE")
+
+        monkeypatch.setattr(r, "_call_provider", always_fail)
+        monkeypatch.setattr("services.llm_router.TRANSPORT_RETRY_DELAY", 0)
+        with pytest.raises(AllProvidersExhausted):
+            asyncio.run(r.complete("hi"))
+
+
+class TestHardQuotaClassification:
+    """"Wait and it heals" vs "a human must act" — told apart from real messages.
+
+    A false "hard" is expensive: the key is dead for the life of the process
+    (`hard_blocked` clears only on a success), the user is told capacity is gone,
+    and `upgrade_would_change_model` silently drops the Pro prompt. So the test
+    biases toward recoverable, and these are the exact strings this account
+    produced.
+    """
+
+    GEMINI_BOILERPLATE = ('You exceeded your current quota, please check your plan '
+                          'and billing details.')
+
+    def test_gemini_per_minute_limit_is_not_hard(self):
+        """The regression: Gemini appends "billing" + "quota" prose to EVERY 429,
+        so the old `"billing" and "quota"` test marked a 21s wait as terminal."""
+        msg = (f'{self.GEMINI_BOILERPLATE} "quotaId": '
+               '"GenerateContentInputTokensPerModelPerMinute-FreeTier", "retryDelay": "21s"')
+        assert is_hard_quota(msg) is False
+
+    def test_gemini_daily_cap_without_a_retry_hint_is_hard(self):
+        msg = (f'{self.GEMINI_BOILERPLATE} "quotaId": '
+               '"GenerateRequestsPerDayPerProjectPerModel-FreeTier"')
+        assert is_hard_quota(msg) is True
+
+    def test_groq_daily_token_cap_is_recoverable(self):
+        """TPD is a rolling window and the response says when — not terminal."""
+        msg = ('Rate limit reached on tokens per day (TPD): Limit 100000, Used 99686. '
+               'Please try again in 1h26m46.464s. Upgrade at '
+               'https://console.groq.com/settings/billing')
+        assert is_hard_quota(msg) is False
+
+    def test_out_of_credit_is_hard_even_with_a_retry_hint(self):
+        """No delay makes an empty balance recover — credit outranks the hint."""
+        msg = ('Your credit balance is too low to access the Anthropic API. '
+               'Please try again in 30s.')
+        assert is_hard_quota(msg) is True
+
+    def test_quota_exhausted_message_only_fires_when_truly_terminal(self):
+        """The user-facing claim this gates: reason="quota_exhausted" says
+        "needs more capacity", which must not appear for a per-minute limit."""
+        r = _router_with(Provider.GEMINI)
+        for k in r._providers[Provider.GEMINI].keys:
+            k.hard_blocked = is_hard_quota(
+                f'{self.GEMINI_BOILERPLATE} "retryDelay": "21s"')
+        assert not any(k.hard_blocked for k in r._providers[Provider.GEMINI].keys)
+
+
+class TestStatusHonesty:
+    """The status page must not call a dead provider healthy.
+
+    Observed live: every provider was exhausted (Gemini daily cap, Groq daily
+    token cap, Anthropic out of credit) while /status reported "All systems
+    operational — 2/2 keys available" for all three, because `healthy` was
+    derived from the 429 cooldown timer alone and ignored `hard_blocked`.
+    """
+
+    def test_hard_blocked_key_is_not_counted_available(self):
+        r = _router_with(Provider.CLAUDE)
+        for k in r._providers[Provider.CLAUDE].keys:
+            k.hard_blocked = True          # e.g. "credit balance is too low"
+        st = r.get_status()["claude"]
+        assert st["available_keys"] == 0
+        assert st["healthy"] is False
+        assert st["hard_blocked_keys"] == 2
+
+    def test_agrees_with_the_admin_key_health_view(self):
+        """Same fact, one definition — these disagreed before."""
+        r = _router_with(Provider.GROQ)
+        r._providers[Provider.GROQ].keys[0].hard_blocked = True
+        admin_available = sum(1 for k in r.get_key_health() if k["available"])
+        assert r.get_status()["groq"]["available_keys"] == admin_available == 1
+
+    def test_never_used_marks_an_unproven_provider(self):
+        r = _router_with(Provider.GEMINI)
+        assert r.get_status()["gemini"]["never_used"] is True
+        r._providers[Provider.GEMINI].keys[0].record_success()
+        assert r.get_status()["gemini"]["never_used"] is False
+
 
 class TestStatus:
     def test_status_reports_key_counts(self):
