@@ -978,7 +978,7 @@ _ACTIVE = ImportanceModel.load()
     <div class="inner">
       <div class="eyebrow">23 · The terminal</div>
       <h2>A CLI, because the web page can only be handed a box.</h2>
-      <p class="lede"><code>npx testra publish --with-ci</code>, run inside the project. Zero runtime dependencies — Node's standard library only.</p>
+      <p class="lede"><code>npx @testra/cli publish --with-ci</code>, run inside the project. Zero runtime dependencies — Node's standard library only.</p>
       <div class="cols c3">
         <div class="card"><span class="tag">git ls-files</span><h3>Your ignore rules decide</h3><p>Files come from git's own answer to "what belongs to this project", honouring nested <code>.gitignore</code>s and global excludes. The server has to guess with a fixed skip-list that knows <code>node_modules</code> but not <code>.turbo</code>.</p></div>
         <div class="card"><span class="tag">before the upload</span><h3>Credentials never leave the machine</h3><p>On the web, the server is the earliest place a <code>.env</code> can be caught — and by then it has crossed the network. Here it never does. The server re-scans anyway, so the layers fail safe in one direction only.</p></div>
