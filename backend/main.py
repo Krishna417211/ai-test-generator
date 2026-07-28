@@ -76,6 +76,7 @@ from services.quota import (
 )
 from services.llm_router import (
     router as llm_router, AllProvidersExhausted, start_provenance, provenance_report, Tier,
+    start_byok_tracking, byok_fell_back,
 )
 from services.progress import Progress, ndjson
 from services.store import store
@@ -1565,9 +1566,18 @@ async def dashboard(ctx: dict = Depends(require_user)):
 # Settings: form defaults, credentials, account
 # ─────────────────────────────────────────────
 
+def _settings_view(user_id: str) -> dict:
+    """Settings plus the *mask* of any stored Gemini key — never the key."""
+    view = store.get_settings(user_id)
+    plaintext = auth_svc.decrypt_secret(store.get_gemini_key(user_id))
+    view["gemini_key_hint"] = store.gemini_key_hint(plaintext)
+    view["has_gemini_key"] = bool(plaintext)
+    return view
+
+
 @app.get("/api/settings", response_model=UserSettingsResponse)
 async def get_user_settings(ctx: dict = Depends(require_user)):
-    return store.get_settings(ctx["user_id"])
+    return _settings_view(ctx["user_id"])
 
 
 @app.put("/api/settings", response_model=UserSettingsResponse)
@@ -1577,7 +1587,30 @@ async def put_user_settings(payload: UserSettings, ctx: dict = Depends(require_u
     # "playwright" rather than "TestFramework.PLAYWRIGHT" — which would come back
     # out as a string the UI's <select> never matches.
     patch = payload.model_dump(exclude_none=True, mode="json")
-    return store.save_settings(ctx["user_id"], **patch)
+
+    # The key is handled separately from the form defaults, because it is a
+    # credential and the two want opposite treatment: defaults are stored as
+    # given and read straight back, the key is encrypted going in and never comes
+    # back out. Popping it here keeps it out of save_settings entirely.
+    key = patch.pop("gemini_api_key", None)
+    if key is not None:
+        if key == "":
+            store.set_gemini_key(ctx["user_id"], None)
+            logger.info(f"Removed stored Gemini key for {ctx['user_id']}")
+        else:
+            # Probe before storing. A key that is well-formed but revoked, or
+            # scoped to the wrong project, would otherwise be accepted here and
+            # fail in the middle of a generation minutes later — where the error
+            # is far harder to connect back to this form.
+            ok, why = await llm_router.probe_user_key(key)
+            if not ok:
+                raise HTTPException(400, f"That key didn't work: {why}")
+            store.set_gemini_key(ctx["user_id"], auth_svc.encrypt_secret(key))
+            logger.info(f"Stored a Gemini key for {ctx['user_id']}")
+
+    if patch:
+        store.save_settings(ctx["user_id"], **patch)
+    return _settings_view(ctx["user_id"])
 
 
 @app.post("/api/auth/change-password", response_model=SimpleResponse,
@@ -2668,6 +2701,11 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
     start_provenance()
     tier = tier_for_user(ctx["user_id"])
 
+    # Bring-your-own-key: decrypted here, held only for this request, and never
+    # written to the job or any response.
+    user_key = auth_svc.decrypt_secret(store.get_gemini_key(ctx["user_id"]))
+    start_byok_tracking()
+
     def elapsed_ms() -> int:
         return int((time.monotonic() - started) * 1000)
 
@@ -2684,6 +2722,7 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
             tier=tier,
             live_url=payload.live_url,
             crawl_index=crawl_index,
+            user_key=user_key,
         )
     except AllProvidersExhausted as e:
         # Our shared API keys are dry — this is an outage on our side and hits
@@ -2721,7 +2760,19 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
         )
         raise HTTPException(500, "Test generation failed. Please try again.")
 
-    lease.commit()
+    # The quota exists because generations cost the operator money. A run that
+    # went entirely on the user's own key cost nothing, so the credit is given
+    # back — which is what makes bring-your-own-key worth doing for the user.
+    #
+    # Reserve-then-refund rather than skipping the reservation: the reservation
+    # is what stops a user starting fifty concurrent runs, and whether the
+    # fallback happened is only knowable *after* the run.
+    byok_used = bool(user_key)
+    fell_back = byok_fell_back()
+    if byok_used and not fell_back:
+        lease.refund()
+    else:
+        lease.commit()
 
     _record_generation(
         session, ctx["user_id"],

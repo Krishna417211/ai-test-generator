@@ -41,6 +41,20 @@ ACTIVITY_TABLES = (
 # Columns added after these tables shipped. CREATE TABLE IF NOT EXISTS skips a
 # table that already exists, so a deployed database only gains them by ALTER.
 _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
+    "user_settings": (
+        # A user's own Gemini API key ("bring your own key"), Fernet-encrypted by
+        # services/auth.encrypt_secret before it ever reaches this column.
+        #
+        # Stored on user_settings rather than users because it is a preference
+        # someone sets and clears on the Settings page, not an identity fact —
+        # and because deleting the row on account deletion then takes the key
+        # with it for free.
+        #
+        # NEVER returned by an endpoint. /api/settings answers with a masked hint
+        # (services/store.gemini_key_hint) so the UI can show which key is saved
+        # without the plaintext existing outside this column and the router.
+        ("gemini_api_key", "gemini_api_key TEXT"),
+    ),
     "users": (
         ("plan", "plan TEXT NOT NULL DEFAULT 'free'"),
         # Epoch seconds; NULL means the plan doesn't expire. A lapsed
@@ -755,6 +769,55 @@ class JobStore:
                     (user_id, time.time(), *sets.values()),
                 )
         return self.get_settings(user_id)
+
+    # ── BYOK: the user's own Gemini key ──────
+    #
+    # Deliberately NOT part of get_settings/save_settings. Those return a dict
+    # that becomes an API response, and a key that travels through the same
+    # path as `framework` will one day be serialised into one by accident. The
+    # separate accessors below make the plaintext reachable only from code that
+    # asked for it by name.
+
+    def set_gemini_key(self, user_id: str, encrypted: str | None) -> None:
+        """Store (or clear, with None) this user's encrypted Gemini key.
+
+        The value must already be encrypted — this layer does not reach into
+        services.auth, so passing plaintext here writes plaintext. Callers use
+        auth.encrypt_secret; test_byok pins that the column never holds a key
+        that appears in the clear.
+        """
+        with self._lock, self._conn() as c:
+            c.execute(
+                "INSERT INTO user_settings (user_id, updated_at, gemini_api_key) "
+                "VALUES (?, ?, ?) "
+                "ON CONFLICT(user_id) DO UPDATE SET "
+                "updated_at = excluded.updated_at, gemini_api_key = excluded.gemini_api_key",
+                (user_id, time.time(), encrypted),
+            )
+
+    def get_gemini_key(self, user_id: str) -> str:
+        """The stored ciphertext, or "" if the user has not set one."""
+        with self._lock, self._conn() as c:
+            row = c.execute(
+                "SELECT gemini_api_key FROM user_settings WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        return (row[0] if row else "") or ""
+
+    @staticmethod
+    def gemini_key_hint(plaintext: str) -> str:
+        """`AIza…9f2k` — enough to recognise which key is saved, and no more.
+
+        Shows the issuer prefix and the last four characters. Both ends matter:
+        the prefix confirms it is a Google key at all (someone who pasted the
+        wrong provider's key sees it immediately), and the suffix distinguishes
+        two keys from the same project. The middle is what must never appear.
+        """
+        if not plaintext:
+            return ""
+        if len(plaintext) <= 8:
+            return "…" + plaintext[-2:]
+        return f"{plaintext[:4]}…{plaintext[-4:]}"
 
     # ── Account deletion ─────────────────────
 

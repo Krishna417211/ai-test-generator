@@ -11,7 +11,7 @@ import { useAuth } from "../context/AuthContext";
 import {
   getSettings, saveSettings, changePassword, logoutEverywhere, deleteAccount,
   getProfile, startCheckout, CheckoutUnavailableError, deleteRepo,
-  getAuthConfig, githubLoginUrl,
+  getAuthConfig, githubLoginUrl, saveGeminiKey,
 } from "../utils/api";
 import { pluralize } from "../utils/format";
 import type { UserSettings, Profile, PlanCatalogueEntry } from "../types";
@@ -333,6 +333,108 @@ function ConnectionsSection({ highlight }: { highlight: boolean }) {
   );
 }
 
+// ── Bring your own key ───────────────────────
+
+/** Lets a user run generations on their own Gemini quota instead of ours.
+ *
+ *  The field is write-only by construction: the server returns a mask
+ *  (`AIza…9f2k`) and never the key, so there is nothing to prefill and the input
+ *  starts empty even when a key is saved. That is deliberate — a form that
+ *  round-trips a credential is one XSS away from leaking it.
+ */
+function ApiKeySection() {
+  const [key, setKey] = useState("");
+  const [saved, setSaved] = useState<{ hint: string; present: boolean }>({ hint: "", present: false });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+
+  useEffect(() => {
+    getSettings()
+      .then((v) => setSaved({ hint: v.gemini_key_hint || "", present: !!v.has_gemini_key }))
+      .catch(() => { /* the rest of the page still works without this */ });
+  }, []);
+
+  const submit = async (value: string) => {
+    setBusy(true); setMsg(null);
+    try {
+      const v = await saveGeminiKey(value);
+      setSaved({ hint: v.gemini_key_hint || "", present: !!v.has_gemini_key });
+      setKey("");
+      setMsg({
+        kind: "ok",
+        text: value
+          ? "Key saved and checked against Google. Your generations now run on it."
+          : "Key removed. Generations go back to the shared pool and your monthly quota.",
+      });
+    } catch (e: any) {
+      setMsg({ kind: "error", text: e.message || "Could not save your API key." });
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <Section icon={KeyRound} title="Your own Gemini key"
+             description="Run generations on your own Google AI quota instead of the shared pool.">
+      {saved.present && (
+        <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-brand-400/30 bg-brand-400/[0.07] px-3.5 py-2.5">
+          <Check size={13} className="text-brand-300 shrink-0" />
+          <span className="text-xs text-grey-200">
+            Using your key <code className="font-mono text-grey-300">{saved.hint}</code>
+          </span>
+          <button onClick={() => submit("")} disabled={busy}
+                  className="ml-auto text-xs text-grey-400 hover:text-rose-300 transition-colors disabled:opacity-50">
+            Remove
+          </button>
+        </div>
+      )}
+
+      <Field
+        label={saved.present ? "Replace with a different key" : "Gemini API key"}
+        hint="From aistudio.google.com/app/apikey. Stored encrypted, never shown again, and never sent anywhere but Google."
+      >
+        <input
+          className={inputCls} value={key} type="password" autoComplete="off"
+          spellCheck={false} placeholder="AIza..."
+          onChange={(e) => setKey(e.target.value)}
+        />
+      </Field>
+
+      <button onClick={() => submit(key.trim())} disabled={busy || !key.trim()}
+              className="btn-primary mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold disabled:opacity-40">
+        {busy ? <><Loader2 size={14} className="animate-spin" /> Checking…</> : "Save key"}
+      </button>
+
+      {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+
+      {/* The two things someone should know before pasting a key. Said here
+          rather than in a tooltip, because both cost them something. */}
+      <ul className="mt-5 space-y-1.5 border-t border-grey-700 pt-4">
+        <li className="text-xs text-grey-400 flex gap-2">
+          <span className="text-grey-600 shrink-0">·</span>
+          <span>
+            Generations on your key <strong className="text-grey-300">don't count against your
+            monthly quota</strong> — they're billed to your Google account, not ours.
+          </span>
+        </li>
+        <li className="text-xs text-grey-400 flex gap-2">
+          <span className="text-grey-600 shrink-0">·</span>
+          <span>
+            If your key fails or hits its limit, we fall back to the shared pool so your run
+            still finishes — that one <strong className="text-grey-300">does</strong> use a
+            quota credit, and we'll tell you it happened.
+          </span>
+        </li>
+        <li className="text-xs text-grey-400 flex gap-2">
+          <span className="text-grey-600 shrink-0">·</span>
+          <span>
+            Your key is Gemini only, so you lose the automatic failover to Groq and Claude
+            while it's set.
+          </span>
+        </li>
+      </ul>
+    </Section>
+  );
+}
+
 // ── Command line ─────────────────────────────
 
 /** Where the CLI is discoverable at all.
@@ -619,6 +721,7 @@ export default function Settings() {
         <DefaultsSection />
         <AccountSection />
         <ConnectionsSection highlight={wantsGithub} />
+        <ApiKeySection />
         <CliSection />
         {error && (
           <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-300">
