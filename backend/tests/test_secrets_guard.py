@@ -11,8 +11,44 @@ guard that eats `.env.example` and `src/apiKey.ts` gets switched off, and then
 it protects nobody.
 """
 
+import pytest
+
 from services import secrets_guard
 from services.file_extractor import FileExtractor
+
+
+class TestSharedSpecification:
+    """The corpus in secret_rules.json, run against this implementation.
+
+    `cli/test/secrets.test.js` runs the very same corpus against the JavaScript
+    one. That is what makes "the two agree" a checked fact rather than a hope:
+    the cases live with the rules, so adding one covers both languages, and
+    neither implementation can pass a case the other fails.
+
+    The classes below cover what a corpus entry cannot express — the scan window,
+    and how scrub() partitions its input.
+    """
+
+    def test_corpus_is_substantial(self):
+        assert len(secrets_guard.RULES["self_test"]) >= 30
+
+    @pytest.mark.parametrize(
+        "case",
+        secrets_guard.RULES["self_test"],
+        ids=lambda c: f"{'block' if c['excluded'] else 'allow'}:{c['path']}",
+    )
+    def test_case(self, case):
+        finding = secrets_guard.inspect(case["path"], case["content"])
+        why = case.get("note") or ("must be excluded" if case["excluded"] else "must be kept")
+        if case["excluded"]:
+            assert finding is not None, f"{case['path']}: expected excluded, was kept — {why}"
+            assert finding.reason, "an exclusion needs a reason the user can act on"
+            assert finding.kind in ("path", "content")
+        else:
+            assert finding is None, (
+                f"{case['path']}: expected kept, was excluded as "
+                f"{finding.reason!r} — {why}"
+            )
 
 
 class TestPathRules:

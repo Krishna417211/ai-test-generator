@@ -213,6 +213,51 @@ class UserPublic(BaseModel):
     is_admin: bool = False
 
 
+# ── CLI device-code login (RFC 8628) ─────────
+# The CLI cannot own a browser redirect: it may be running over SSH on a box with
+# no browser at all. So it asks for a short code, the user approves that code in
+# a browser anywhere (phone included), and the CLI polls until it is approved.
+# The user's password never passes through the CLI.
+
+class CliAuthStartResponse(BaseModel):
+    """What the CLI needs to show the user, and to poll with."""
+    # The secret the CLI holds. Long and random: possession of this is what
+    # entitles a caller to collect the session token, so it is never displayed.
+    device_code: str
+    # The short code the human reads out and types. Deliberately not a secret —
+    # it is designed to be shown on a screen and typed into another device.
+    user_code: str
+    verification_uri: str
+    # Same page with the code pre-filled, so the common case is one click.
+    verification_uri_complete: str
+    expires_in: int
+    # Seconds the client must wait between polls. Honoured by our CLI; enforced
+    # by the rate limiter for clients that don't.
+    interval: int
+
+
+class CliAuthApproveRequest(BaseModel):
+    user_code: str
+
+
+class CliAuthTokenRequest(BaseModel):
+    device_code: str
+
+
+class CliAuthTokenResponse(BaseModel):
+    """Poll result.
+
+    `status`:
+      pending   — not approved yet; keep polling after `interval`
+      approved  — `token` and `user` are set. Returned exactly once.
+      denied    — the user rejected it; stop polling
+      expired   — the code timed out (or was already collected); start over
+    """
+    status: str
+    token: Optional[str] = None
+    user: Optional[UserPublic] = None
+
+
 class AuthResponse(BaseModel):
     token: str
     user: UserPublic

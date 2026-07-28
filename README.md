@@ -10,6 +10,7 @@ Free tier included (a monthly generation allowance, no card required); Pro remov
 
 ## ✨ Features
 
+- **CLI for the terminal** — `npx testra publish --with-ci` from inside your project. Your `.gitignore` decides what uploads, and credentials are scanned *before* anything is sent. Zero dependencies. See [`cli/`](cli/README.md).
 - **Two generation modes.** *Generate* is crawl-first: it renders and crawls your deployed site and writes tests from the real DOM — your repo's file contents never reach the model. *Publish* is source-first: upload a ZIP, get a new GitHub repo with the project plus a validated suite and working CI.
 - **Grounded selectors, with provenance.** Every id, test-id and class the model writes is checked back against your real source or live DOM, and the UI cites the file and line it came from rather than asking for trust.
 - **Self-heal loop.** Files that don't parse, and selectors that don't resolve, are sent back to the model *with the real anchors that do exist* — a grounded substitution, not a second guess.
@@ -159,8 +160,17 @@ testra/
 │   │   ├── store.py            # Durable SQLite job store
 │   │   └── auth / quota / billing / admin / mailer / progress
 │   ├── models/schemas.py       # Pydantic request/response models
-│   ├── tests/                  # 958 tests across 32 suites
+│   ├── tests/                  # 1026 tests across 35 suites
 │   └── main.py                 # FastAPI app + all routes
+│
+├── cli/                        # `npx testra` — zero runtime dependencies
+│   ├── bin/testra.js           # Entry point + arg parsing
+│   └── src/
+│       ├── collect.js          # git ls-files → what belongs to the project
+│       ├── secrets.js          # Local credential scan, before upload
+│       ├── zip.js              # Minimal ZIP writer over node:zlib
+│       ├── api.js              # HTTP + NDJSON progress stream
+│       └── commands/           # publish · login/logout/whoami
 │
 ├── docs/                       # ARCHITECTURE.md · DEPLOY.md · LIMITATIONS.md
 └── docker-compose.yml
@@ -243,7 +253,7 @@ Full interactive docs: http://localhost:8000/docs
 
 ```bash
 cd backend
-pytest tests/ -q          # 958 tests across 32 suites
+pytest tests/ -q          # 1026 tests across 35 suites
 ruff check .
 ```
 
@@ -252,6 +262,13 @@ Frontend:
 ```bash
 cd frontend
 npx tsc --noEmit && npm run build
+```
+
+CLI:
+
+```bash
+cd cli
+npm test
 ```
 
 ---

@@ -55,3 +55,27 @@ email_limiter = SlidingWindowLimiter(max_calls=6, window_seconds=3600)
 # Guessing an OTP is capped per-challenge in verification.py; this stops someone
 # from parallelising that across many freshly-minted challenges from one host.
 otp_limiter = SlidingWindowLimiter(max_calls=20, window_seconds=600)
+
+# CLI device-code login (RFC 8628). Three distinct exposures, three limiters —
+# and which endpoint gets the tight one matters, because the obvious guess is
+# wrong.
+#
+# Starting a login is NOT the brute-force surface. Minting a code hands the caller
+# a code they already know, so it buys an attacker nothing; and every extra live
+# code only widens the target by a rounding error (even a thousand of them, against
+# a 6.6e11 space and the guess budget below, is a ~1e-8 chance). What a tight cap
+# here WOULD do is break a whole office behind one NAT address, where these
+# per-IP buckets are shared — so it stays generous.
+cli_start_limiter = SlidingWindowLimiter(max_calls=30, window_seconds=600)
+
+# Submitting a user_code IS the brute-force surface: 8 characters from a
+# 30-symbol alphabet is 6.6e11 possibilities, which is only out of reach while
+# guessing stays slow. Codes also expire in 10 minutes, so this cap puts the
+# search space many orders of magnitude beyond reach within a code's lifetime.
+cli_code_limiter = SlidingWindowLimiter(max_calls=10, window_seconds=600)
+
+# Polling is expected and frequent — the CLI asks every 5s for up to 10 minutes,
+# so ~120 calls is a *normal* login and the cap only has to stop a client that
+# ignores the interval it was given. The device_code is high-entropy, so this is
+# not a guessing surface at all.
+cli_poll_limiter = SlidingWindowLimiter(max_calls=240, window_seconds=600)

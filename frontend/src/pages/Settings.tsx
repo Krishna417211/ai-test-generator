@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import {
   Settings as SettingsIcon, Loader2, Check, AlertCircle, Github, LogOut,
   Trash2, KeyRound, SlidersHorizontal, Gauge, ShieldAlert, Link2,
+  Terminal as TerminalIcon, Copy,
 } from "lucide-react";
 import Page from "../components/Page";
 import PageHeader from "../components/PageHeader";
@@ -332,6 +333,68 @@ function ConnectionsSection({ highlight }: { highlight: boolean }) {
   );
 }
 
+// ── Command line ─────────────────────────────
+
+/** Where the CLI is discoverable at all.
+ *
+ *  Without this, `npx testra` exists and nobody using the web app ever learns
+ *  it does — and the CLI is strictly better for the publish flow, because it
+ *  runs inside the project: your .gitignore decides what uploads, and the
+ *  credential scan happens before anything leaves your machine rather than after
+ *  it arrives here.
+ *
+ *  Deliberately not a nav item. /cli is a landing page for approving a code, not
+ *  somewhere you browse to, and it would sit oddly next to "Generate".
+ */
+function CliSection() {
+  const [copied, setCopied] = useState(false);
+  const command = "npx testra login && npx testra publish --with-ci";
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard blocked (insecure origin / permission) — the text is on screen */
+    }
+  };
+
+  return (
+    <Section icon={TerminalIcon} title="Command line"
+             description="Publish from the directory your project lives in, without zipping anything.">
+      <div className="rounded-xl bg-black/40 border border-grey-700 px-3.5 py-3 flex items-center gap-3">
+        <code className="text-xs font-mono text-grey-200 truncate flex-1">{command}</code>
+        <button
+          onClick={copy}
+          title="Copy"
+          className="p-1.5 rounded-lg hover:bg-white/10 text-grey-500 hover:text-grey-300 transition-all shrink-0"
+        >
+          {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+        </button>
+      </div>
+      <ul className="mt-3 space-y-1.5">
+        {[
+          "Your .gitignore decides what uploads — no hand-made ZIP.",
+          "Credentials are found and held back before anything is sent.",
+          "Runs in CI: set TESTRA_TOKEN from a secret.",
+        ].map((line) => (
+          <li key={line} className="text-xs text-grey-400 flex gap-2">
+            <Check size={12} className="text-brand-300 mt-0.5 shrink-0" />
+            <span>{line}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-grey-500 mt-3 leading-relaxed">
+        <code className="font-mono text-grey-400">testra login</code> shows a short
+        code and sends you to{" "}
+        <Link to="/cli" className="text-brand-300 hover:text-brand-200">this page</Link>{" "}
+        to approve it — your password never passes through the terminal.
+      </p>
+    </Section>
+  );
+}
+
 // ── Plan & billing ───────────────────────────
 
 function PlanSection({ profile }: { profile: Profile }) {
@@ -556,6 +619,7 @@ export default function Settings() {
         <DefaultsSection />
         <AccountSection />
         <ConnectionsSection highlight={wantsGithub} />
+        <CliSection />
         {error && (
           <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-300">
             {error}
