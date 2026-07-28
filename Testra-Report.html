@@ -249,9 +249,10 @@
       <li><a href="#s21">Deployment</a></li>
       <li><a href="#s22">Benchmarking</a></li>
       <li><a href="#s23">Limitations</a></li>
-      <li><a href="#s24">Roadmap &amp; future enhancements</a></li>
-      <li><a href="#s25">Conclusion</a></li>
-      <li><a href="#s26">Glossary</a></li>
+      <li><a href="#s24">How it compares</a></li>
+      <li><a href="#s25">Roadmap &amp; future enhancements</a></li>
+      <li><a href="#s26">Conclusion</a></li>
+      <li><a href="#s27">Glossary</a></li>
     </ol>
   </nav>
 
@@ -265,7 +266,7 @@
         <span>Author <b>krishnapriya</b></span>
         <span>Date <b>28 July 2026</b></span>
         <span>Backend <b>~20,000 LOC Python</b></span>
-        <span>Tests <b>1026</b></span>
+        <span>Tests <b>1050</b></span>
         <span>Licence <b>MIT</b></span>
       </div>
     </header>
@@ -700,6 +701,16 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
         <li>When the check itself cannot complete — GitHub truncates trees beyond roughly 100k entries — nothing is claimed as verified <em>and</em> nothing is claimed as missing. An unread tree is not evidence of absence, and the response says which case it was.</li>
       </ol>
 
+      <h3>Protecting the account itself</h3>
+      <p>The gates above protect the user's <em>code</em>. Four more protect their account, and each was chosen because the obvious version of it is wrong.</p>
+      <div class="grid g2">
+        <div class="card"><span class="tag">services/store.py</span><h4>Session tokens hashed at rest</h4><p>The sessions table was keyed by the bearer token itself. Since that token <em>is</em> the credential, with no second factor behind it, any read-only glimpse of the database &mdash; a leaked backup, a volume snapshot, an injection anywhere, a support copy &mdash; was live takeover of every signed-in account simultaneously. The table now holds a SHA-256 digest. Plain, unsalted, no work factor: those defend <em>guessable</em> secrets, and the input is 32 bytes of <code>token_urlsafe</code>; a per-row salt would also destroy the primary-key lookup that makes session validation one indexed read per request. Done inside the store rather than at the call sites, so a new endpoint cannot store a raw token by forgetting a helper.</p></div>
+        <div class="card"><span class="tag">services/login_guard.py</span><h4>Login throttled per account</h4><p>A per-IP limiter cannot see the attack that matters: credential stuffing spread over hundreds of addresses, each under the cap, collectively trying thousands of passwords against one inbox. So the counter is keyed on the <em>account</em>. It delays and never disables &mdash; locking an account would hand anyone who knows an email address a denial-of-service button. Failures are counted for the address as typed whether or not it exists, or the throttle becomes the account-existence oracle the 401 message carefully refuses to be.</p></div>
+        <div class="card"><span class="tag">services/file_extractor.py</span><h4>Decompression bombs</h4><p>The endpoint capped the <em>archive</em>, which says nothing about what comes out of it: DEFLATE reaches roughly 1000:1, so a compliant 10&nbsp;MB upload can expand to 10&nbsp;GB &mdash; held in memory as <code>str</code>, taking the process down for every user. Three limits, because each alone has a hole: per-member size, per-member ratio above a floor, and a total. Header sizes are attacker-controlled, so the real defence is a running total of what actually came out.</p></div>
+        <div class="card"><span class="tag">main.py</span><h4>Headers from the app, not only the proxy</h4><p>Caddy stays the authority for the browser-facing site (&sect;20). These cover the API reached <em>directly</em> &mdash; in development, by the CLI, by any deployment that publishes port 8000 without the proxy. Narrow and API-appropriate: <code>nosniff</code>, <code>DENY</code>, <code>no-referrer</code>, and a <code>default-src 'none'</code> policy. The interactive docs are excluded by path, since they load Swagger from a CDN and that policy would render them blank.</p></div>
+      </div>
+      <div class="note"><span class="tag">A migration that had to be lossless</span>Rows written before hashing held the token itself, and hashing them in place is precisely what a lookup now computes &mdash; so the migration invalidates nothing and nobody is logged out. It is guarded by <code>PRAGMA user_version</code>, and that has to be a guard rather than a heuristic: a second pass would hash the hashes and sign out every user at once, with no way back. The guard is set inside the same transaction as the rewrite, so a crash mid-migration rolls both back and the next start retries cleanly.</div>
+
       <h3>Unsupported projects and failed generation</h3>
       <p>Two failure classes are handled explicitly rather than being allowed to present as success.</p>
       <div class="grid g2">
@@ -846,11 +857,11 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
     <!-- 20 -->
     <section id="s20">
       <h2><span class="num">20</span>Testing and continuous integration</h2>
-      <p>The backend carries <strong>1026 automated tests across 35 suites</strong> — roughly one test file per service, covering the extractor and scoring, framework detection, router failover and key rotation, writer-agent logic, grounding, fragility, the importance model, validation, the store, quota, billing, authentication, both OAuth flows, the publisher and its push verification, credential exclusion, path safety, the success-rate scorer, the scaffold, the security scanner and the ZAP integration.</p>
+      <p>The backend carries <strong>1050 automated tests across 36 suites</strong> — roughly one test file per service, covering the extractor and scoring, framework detection, router failover and key rotation, writer-agent logic, grounding, fragility, the importance model, validation, the store, quota, billing, authentication, both OAuth flows, the publisher and its push verification, credential exclusion, path safety, the success-rate scorer, the scaffold, the security scanner and the ZAP integration.</p>
       <div class="grid g4">
-        <div class="card stat"><span class="n">1026</span><span class="l">backend tests</span></div>
+        <div class="card stat"><span class="n">1050</span><span class="l">backend tests</span></div>
         <div class="card stat"><span class="n">47</span><span class="l">CLI tests</span></div>
-        <div class="card stat"><span class="n">35</span><span class="l">backend suites</span></div>
+        <div class="card stat"><span class="n">36</span><span class="l">backend suites</span></div>
         <div class="card stat"><span class="n">3</span><span class="l">Python versions in CI</span></div>
       </div>
       <p>The CLI carries a further <strong>47 tests</strong> on Node's built-in runner, covering the ZIP encoder, the file collector against a real temporary git repository, the NDJSON reader, and the device-code login driven end to end against a local HTTP server.</p>
@@ -896,7 +907,40 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
 
     <!-- 24 -->
     <section id="s24">
-      <h2><span class="num">24</span>Roadmap and future enhancements</h2>
+      <h2><span class="num">24</span>How it compares</h2>
+      <p>A survey of the field in mid-2026 places Testra clearly, and the honest reading includes where the alternatives are ahead. Tools here divide less by feature list than by <em>how they discover what to test</em> — the decision everything else follows from.</p>
+      <div class="scroller"><table>
+        <thead><tr><th>Approach</th><th>Representative tools</th><th>The trade</th></tr></thead>
+        <tbody>
+          <tr><td>Crawl the live app</td><td><strong>Octomind</strong>, Testra</td><td>No setup and no traffic needed — but a crawl cannot reach state that exists only behind an interaction</td></tr>
+          <tr><td>Record real user sessions</td><td>Checksum.ai, Meticulous</td><td>The strongest grounding available, because the flows are real — but it needs production traffic and instrumentation</td></tr>
+          <tr><td>Natural-language prompt</td><td>Momentic, KaneAI, Shortest</td><td>Precise, and requires the user to already know what to test</td></tr>
+          <tr><td>Managed service</td><td>QA Wolf</td><td>Highest coverage, human-reviewed, at roughly $60k&ndash;250k a year</td></tr>
+          <tr><td>Agent drives the browser live</td><td>Playwright MCP, Midscene.js</td><td>Very flexible, non-deterministic, and leaves no durable artefact by default</td></tr>
+          <tr><td>Read the source</td><td>Qodo-Cover, Pynguin, EvoSuite</td><td>Mature for <em>unit</em> tests; essentially nobody attempts it for E2E</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>The nearest neighbour</h3>
+      <p><strong>Octomind</strong> is the closest analogue to the crawl-first flow: point it at a URL, an agent explores, and it emits portable Playwright with no lock-in, plus self-healing and a branch sync that waits for approval. The differences worth naming are provenance and cost &mdash; no competitor surveyed cites the <em>source line</em> a selector came from, and its free tier caps at ten test cases a month against Testra being free and self-hostable. Testra also creates the repository rather than syncing into an existing one, which is a difference and, as &sect;25 records, currently a limitation rather than an advantage.</p>
+
+      <h3>What appears to be genuinely unusual</h3>
+      <ul>
+        <li><strong>A score that refuses to be a pass rate.</strong> Every vendor page surveyed leans on confidence language. Shipping <code>not_measured</code> inside the payload, so a client cannot render the number without the caveat, has no equivalent in the field.</li>
+        <li><strong>Push verification by content hash.</strong> Unadvertised elsewhere &mdash; probably because most tools sync into an existing repository, where a short commit matters less.</li>
+        <li><strong>Credential exclusion before upload.</strong> No surveyed competitor advertises detecting and withholding <code>.env</code> and friends at all, let alone client-side.</li>
+        <li><strong>A from-scratch logistic regression</strong> for file selection, where the field reaches for an LLM call or a fixed heuristic.</li>
+      </ul>
+
+      <h3>Where the field is ahead</h3>
+      <p>Stated plainly, because a comparison that only flatters is not a comparison. <strong>Every serious commercial tool executes the tests</strong> &mdash; Octomind in the cloud, QA Wolf with human review, Meticulous by deterministic replay. <strong>Session recording beats crawling</strong> for grounding, because real users reach edge cases a crawl never will. <strong>Incremental publishing</strong> &mdash; a pull request into the repository you already have &mdash; is standard elsewhere and absent here. And most of what these products actually sell is <em>maintenance</em>: keeping a suite green as the application changes, where Testra is one-shot.</p>
+      <div class="note"><span class="tag">On the sourcing</span>This survey rests on vendor pages and third-party comparison sites, several of them written by competitors about each other, and <code>octomind.dev</code> could not be reached directly during the review. Treat the pricing figures as indicative rather than quoted, and verify before relying on any of it commercially.</div>
+      <p class="plain"><span class="lbl">In plain words</span>Other people build this too. The expensive ones actually run the tests, which is the one thing this does not do yet &mdash; and the honest way to compete is to say so on the same page as everything it does better.</p>
+    </section>
+
+    <!-- 25 -->
+    <section id="s25">
+      <h2><span class="num">25</span>Roadmap and future enhancements</h2>
       <p>Ordered by how much each would change what the system can honestly claim, not by how hard it is to build. The first item is the one that would retire the largest caveat in this report.</p>
 
       <h3>Near term — closing the measurement gap</h3>
@@ -925,17 +969,17 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
       </ol>
     </section>
 
-    <!-- 25 -->
-    <section id="s25">
-      <h2><span class="num">25</span>Conclusion</h2>
+    <!-- 26 -->
+    <section id="s26">
+      <h2><span class="num">26</span>Conclusion</h2>
       <p>Testra takes a task that is universally agreed to be valuable and universally avoided — writing end-to-end tests — and reduces it to pasting a URL. The engineering interest is not that it calls a language model; almost anything can call a language model. It is the apparatus built <em>around</em> the model: a deterministic pre-filter that spends no tokens, a learned classifier that adapts file selection to the codebase in front of it, a grounding layer that traces every generated selector back to the line of source it came from, a repair loop that fixes misses with evidence rather than with another guess, a durability model that grades what will still work next quarter, and a benchmark that refuses to flatter itself with a convenient denominator.</p>
       <p>The two ML components embody the project's technical thesis: prefer the small, explainable thing. A 226-line logistic regression with named weights, readable JSON and a safe fallback path is a better engineering answer than a dependency-heavy black box when the model is small, the data is thin, and somebody will eventually need to ask <em>why did it score that file a 9?</em></p>
       <p class="plain"><span class="lbl">In plain words</span>A robot that checks your website, written by a robot that read your website — and a receipt showing exactly what was checked, and what wasn't.</p>
     </section>
 
-    <!-- 26 -->
-    <section id="s26">
-      <h2><span class="num">26</span>Glossary</h2>
+    <!-- 27 -->
+    <section id="s27">
+      <h2><span class="num">27</span>Glossary</h2>
       <div class="scroller"><table>
         <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
         <tbody>

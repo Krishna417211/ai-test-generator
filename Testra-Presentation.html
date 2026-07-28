@@ -454,7 +454,7 @@
       <pre><span class="cm">┌─────────────────┐   POST /api/analyze    ┌──────────────────────────────┐</span>
 <span class="cm">│</span>  React + Vite   <span class="cm">│</span> ─────────────────────▶ <span class="cm">│</span>   FastAPI  <span class="st">main.py</span>           <span class="cm">│</span>
 <span class="cm">│</span>  TypeScript UI  <span class="cm">│</span> ◀───────────────────── <span class="cm">│</span>   request-id · CORS · rate   <span class="cm">│</span>
-<span class="cm">└────────┬────────┘   job_id + analysis   <span class="cm">└──────────────┬───────────────┘</span>
+<span class="cm">└────────┬────────┘   job_id + analysis   </span><span class="cm">└──────────────┬───────────────┘</span>
          <span class="cm">│</span>                                              <span class="cm">│</span>
          <span class="cm">│</span>  GET /api/stream/{job_id}  (SSE)             ▼
          <span class="cm">│</span>                            <span class="cm">┌──────────────────────────────┐</span>
@@ -941,7 +941,60 @@ _ACTIVE = ImportanceModel.load()
   <!-- 22 ────────────────────────────────────────────── -->
   <section class="slide">
     <div class="inner">
-      <div class="eyebrow">21 · Honesty</div>
+      <div class="eyebrow">21 · Refusals</div>
+      <h2>The three things Testra will not do with your code.</h2>
+      <p class="lede">Handing a tool your repository is an act of trust. These are the places where the answer is a flat <strong>no</strong> — enforced in code, not promised in a policy.</p>
+      <div class="cols c3">
+        <div class="card"><span class="tag">services/secrets_guard.py</span><h3>Credentials are never sent</h3><p><code>.env</code>, SSH keys, <code>.pem</code>, cloud service-account JSONs and issuer-prefixed tokens (<code>AKIA…</code>, <code>ghp_…</code>, <code>sk_live_…</code>) are held back from the model prompt <em>and</em> the push. Every withheld file is <strong>named</strong> — a silent drop leaves the user debugging a missing-config error we caused.</p></div>
+        <div class="card"><span class="tag">services/safe_paths.py</span><h3>Nothing overwrites your files</h3><p>Every filename comes out of an LLM's JSON, so it is untrusted input. Traversal is <em>rejected</em>, not repaired — there is no correct place to move a file that asked to leave the root. Collisions keep your version and say so.</p></div>
+        <div class="card"><span class="tag">services/git_publisher.py</span><h3>"18 files pushed" is checked</h3><p>Every write in a push can return 2xx and still leave the branch short. The commit tree is read back and compared by <strong>content hash</strong> — git shas are content hashes, so this verifies bytes, not names. Missing files are re-pushed; anything still missing fails.</p></div>
+      </div>
+      <p class="plain">Three promises. We never send your passwords anywhere. We never write a file on top of one of yours. And when we say we saved eighteen files, we go and <b>count them afterwards</b>.</p>
+    </div>
+  </section>
+
+  <!-- 23 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">22 · The number</div>
+      <h2>A score that names what it doesn't measure.</h2>
+      <p class="lede">Four measurements, weighted by how load-bearing each failure is — and a caveat that ships <em>inside the API response</em>, so no screen can display the number without it.</p>
+      <div class="cols c4">
+        <div class="card stat"><span class="n">.35</span><span class="l">Planned files delivered — a suite missing a page object cannot run at all</span></div>
+        <div class="card stat"><span class="n">.30</span><span class="l">Code files that parse — config and docs excluded, so they can't pad it</span></div>
+        <div class="card stat"><span class="n">.25</span><span class="l">Selectors traced to your real source or live DOM</span></div>
+        <div class="card stat"><span class="n">.10</span><span class="l">Test cases produced — binary: are there <em>any</em>?</span></div>
+      </div>
+      <div class="cols c2">
+        <div class="card"><span class="tag">The inflation this prevents</span><h3>A dropped check is not a free 100%</h3><p>A component with nothing to measure — no selectors, no parseable files — is <strong>removed and its weight redistributed</strong>. Scoring it full marks is what a naive average would do, and it is the exact dishonesty the module exists to avoid.</p></div>
+        <div class="card" style="border-left:3px solid var(--warn)"><span class="tag">Named carefully</span><h3>A <em>generation</em> rate, never a pass rate</h3><p>Testra never executes the suite, so a number labelled "accuracy" would be invented. The failure mode isn't a slightly wrong figure — it's the user trusting "94% accurate", running the suite, watching it fail, and never coming back.</p></div>
+      </div>
+      <p class="plain">The score answers <b>"how well did the robot do its homework?"</b> — not "will the tests pass?", because nobody has run them yet. And it says so out loud instead of hoping you assume it.</p>
+    </div>
+  </section>
+
+  <!-- 24 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">23 · The terminal</div>
+      <h2>A CLI, because the web page can only be handed a box.</h2>
+      <p class="lede"><code>npx testra publish --with-ci</code>, run inside the project. Zero runtime dependencies — Node's standard library only.</p>
+      <div class="cols c3">
+        <div class="card"><span class="tag">git ls-files</span><h3>Your ignore rules decide</h3><p>Files come from git's own answer to "what belongs to this project", honouring nested <code>.gitignore</code>s and global excludes. The server has to guess with a fixed skip-list that knows <code>node_modules</code> but not <code>.turbo</code>.</p></div>
+        <div class="card"><span class="tag">before the upload</span><h3>Credentials never leave the machine</h3><p>On the web, the server is the earliest place a <code>.env</code> can be caught — and by then it has crossed the network. Here it never does. The server re-scans anyway, so the layers fail safe in one direction only.</p></div>
+        <div class="card"><span class="tag">RFC 8628</span><h3>No password in the terminal</h3><p>It shows a short code; you approve it in a browser on any device, including a phone. Works over SSH on a box with no browser. The <code>device_code</code> is the secret and is collectable exactly once; the short code is designed to be shown and grants nothing alone.</p></div>
+      </div>
+      <div class="cols c2">
+        <div class="card"><span class="tag">Zero dependencies, defended</span><h3>A hand-rolled ZIP encoder</h3><p>For a tool whose pitch is "your credentials never leave this machine", every dependency is something a reviewer must take on trust. So the encoder is ~100 lines over <code>node:zlib</code> — and it is only defensible because a Python test builds archives with it and extracts them with <strong>the server's own <code>extract_zip()</code></strong>, the exact function the endpoint calls.</p></div>
+        <div class="card"><span class="tag">One rule set, two languages</span><h3>The credential rules are shared, not copied</h3><p>A canonical JSON holds the patterns <em>and</em> a 38-case corpus that <strong>both</strong> implementations execute, so neither can pass a case the other fails. A byte-level sync test fails CI if the copies drift.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 25 ────────────────────────────────────────────── -->
+  <section class="slide">
+    <div class="inner">
+      <div class="eyebrow">24 · Honesty</div>
       <h2>What Testra does <em>not</em> claim.</h2>
       <p class="lede">The project ships a model card. "Validated" means the file passed a <strong>static syntax check</strong> — nothing more. It does not mean the tests were executed, that the selectors resolve against your running app, or that the assertions pass.</p>
       <div class="cols c2">
@@ -954,10 +1007,10 @@ _ACTIVE = ImportanceModel.load()
     </div>
   </section>
 
-  <!-- 23 ────────────────────────────────────────────── -->
+  <!-- 26 ────────────────────────────────────────────── -->
   <section class="slide">
     <div class="inner">
-      <div class="eyebrow">22 · In one breath</div>
+      <div class="eyebrow">25 · In one breath</div>
       <h2>Testra turns a repository into a trustworthy test suite — and shows its working at every step.</h2>
       <div class="cols c4">
         <div class="card stat"><span class="n">2</span><span class="l">AI agents — one reads, one writes</span></div>
@@ -971,7 +1024,7 @@ _ACTIVE = ImportanceModel.load()
       </div>
       <p class="plain">A robot that checks your website, written by a robot that read your website — and a receipt showing exactly what was checked, and what wasn't.</p>
       <div class="kv">
-        <span>Slides <b>23</b></span><span>Use <b>← →</b> or scroll</span><span>Companion <b>Project Report</b></span>
+        <span>Slides <b>26</b></span><span>Use <b>← →</b> or scroll</span><span>Companion <b>Project Report</b></span>
       </div>
     </div>
   </section>
@@ -979,7 +1032,7 @@ _ACTIVE = ImportanceModel.load()
 </div>
 
 <div class="rail">
-  <span class="idx" id="idx">01 / 23</span>
+  <span class="idx" id="idx">01 / 26</span>
   <span class="bar"><i id="barfill"></i></span>
   <span class="hint">← → to move · Home to restart</span>
 </div>

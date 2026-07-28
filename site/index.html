@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Testra — grounded end-to-end tests, with the working shown</title>
+<meta name="description" content="Testra reads your web app and writes a runnable Playwright, Cypress or Selenium suite — tracing every selector back to the line of source it came from, and telling you plainly what it did not check." />
+<meta name="color-scheme" content="light dark" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2316232B'/%3E%3Cpath d='M7 11h18M16 11v14' stroke='%23C46A16' stroke-width='2.5' fill='none'/%3E%3C/svg%3E" />
+<style>
+/* ─────────────────────────────────────────────
+   Testra — a calibration record, not a landing page.
+
+   The identity comes from what the product actually is: a measuring instrument
+   that shows its working. So the page borrows from lab records and engineering
+   signage — hairline rules, a margin rail of small-caps labels, tabular figures,
+   and exactly one signal colour reserved for measured values.
+   ───────────────────────────────────────────── */
+
+:root {
+  /* Cool paper with a faint cyan bias — a chosen neutral, not a default grey. */
+  --paper:     #F2F5F6;
+  --paper-sunk:#E7EDEF;
+  --ink:       #16232B;
+  --ink-soft:  #4A5C64;
+  --ink-faint: #7B8C93;
+  --rule:      #C9D6DA;
+  --rule-soft: #DCE5E8;
+  /* Traced / confirmed. */
+  --verified:  #0F6E66;
+  /* The one bold move: instrument amber, used ONLY on measured values. */
+  --signal:    #C46A16;
+  --signal-wash:#F6E7D6;
+
+  --measure: 62ch;
+  --rail: 8.5rem;
+
+  --display: "Bahnschrift SemiCondensed", "Avenir Next Condensed",
+             "HelveticaNeue-CondensedBold", "Roboto Condensed", "DIN Alternate",
+             "Arial Narrow", system-ui, sans-serif;
+  --body: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino,
+          Georgia, serif;
+  --data: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo,
+          Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper:     #0E1719;
+    --paper-sunk:#131F22;
+    --ink:       #DCE6E9;
+    --ink-soft:  #9FB2B8;
+    --ink-faint: #6E8288;
+    --rule:      #26363B;
+    --rule-soft: #1C2A2E;
+    --verified:  #43B3A6;
+    --signal:    #E8964A;
+    --signal-wash:#2A1F14;
+  }
+}
+/* The viewer's toggle must win over the OS preference in both directions. */
+:root[data-theme="dark"] {
+  --paper:#0E1719; --paper-sunk:#131F22; --ink:#DCE6E9; --ink-soft:#9FB2B8;
+  --ink-faint:#6E8288; --rule:#26363B; --rule-soft:#1C2A2E;
+  --verified:#43B3A6; --signal:#E8964A; --signal-wash:#2A1F14;
+}
+:root[data-theme="light"] {
+  --paper:#F2F5F6; --paper-sunk:#E7EDEF; --ink:#16232B; --ink-soft:#4A5C64;
+  --ink-faint:#7B8C93; --rule:#C9D6DA; --rule-soft:#DCE5E8;
+  --verified:#0F6E66; --signal:#C46A16; --signal-wash:#F6E7D6;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Ruled paper: a single hairline down the rail, drawn on the page not the boxes. */
+.sheet {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+a { color: inherit; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--signal); }
+:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+
+/* ── the margin rail ──────────────────────── */
+
+.block {
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, 1fr);
+  gap: 0 2.5rem;
+  padding: 3.25rem 0;
+  border-top: 1px solid var(--rule);
+}
+.block:first-of-type { border-top: 0; }
+
+.rail {
+  font-family: var(--display);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  line-height: 1.5;
+  padding-top: 0.5rem;
+}
+.rail .seq {
+  display: block;
+  font-family: var(--data);
+  font-size: 0.75rem;
+  letter-spacing: 0;
+  color: var(--signal);
+  font-variant-numeric: tabular-nums;
+}
+
+.body-col { min-width: 0; }
+.prose { max-width: var(--measure); }
+.prose > * + * { margin-top: 1rem; }
+
+/* ── type scale ───────────────────────────── */
+
+h1, h2, h3 { font-family: var(--display); font-weight: 700; text-wrap: balance; margin: 0; }
+
+h1 {
+  font-size: clamp(2.6rem, 7vw, 4.75rem);
+  line-height: 0.96;
+  letter-spacing: -0.02em;
+}
+h2 {
+  font-size: clamp(1.5rem, 3.2vw, 2.1rem);
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  margin-bottom: 1rem;
+}
+h3 {
+  font-size: 1.0625rem;
+  letter-spacing: 0.01em;
+  margin-bottom: 0.3rem;
+}
+
+p { margin: 0; }
+.lede { font-size: 1.1875rem; line-height: 1.55; color: var(--ink-soft); }
+.fine { font-size: 0.9375rem; color: var(--ink-soft); }
+strong { font-weight: 600; }
+em { font-style: italic; }
+
+.mono { font-family: var(--data); font-size: 0.9em; }
+.num { font-family: var(--data); font-variant-numeric: tabular-nums; }
+
+/* ── masthead ─────────────────────────────── */
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.75rem 0 0;
+  flex-wrap: wrap;
+}
+.wordmark {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.1875rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.wordmark span { color: var(--signal); }
+.masthead nav {
+  display: flex;
+  gap: 1.5rem;
+  font-family: var(--display);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.masthead nav a { text-decoration: none; }
+.masthead nav a:hover { color: var(--signal); }
+
+/* ── hero ─────────────────────────────────── */
+
+.hero { padding: 4rem 0 3.5rem; }
+.hero h1 { max-width: 24ch; }
+.hero .lede { margin-top: 1.5rem; max-width: 56ch; font-size: 1.25rem; line-height: 1.5; }
+
+.cta-row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2.25rem; }
+.cta {
+  font-family: var(--display);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.7rem 1.4rem;
+  border: 1px solid var(--ink);
+  text-decoration: none;
+  transition: background-color .15s, color .15s;
+}
+.cta-solid { background: var(--ink); color: var(--paper); }
+.cta-solid:hover { background: var(--signal); border-color: var(--signal); color: #fff; }
+.cta-ghost:hover { border-color: var(--signal); color: var(--signal); }
+
+/* ── the record: the page's thesis object ── */
+
+.record {
+  margin-top: 3.25rem;
+  border: 1px solid var(--rule);
+  background: var(--paper-sunk);
+  font-family: var(--data);
+  font-size: 0.8125rem;
+  line-height: 1.65;
+}
+.record-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.record-rows { padding: 0.5rem 0; }
+.rec {
+  display: grid;
+  grid-template-columns: 1.1rem minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.3rem 1rem;
+}
+.rec:hover { background: color-mix(in srgb, var(--signal) 7%, transparent); }
+.rec .tick { color: var(--verified); }
+.rec .miss { color: var(--signal); }
+.rec .src { color: var(--ink-faint); white-space: nowrap; }
+.rec code { color: var(--ink); }
+
+.record-foot {
+  border-top: 1px solid var(--rule);
+  padding: 0.75rem 1rem;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  font-family: var(--body);
+  line-height: 1.55;
+}
+
+/* Print-in on load — one orchestrated moment, not scattered effects. */
+@media (prefers-reduced-motion: no-preference) {
+  .rec { animation: ink .5s ease-out both; }
+  .rec:nth-child(1) { animation-delay: .30s; }
+  .rec:nth-child(2) { animation-delay: .42s; }
+  .rec:nth-child(3) { animation-delay: .54s; }
+  .rec:nth-child(4) { animation-delay: .66s; }
+  .rec:nth-child(5) { animation-delay: .78s; }
+  @keyframes ink { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+}
+
+/* ── two modes ────────────────────────────── */
+
+.modes { display: grid; gap: 2rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+.mode { border-top: 2px solid var(--ink); padding-top: 0.85rem; }
+.mode .tag {
+  font-family: var(--data);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--signal);
+}
+.mode p { margin-top: 0.5rem; font-size: 0.9375rem; color: var(--ink-soft); }
+
+/* ── the sequence ─────────────────────────── */
+
+.steps { display: grid; gap: 0; }
+.step {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  gap: 1.25rem;
+  padding: 1.1rem 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.step:last-child { border-bottom: 0; }
+.step .n {
+  font-family: var(--data);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--signal);
+  padding-top: 0.2rem;
+}
+.step p { font-size: 0.9375rem; color: var(--ink-soft); max-width: 58ch; }
+
+/* ── the gauge: a number that admits its limits ── */
+
+.score-wrap { display: grid; gap: 2.25rem; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 46rem) { .score-wrap { grid-template-columns: 12rem minmax(0, 1fr); } }
+
+.gauge { position: relative; width: 11rem; height: 11rem; }
+.gauge svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.gauge .track { stroke: var(--rule); }
+.gauge .fill { stroke: var(--signal); stroke-linecap: butt; }
+.gauge-centre {
+  position: absolute; inset: 0;
+  display: grid; place-content: center; text-align: center;
+}
+.gauge-centre .v {
+  font-family: var(--display);
+  font-size: 2.75rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.gauge-centre .u {
+  font-family: var(--data);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.checks { border-top: 1px solid var(--rule); }
+.check {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--rule-soft);
+  font-size: 0.9375rem;
+}
+.check .v { font-family: var(--data); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.check .v.ok { color: var(--verified); }
+.check .v.part { color: var(--signal); }
+
+.caveat {
+  margin-top: 1.5rem;
+  border-left: 2px solid var(--signal);
+  background: var(--signal-wash);
+  padding: 0.9rem 1.1rem;
+  font-size: 0.9375rem;
+}
+
+/* ── refusals ─────────────────────────────── */
+
+.refusals { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+.refusal { border-top: 1px solid var(--rule); padding-top: 0.8rem; }
+.refusal h3 { font-family: var(--display); }
+.refusal p { margin-top: 0.35rem; font-size: 0.9rem; color: var(--ink-soft); }
+
+/* ── terminal ─────────────────────────────── */
+
+.term {
+  background: var(--ink);
+  color: #E7EFF1;
+  font-family: var(--data);
+  font-size: 0.8125rem;
+  line-height: 1.75;
+  padding: 1.1rem 1.25rem;
+  /* The content is hand-laid ASCII, so the newlines and leading spaces ARE the
+     layout. Without `pre` a div collapses them and the whole block reflows into
+     one paragraph. `overflow-x: auto` on the same element keeps a long line
+     scrolling inside the block rather than widening the page. */
+  white-space: pre;
+  overflow-x: auto;
+  border: 1px solid var(--ink);
+  tab-size: 2;
+}
+.term .p { color: #7B8C93; }
+.term .ok { color: #43B3A6; }
+.term .sig { color: #E8964A; }
+.term .dim { color: #9FB2B8; }
+
+/* ── footer ───────────────────────────────── */
+
+footer {
+  border-top: 1px solid var(--rule);
+  padding: 2.5rem 0 4rem;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+footer .links { display: flex; gap: 1.25rem; flex-wrap: wrap; }
+
+/* The record holds long selectors in a monospace grid, so it is wide content by
+   nature. It scrolls inside its own border rather than widening the page — the
+   body must never scroll sideways. */
+.record { overflow-x: auto; }
+
+@media (max-width: 44rem) {
+  .block { grid-template-columns: 1fr; gap: 0.9rem; padding: 2.5rem 0; }
+  .rail { padding-top: 0; }
+  .rail .seq { display: inline; margin-right: 0.5rem; }
+
+  /* Five uppercase nav items with 1.5rem gaps do not fit 375px. They wrap, but
+     wrapping alone left the row wider than the viewport. */
+  .masthead { padding-bottom: 0.25rem; }
+  .masthead nav { gap: 0.9rem 1rem; font-size: 0.6875rem; }
+
+  /* Stack each record row: the source reference moves under the selector and
+     right-aligns, so neither column has to shrink below its content. */
+  .rec {
+    grid-template-columns: 1.1rem minmax(0, 1fr);
+    row-gap: 0.1rem;
+  }
+  .rec .src { grid-column: 2; text-align: left; white-space: normal; }
+
+  .hero { padding: 2.5rem 0 2.5rem; }
+  .record { margin-top: 2.25rem; }
+  .score-wrap { justify-items: start; }
+}
+</style>
+</head>
+<body>
+
+<div class="sheet">
+
+  <header class="masthead">
+    <div class="wordmark">Test<span>ra</span></div>
+    <nav>
+      <a href="#how">Method</a>
+      <a href="#score">Scoring</a>
+      <a href="#refusals">Refusals</a>
+      <a href="#cli">CLI</a>
+      <a href="https://github.com/Krishna417211/ai-test-generator">Source</a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <h1>Every selector, traced back to the line it came from.</h1>
+    <p class="lede">
+      Testra reads your web application and writes a runnable Playwright, Cypress
+      or Selenium suite. Then it does the part most tools skip: it proves where
+      each selector came from, and states plainly what it did not check.
+    </p>
+    <div class="cta-row">
+      <a class="cta cta-solid" href="https://github.com/Krishna417211/ai-test-generator">Read the source</a>
+      <a class="cta cta-ghost" href="#how">How it works</a>
+    </div>
+
+    <!-- The thesis object: a verification record, as the tool prints it. -->
+    <figure class="record">
+      <div class="record-head">
+        <span>Verification record — checkout.spec.ts</span>
+        <span class="num">7 / 8 traced</span>
+      </div>
+      <div class="record-rows">
+        <div class="rec">
+          <span class="tick">✓</span>
+          <code>getByTestId('email')</code>
+          <span class="src">LoginForm.tsx:42</span>
+        </div>
+        <div class="rec">
+          <span class="tick">✓</span>
+          <code>#checkout-submit</code>
+          <span class="src">CheckoutPanel.tsx:118</span>
+        </div>
+        <div class="rec">
+          <span class="tick">✓</span>
+          <code>getByRole('button', { name: 'Pay now' })</code>
+          <span class="src">rendered DOM · /checkout</span>
+        </div>
+        <div class="rec">
+          <span class="miss">?</span>
+          <code>.cart-total--wide</code>
+          <span class="src">not found — review</span>
+        </div>
+        <div class="rec">
+          <span class="tick">✓</span>
+          <code>getByLabel('Card number')</code>
+          <span class="src">rendered DOM · /checkout</span>
+        </div>
+      </div>
+      <div class="record-foot">
+        One selector could not be traced to your source or your rendered page, so
+        it is flagged rather than counted. The suite parses and is runnable —
+        Testra has not executed it, and does not claim it passes.
+      </div>
+    </figure>
+  </section>
+
+  <section class="block" id="how">
+    <div class="rail">Two ways in</div>
+    <div class="body-col">
+      <h2>Point it at a running site, or hand it the source.</h2>
+      <div class="modes">
+        <div class="mode">
+          <div class="tag">Crawl-first</div>
+          <h3>Written from the live DOM</h3>
+          <p>
+            Give it your repository URL and your deployed URL. It renders and
+            crawls the real application and writes tests from the elements a
+            browser actually builds. Your file contents never reach the model —
+            the repository is touched only to confirm access and name the stack.
+          </p>
+        </div>
+        <div class="mode">
+          <div class="tag">Source-first</div>
+          <h3>Written from the code</h3>
+          <p>
+            Upload the project, or run the CLI inside it. Testra filters it,
+            generates a validated suite with a working CI pipeline, and pushes
+            the whole thing to a brand-new repository in a single commit — then
+            reads it back to confirm every file arrived.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="rail"><span class="seq">01–05</span>Method</div>
+    <div class="body-col">
+      <h2>The pipeline, in order.</h2>
+      <p class="prose fine">
+        The numbering is real: each step consumes the one before it, and a failure
+        at any point stops the rest rather than being papered over.
+      </p>
+      <div class="steps" style="margin-top:1.5rem">
+        <div class="step">
+          <span class="n">01</span>
+          <div>
+            <h3>Filter, before a token is spent</h3>
+            <p>
+              A deterministic pass keeps only what renders in a browser, scores
+              each file for testing value, and fits the winners into a budget. No
+              model runs until there is something worth showing one.
+            </p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="n">02</span>
+          <div>
+            <h3>Read the project</h3>
+            <p>
+              One agent builds a structured account of the application — its
+              routes, its key screens, the obstacles a test will hit — grounded
+              strictly in files that exist.
+            </p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="n">03</span>
+          <div>
+            <h3>Write the suite</h3>
+            <p>
+              A second agent writes Page Object classes and specs, using selectors
+              extracted from your real markup rather than invented ones. Configs,
+              CI pipelines and the README are templated, never generated — each
+              has exactly one right answer, so asking a model only adds variance.
+            </p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="n">04</span>
+          <div>
+            <h3>Ground, then repair</h3>
+            <p>
+              Every id, test-id and class is checked back against your source or
+              your rendered page, carrying the file and line it was declared on.
+              Misses go back to the model together with the anchors that really do
+              exist — a grounded substitution, not a second guess.
+            </p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="n">05</span>
+          <div>
+            <h3>Publish, and verify it landed</h3>
+            <p>
+              The suite is pushed to a new repository, and the commit tree is read
+              back to confirm every file is present with the exact content that
+              was uploaded. Anything missing is pushed again; anything still
+              missing fails loudly.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="score">
+    <div class="rail">Scoring</div>
+    <div class="body-col">
+      <h2>A score that names what it doesn't measure.</h2>
+      <div class="score-wrap" style="margin-top:1.75rem">
+        <div class="gauge">
+          <!-- Deliberately incomplete arc: the figure and its limits, together. -->
+          <svg viewBox="0 0 120 120" role="img" aria-label="Generation success rate: 88 out of 100">
+            <circle class="track" cx="60" cy="60" r="50" fill="none" stroke-width="9" />
+            <circle class="fill" cx="60" cy="60" r="50" fill="none" stroke-width="9"
+                    stroke-dasharray="276.5 314.2" />
+          </svg>
+          <div class="gauge-centre">
+            <div class="v">88</div>
+            <div class="u">of 100</div>
+          </div>
+        </div>
+        <div>
+          <div class="checks">
+            <div class="check"><span>Planned files delivered</span><span class="v ok">4 / 4</span></div>
+            <div class="check"><span>Code files that parse</span><span class="v ok">4 / 4</span></div>
+            <div class="check"><span>Selectors found in your app</span><span class="v part">7 / 10</span></div>
+            <div class="check"><span>Test cases produced</span><span class="v ok">6</span></div>
+          </div>
+          <div class="caveat">
+            <strong>This is not a pass rate.</strong> Testra never executes the
+            suite, so it cannot know whether your tests pass — a run can score 100
+            and still fail on the first assertion. The number is the share of
+            checks we can genuinely perform, and the caveat travels with it in the
+            API response so no screen can show one without the other.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="refusals">
+    <div class="rail">Refusals</div>
+    <div class="body-col">
+      <h2>The things it will not do with your code.</h2>
+      <p class="prose fine">
+        Handing a tool your repository is an act of trust. These are the places
+        where the answer is a flat no, enforced in code rather than promised in a
+        policy.
+      </p>
+      <div class="refusals" style="margin-top:1.75rem">
+        <div class="refusal">
+          <h3>Credentials are never sent</h3>
+          <p>
+            <span class="mono">.env</span>, SSH keys, PEM files, cloud
+            service-account JSONs and hard-coded API tokens are detected and held
+            back — from the model prompt and from the push. Every withheld file is
+            named, never silently dropped. Run the CLI and the scan happens before
+            anything leaves your machine at all.
+          </p>
+        </div>
+        <div class="refusal">
+          <h3>Nothing is written over your files</h3>
+          <p>
+            Generated paths are sanitised — no traversal, no absolute paths,
+            nothing inside <span class="mono">.git</span> — and merged without
+            overwriting anything already in your project. A collision keeps your
+            version and says so.
+          </p>
+        </div>
+        <div class="refusal">
+          <h3>“18 files pushed” is checked</h3>
+          <p>
+            Every write in a push can return success and still leave the branch
+            short. The commit tree is read back and compared by content hash, so
+            the count is a statement about your repository rather than about our
+            bookkeeping.
+          </p>
+        </div>
+        <div class="refusal">
+          <h3>Sessions can't be read out of a backup</h3>
+          <p>
+            Session tokens are stored as hashes, so a leaked database, snapshot or
+            support copy yields nothing that can be presented as a login. Logins
+            are throttled per account, not just per address — the shape a real
+            credential-stuffing run takes.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="cli">
+    <div class="rail">Terminal</div>
+    <div class="body-col">
+      <h2>Or run it where the code already is.</h2>
+      <p class="prose fine">
+        The web page can only be handed an archive somebody assembled by hand. The
+        CLI runs inside the project, so your own
+        <span class="mono">.gitignore</span> decides what is uploaded and
+        credentials are caught before they are transmitted. Zero dependencies —
+        Node's standard library only.
+      </p>
+      <div class="term" style="margin-top:1.5rem" role="img"
+           aria-label="Terminal session showing npx testra publish holding back two credential files and reporting a generation success rate of 88 out of 100.">
+<span class="p">$</span> npx testra publish --with-ci
+
+  <span class="ok">✓</span> 34 files to upload  <span class="dim">via git ls-files</span>
+
+  <span class="sig">Held back — these never leave your machine:</span>
+    <span class="dim">·</span> .env        <span class="dim">— environment file, usually holds live secrets</span>
+    <span class="dim">·</span> deploy/id_rsa  <span class="dim">— private SSH key</span>
+
+  <span class="ok">✓</span> Test suite generated  <span class="dim">6 tests · 4/4 code files parsed</span>
+  <span class="ok">✓</span> Pushed to GitHub      <span class="dim">36 files → you/checkout-e2e</span>
+
+  Generation success rate: <span class="sig">88/100</span> <span class="dim">(B)</span>
+  <span class="dim">We do not run the tests against your app, so this is not a
+  prediction that they pass.</span>
+      </div>
+      <p class="prose fine" style="margin-top:1.25rem">
+        Signing in shows a short code you approve in a browser — on any device,
+        including your phone. Your password never passes through the terminal.
+      </p>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="rail">Honestly</div>
+    <div class="body-col">
+      <h2>What it can't do yet.</h2>
+      <div class="prose">
+        <p>
+          <strong>It doesn't run the tests.</strong> Executing a suite needs a
+          container and a live target, so every number here describes the
+          generation, not the outcome. This is the next thing being built, and
+          until it exists the scoring stays deliberately modest.
+        </p>
+        <p>
+          <strong>A crawl can't reach everything.</strong> It follows links and
+          application routes; it does not drive your interface. A modal or a
+          wizard step that only opens on click is never visited, so its selectors
+          are never grounded.
+        </p>
+        <p>
+          <strong>Selector extraction is pattern-based.</strong> It can miss
+          classes computed at runtime and some ARIA and text selectors, which is
+          why an untraced selector is flagged for review rather than reported as
+          broken.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div>
+      <div class="wordmark" style="font-size:1rem">Test<span>ra</span></div>
+      <div class="fine" style="margin-top:.35rem">
+        Grounded end-to-end tests, with the working shown. MIT licensed.
+      </div>
+    </div>
+    <div class="links">
+      <a href="https://github.com/Krishna417211/ai-test-generator">Source</a>
+      <a href="https://github.com/Krishna417211/ai-test-generator/blob/master/docs/LIMITATIONS.md">Limitations</a>
+      <a href="https://github.com/Krishna417211/ai-test-generator/blob/master/docs/ARCHITECTURE.md">Architecture</a>
+      <a href="https://github.com/Krishna417211/ai-test-generator/tree/master/cli">CLI</a>
+    </div>
+  </footer>
+
+</div>
+
+</body>
+</html>
