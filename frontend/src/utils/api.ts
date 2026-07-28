@@ -7,90 +7,70 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 // ── Auth token management ────────────────────
 //
-// The token lives in sessionStorage, not localStorage: it must not outlive the
-// window. sessionStorage is cleared by the browser when the last tab of an
-// origin closes, which is exactly the requirement — close the window, you're
-// logged out — and it's enforced by the browser rather than by us remembering
-// to expire something.
+// The token lives in localStorage, so a session lasts until the user logs out.
+// Closing the tab, closing the browser, and rebooting all leave you signed in —
+// which is what people expect of a tool they come back to, and what they asked
+// for here.
 //
-// The cost is that sessionStorage is per-tab, so a new tab (or a middle-click
-// on a link) starts blank and would show a logged-out app while the original
-// tab is still signed in. The handshake below fixes that by asking the other
-// tabs for the token. If no tab answers, there is nothing to inherit — which is
-// the closed-the-window case, and staying logged out is the correct outcome.
+// This was sessionStorage, which the browser clears when the last tab of an
+// origin closes. That gave a shorter-lived credential for free, but it meant
+// closing a window silently signed you out, and every new tab started blank —
+// so there was a whole handshake in this file where a fresh tab broadcast a
+// request and an existing tab replied with the token. localStorage is shared
+// across tabs of an origin natively, so all of that is gone.
+//
+// What you give up: on a shared or public machine, the session outlives the
+// window, so signing out has to be deliberate. That is the trade the
+// persistence buys, and it is the same one GitHub, GitLab and npm make. The
+// mitigations that matter are still in place — the server enforces an idle
+// timeout of its own (config.oauth_session_ttl_seconds), and "log out
+// everywhere" in Settings revokes every session server-side, which no amount of
+// leftover browser storage can survive.
 const TOKEN_KEY = "tg_token";
 
-// localStorage keys used only as a postMessage-style bus between tabs. `storage`
-// events fire in *other* tabs of the same origin, never the one that wrote —
-// which is what makes this work as a request/response.
-const SHARE_REQUEST_KEY = "tg_session_request";
-const SHARE_REPLY_KEY = "tg_session_reply";
+// A localStorage key used purely as a signalling channel between tabs: `storage`
+// events fire in *other* tabs of the same origin, never the one that wrote.
 const LOGOUT_BROADCAST_KEY = "tg_logout";
 
 export function getToken(): string {
-  return sessionStorage.getItem(TOKEN_KEY) || "";
+  try {
+    return localStorage.getItem(TOKEN_KEY) || "";
+  } catch {
+    // Private mode with storage disabled. The app still works for this tab —
+    // the token just won't outlive it.
+    return memoryToken;
+  }
 }
+
+// Fallback when localStorage throws (Safari private mode, hardened profiles).
+// Without it, a blocked write means every request goes out unauthenticated and
+// the user sees an app that can't stay logged in for one page.
+let memoryToken = "";
+
 export function setToken(token: string): void {
-  if (token) sessionStorage.setItem(TOKEN_KEY, token);
-  else sessionStorage.removeItem(TOKEN_KEY);
+  memoryToken = token;
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* memoryToken above is the fallback */
+  }
 }
 
 /** Write a value for other tabs, then immediately remove it.
  *
  *  The `storage` event other tabs receive carries the value as it was written,
  *  so removing it on the next line doesn't race them — they still see it. This
- *  keeps the token from lingering in localStorage, which would defeat the whole
- *  point of sessionStorage: a leftover copy would survive the window closing.
+ *  keeps a stale marker out of storage.
  */
 function broadcast(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
     localStorage.removeItem(key);
   } catch {
-    // Private mode / storage disabled: tab sync degrades to "log in again",
-    // which is inconvenient but not broken.
+    // Storage disabled: tab sync degrades to "the other tab finds out on its
+    // next request", which is inconvenient but not broken.
   }
-}
-
-/** Answer other tabs' requests for the session. Call once, at startup. */
-export function serveSessionToOtherTabs(): () => void {
-  const onStorage = (e: StorageEvent) => {
-    if (e.key !== SHARE_REQUEST_KEY || !e.newValue) return;
-    const token = getToken();
-    if (token) broadcast(SHARE_REPLY_KEY, token);
-  };
-  window.addEventListener("storage", onStorage);
-  return () => window.removeEventListener("storage", onStorage);
-}
-
-/** Ask any open tab for the current session token. Resolves to "" if none answers.
- *
- *  The timeout is what distinguishes "another tab has a session" from "this is a
- *  fresh window and nobody is logged in" — there's no way to enumerate tabs, so
- *  silence is the only available signal.
- */
-export function requestSessionFromOtherTabs(timeoutMs = 250): Promise<string> {
-  if (getToken()) return Promise.resolve(getToken());
-
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = (token: string) => {
-      if (done) return;
-      done = true;
-      window.removeEventListener("storage", onReply);
-      clearTimeout(timer);
-      resolve(token);
-    };
-    const onReply = (e: StorageEvent) => {
-      if (e.key !== SHARE_REPLY_KEY || !e.newValue) return;
-      setToken(e.newValue);
-      finish(e.newValue);
-    };
-    const timer = setTimeout(() => finish(""), timeoutMs);
-
-    window.addEventListener("storage", onReply);
-    broadcast(SHARE_REQUEST_KEY, String(Date.now()));
-  });
 }
 
 /** Tell other tabs to drop their session. */
@@ -409,8 +389,10 @@ export async function fetchMe(): Promise<User | null> {
 export async function logout(): Promise<void> {
   await fetch(`${API_BASE}/api/auth/logout`, { method: "POST", headers: authHeaders() }).catch(() => {});
   setToken("");
-  // Other tabs hold their own copy in their own sessionStorage; without this
-  // they'd keep showing a signed-in UI against a token the server just revoked.
+  // Clearing localStorage does not re-render the other tabs — they hold the user
+  // in React state and would keep showing a signed-in UI against a token the
+  // server just revoked. This tells them to drop it now rather than on their
+  // next request.
   broadcastLogout();
 }
 

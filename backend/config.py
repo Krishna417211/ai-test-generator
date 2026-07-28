@@ -39,8 +39,22 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:5173"
     # Public base URL of THIS backend, used to build the OAuth callback URL.
     backend_url: str = "http://localhost:8000"
-    # How long a login session (stored access token) stays valid.
-    oauth_session_ttl_seconds: int = 8 * 60 * 60
+    # How long a login session survives with no requests at all.
+    #
+    # This is an IDLE timeout, not a fixed lifetime: services/auth.py slides it
+    # forward on every authenticated request, so a session in regular use never
+    # expires. It only elapses after a genuine stretch of silence.
+    #
+    # Thirty days, because the browser now keeps the token in localStorage —
+    # closing the tab no longer signs you out, and the promise is "signed in
+    # until you log out". At the old 8 hours the server quietly broke that
+    # promise overnight: you would close the laptop signed in and open it signed
+    # out, with nothing having gone wrong.
+    #
+    # It is deliberately not infinite. An abandoned session on a machine nobody
+    # uses should eventually stop being a live credential, and "log out
+    # everywhere" in Settings revokes every session immediately regardless.
+    oauth_session_ttl_seconds: int = 30 * 24 * 60 * 60
 
     # Secret used to encrypt sensitive session data (e.g. the linked GitHub
     # access token) at rest. Set a long random value in production; if empty,

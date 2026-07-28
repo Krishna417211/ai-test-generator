@@ -33,10 +33,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // otherwise a blip bounces the user off the page they were on.
   const hydrate = async () => {
     setLoading(true);
-    // This tab's sessionStorage is empty on every new tab, even while another
-    // tab is signed in — ask them before concluding nobody is logged in. Costs
-    // a short wait only when there's genuinely no token to find.
-    await api.requestSessionFromOtherTabs();
+    // No cross-tab handshake needed: the token is in localStorage, which every
+    // tab of the origin already shares. A new tab, a new window and a restarted
+    // browser all read the same value.
     for (let attempt = 0; ; attempt++) {
       try {
         setUser(await api.fetchMe());
@@ -63,15 +62,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { hydrate(); }, []);
 
-  // Serve other tabs for as long as this one is open, and follow them out when
-  // one logs out. Both listen on `storage`, which only fires cross-tab.
+  // Follow the other tabs out when one of them logs out. `storage` only fires
+  // cross-tab, which is exactly the signal wanted here.
   useEffect(() => {
-    const stopServing = api.serveSessionToOtherTabs();
-    const stopListening = api.onLogoutElsewhere(() => {
+    return api.onLogoutElsewhere(() => {
       setUser(null);
       setUnavailable(false);
     });
-    return () => { stopServing(); stopListening(); };
   }, []);
 
   // login/signup no longer imply a session — they may hand back an OTP
