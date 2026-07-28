@@ -1,5 +1,8 @@
 """test_writer_agent.py — Unit tests for the Writer Agent's pure logic."""
 
+import asyncio
+import json
+
 import pytest
 
 from agents.writer_agent import WriterAgent, GeneratedFile
@@ -253,6 +256,53 @@ class TestSuitePlacementIsSafe:
     def test_files_already_under_the_suite_dir_are_not_nested_twice(self):
         out, _ = self._place(["e2e/tests/a.spec.ts"])
         assert out == ["e2e/tests/a.spec.ts"]
+
+
+class TestHealNeverMakesThingsWorse:
+    """Self-heal is an improvement pass, so its contract is "better, or
+    unchanged".
+
+    It used to be able to make a suite *worse*: `_parse_response` answers invalid
+    JSON with a single synthetic "raw output" file, that value is truthy, and
+    `return healed or files` therefore replaced a working suite with the model's
+    unparsed reply. The run then reported success while shipping one unparseable
+    file where the tests had been — which is exactly what happened generating a
+    suite for a real site.
+    """
+
+    GOOD = [
+        GeneratedFile("tests/login.spec.ts", "test('a', () => {});", "Spec"),
+        GeneratedFile("tests/pages/LoginPage.ts", "export class LoginPage {}", "Page object"),
+    ]
+
+    def _heal_returning(self, monkeypatch, raw: str):
+        import agents.writer_agent as wa
+
+        async def fake_complete(**kwargs):
+            return raw
+        monkeypatch.setattr(wa.router, "complete", fake_complete)
+
+        w = WriterAgent()
+        failing = [type("V", (), {"filename": "tests/login.spec.ts", "error": "boom"})()]
+        return asyncio.run(w._heal(list(self.GOOD), failing, "playwright_js"))
+
+    def test_unparseable_heal_leaves_the_suite_alone(self, monkeypatch):
+        out = self._heal_returning(monkeypatch, '{"files": [{"filename": "x.ts", "cont')
+        assert [f.filename for f in out] == [f.filename for f in self.GOOD]
+        assert not any("JSON parsing failed" in f.description for f in out)
+
+    def test_a_valid_heal_is_applied(self, monkeypatch):
+        raw = json.dumps({"files": [
+            {"filename": "tests/login.spec.ts", "description": "Spec",
+             "content": "test('fixed', () => {});"},
+        ]})
+        out = self._heal_returning(monkeypatch, raw)
+        assert len(out) == 1
+        assert "fixed" in out[0].content
+
+    def test_an_empty_heal_leaves_the_suite_alone(self, monkeypatch):
+        out = self._heal_returning(monkeypatch, '{"files": []}')
+        assert [f.filename for f in out] == [f.filename for f in self.GOOD]
 
 
 class TestStripFence:

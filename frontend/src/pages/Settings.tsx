@@ -7,11 +7,13 @@ import {
 } from "lucide-react";
 import Page from "../components/Page";
 import PageHeader from "../components/PageHeader";
+import Avatar from "../components/Avatar";
 import { useAuth } from "../context/AuthContext";
 import {
   getSettings, saveSettings, changePassword, logoutEverywhere, deleteAccount,
   getProfile, startCheckout, CheckoutUnavailableError, deleteRepo,
-  getAuthConfig, githubLoginUrl, saveGeminiKey,
+  getAuthConfig, githubLoginUrl, saveGeminiKey, saveAvatar,
+  imageFileToSquareDataUrl,
 } from "../utils/api";
 import { pluralize } from "../utils/format";
 import type { UserSettings, Profile, PlanCatalogueEntry } from "../types";
@@ -152,6 +154,77 @@ function DefaultsSection() {
 
 // ── Account ──────────────────────────────────
 
+/** The avatar, with the controls to change it.
+ *
+ *  Previously this spot rendered `avatar_url ? <img> : <initial>`, which left a
+ *  blank block for every OAuth user: the site's CSP allows `img-src 'self'
+ *  data:`, and Google/GitHub avatars are on their own hosts, so the image was
+ *  blocked while `avatar_url` stayed truthy and the initial never showed. The
+ *  Avatar component now falls back on *load failure* rather than on a missing
+ *  URL, so there is no blank state left to reach.
+ */
+function AvatarEditor() {
+  const { user, refresh } = useAuth() as any;
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const pick = async (file?: File) => {
+    if (!file) return;
+    setBusy(true); setError("");
+    try {
+      const dataUrl = await imageFileToSquareDataUrl(file);
+      await saveAvatar(dataUrl);
+      await refresh?.();
+    } catch (e: any) {
+      setError(e.message || "Could not update your picture.");
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";   // allow re-picking the same file
+    }
+  };
+
+  const clear = async () => {
+    setBusy(true); setError("");
+    try {
+      await saveAvatar("");
+      await refresh?.();
+    } catch (e: any) {
+      setError(e.message || "Could not remove your picture.");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="flex items-center gap-3">
+      <Avatar name={user?.name} email={user?.email} src={user?.avatar_url}
+              className="w-12 h-12" textClassName="text-base" />
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={busy}
+                  className="text-xs text-brand-300 hover:text-brand-200 disabled:opacity-50 transition-colors">
+            {busy ? "Saving…" : user?.avatar_url ? "Change" : "Add a picture"}
+          </button>
+          {user?.avatar_url && (
+            <>
+              <span className="text-grey-600 text-xs">·</span>
+              <button type="button" onClick={clear} disabled={busy}
+                      className="text-xs text-grey-500 hover:text-rose-300 disabled:opacity-50 transition-colors">
+                Remove
+              </button>
+            </>
+          )}
+        </div>
+        {error
+          ? <span className="text-[11px] text-rose-300">{error}</span>
+          : <span className="text-[11px] text-grey-500">PNG or JPEG · squared automatically</span>}
+      </div>
+      <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp"
+             className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
+    </div>
+  );
+}
+
+
 function AccountSection() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -188,13 +261,7 @@ function AccountSection() {
              description="Who you're signed in as, and how you get back in.">
       <div className="rounded-xl border border-grey-700 bg-white/[0.02] px-4 py-3 mb-5">
         <div className="flex items-center gap-3">
-          {user?.avatar_url ? (
-            <img src={user.avatar_url} alt="" className="w-10 h-10 rounded-xl border border-grey-700" />
-          ) : (
-            <span className="w-10 h-10 rounded-xl bg-brand-gradient flex items-center justify-center text-sm font-bold text-ink-950">
-              {(user?.name || user?.email || "?").charAt(0).toUpperCase()}
-            </span>
-          )}
+          <AvatarEditor />
           <div className="min-w-0">
             <div className="text-sm font-medium text-white truncate">{user?.name}</div>
             <div className="text-xs text-grey-400 truncate">{user?.email || "No email on file"}</div>

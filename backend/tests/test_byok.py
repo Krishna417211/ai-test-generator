@@ -211,6 +211,45 @@ class TestFallbackAccounting:
         assert llm_router_mod.byok_fell_back() is False
 
 
+class TestTheAgentActuallyRuns:
+    """The regression this class exists for.
+
+    Threading `user_key` through the writer was done with a bulk edit, and it
+    landed on `self._generate_tests(...)` as well as the `router.complete(...)`
+    calls it was meant for — so `WriterAgent.run()` raised TypeError on its first
+    line of real work. Every unit test still passed, because they all exercise
+    the agent's *pure* helpers and none of them call `run()`.
+
+    A static check is used rather than a full generation: it needs no API keys
+    and no network, so it runs everywhere and takes microseconds.
+    """
+
+    def test_only_router_calls_receive_user_key(self):
+        import ast
+        import inspect
+        from agents.writer_agent import WriterAgent
+
+        src = inspect.getsource(WriterAgent).splitlines()
+        tree = ast.parse("class X:\n" + "\n".join("    " + ln for ln in src[1:]))
+
+        wrong = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and any(k.arg == "user_key" for k in node.keywords):
+                fn = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
+                if fn != "complete":
+                    wrong.append(fn)
+
+        assert not wrong, (
+            f"user_key was passed to {wrong}, which do not accept it. Only "
+            "router.complete() takes that argument."
+        )
+
+    def test_run_accepts_the_parameter(self):
+        import inspect
+        from agents.writer_agent import WriterAgent
+        assert "user_key" in inspect.signature(WriterAgent.run).parameters
+
+
 class TestProbe:
     def test_a_throttled_key_is_accepted(self, monkeypatch):
         """429 is a fact about right now, not about the key. Rejecting it would

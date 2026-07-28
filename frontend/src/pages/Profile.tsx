@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import Page from "../components/Page";
 import PageHeader from "../components/PageHeader";
+import Avatar from "../components/Avatar";
 import { getProfile, startCheckout, CheckoutUnavailableError } from "../utils/api";
 import { pluralize, frameworkLabel } from "../utils/format";
 import type { Profile as ProfileData, PlanCatalogueEntry } from "../types";
@@ -228,7 +229,6 @@ export default function Profile() {
 
   const { user, plan, totals } = data;
   const isPro = plan.plan !== "free";
-  const initial = (user.name || user.email || "?").charAt(0).toUpperCase();
   const usedPct = plan.limit ? Math.min(100, Math.round((plan.used / plan.limit) * 100)) : 0;
 
   return (
@@ -236,13 +236,10 @@ export default function Profile() {
       <div className="w-full max-w-3xl mx-auto space-y-8 pt-4">
         {/* Identity */}
         <div className="flex items-center gap-4">
-          {user.avatar_url ? (
-            <img src={user.avatar_url} alt="" className="w-16 h-16 rounded-2xl border border-grey-700" />
-          ) : (
-            <div className="w-16 h-16 rounded-2xl bg-brand-400/15 border border-brand-400/30 flex items-center justify-center font-display text-2xl font-bold text-brand-200">
-              {initial}
-            </div>
-          )}
+          {/* Falls back on load *failure*, not on a missing URL — see Avatar. */}
+          <Avatar name={user.name} email={user.email} src={user.avatar_url}
+                  className="w-16 h-16" textClassName="font-display text-2xl"
+                  rounded="rounded-2xl" />
           <div className="min-w-0">
             <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="font-display text-2xl font-bold tracking-tight truncate">{user.name}</h1>

@@ -349,7 +349,6 @@ class WriterAgent:
                 base_url=base_url,
                 language=language,
                 tier=tier,
-                user_key=self._user_key,
             )
 
         # Stop here if there is no suite. Everything below — scaffolding,
@@ -786,6 +785,19 @@ they are valid, runnable code. Keep the valid files unchanged."""
                 user_key=self._user_key,
             )
             healed = self._parse_response(raw, framework_key)
+            # A heal that cannot be parsed must not be applied. `_parse_response`
+            # answers invalid JSON with a single synthetic "raw output" file,
+            # which is truthy — so `healed or files` happily REPLACED a working
+            # suite with the model's unparsed reply, and the run then reported
+            # success with one unparseable file where the tests used to be.
+            #
+            # Healing is an improvement pass. Its contract is "better, or
+            # unchanged" — never worse.
+            if self._looks_truncated(healed):
+                logger.warning(
+                    "Self-heal returned unparseable output — keeping the original files"
+                )
+                return files
             return healed or files
         except Exception as e:
             logger.error(f"Self-heal failed: {e}")
@@ -848,6 +860,13 @@ role locators. Leave everything else unchanged."""
                 user_key=self._user_key,
             )
             healed = self._parse_response(raw, framework_key)
+            # Same contract as _heal above: a grounding repair that comes back
+            # unparseable leaves the suite exactly as it was.
+            if self._looks_truncated(healed):
+                logger.warning(
+                    "Selector self-heal returned unparseable output — keeping the original files"
+                )
+                return files
             return healed or files
         except Exception as e:
             logger.error(f"Selector self-heal failed: {e}")
