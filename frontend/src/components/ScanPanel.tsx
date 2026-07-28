@@ -135,6 +135,7 @@ export default function ScanPanel() {
       <div className="relative">
         <Globe size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-grey-500" />
         <input
+          aria-label="URL to scan"
           type="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}

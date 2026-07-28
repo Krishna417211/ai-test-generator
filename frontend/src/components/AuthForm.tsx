@@ -122,7 +122,10 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
         subtitle={emailHint ? `We sent a 6-digit code to ${emailHint}.` : notice}
       >
         <form onSubmit={submitOtp} className="space-y-3">
+          <label htmlFor="auth-otp" className="sr-only">Six-digit sign-in code</label>
           <input
+            id="auth-otp"
+            name="one-time-code"
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
             inputMode="numeric"
@@ -209,16 +212,25 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
             {isSignup && (
               <div className="relative">
                 <UserIcon size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-grey-400" />
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name (optional)" className={inputClass} />
+                <label htmlFor="auth-name" className="sr-only">Your name (optional)</label>
+                <input id="auth-name" name="name" autoComplete="name"
+                  value={name} onChange={(e) => setName(e.target.value)}
+                  placeholder="Your name (optional)" className={inputClass} />
               </div>
             )}
             <div className="relative">
               <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-grey-400" />
-              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" className={inputClass} />
+              <label htmlFor="auth-email" className="sr-only">Email address</label>
+              <input id="auth-email" name="email" type="email" required
+                autoComplete="username"
+                value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@email.com" className={inputClass} />
             </div>
             <div className="relative">
               <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-grey-400" />
-              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+              <label htmlFor="auth-password" className="sr-only">Password</label>
+              <input id="auth-password" name="password" type="password" required
+                value={password} onChange={(e) => setPassword(e.target.value)}
                 autoComplete={isSignup ? "new-password" : "current-password"}
                 placeholder={isSignup ? "Create a password (min 8 chars)" : "Your password"} className={inputClass} />
             </div>

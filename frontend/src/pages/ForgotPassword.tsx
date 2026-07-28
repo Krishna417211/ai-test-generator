@@ -53,7 +53,7 @@ export default function ForgotPassword() {
             <form onSubmit={submit} className="space-y-3">
               <div className="relative">
                 <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-grey-400" />
-                <input type="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)}
+                <input aria-label="Email address" type="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@email.com"
                   className="w-full pl-10 pr-4 py-3 rounded-xl bg-black/30 border border-grey-700 text-white placeholder:text-grey-400 focus:outline-none focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm" />
               </div>

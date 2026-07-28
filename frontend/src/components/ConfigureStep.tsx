@@ -142,7 +142,7 @@ export default function ConfigureStep({ hostedUrl, siteLogin, onGenerate, loadin
         <label className="block text-sm font-semibold text-white mb-2">
           What to test <span className="text-grey-500 font-normal">(optional)</span>
         </label>
-        <textarea
+        <textarea aria-label="What to test, in your own words"
           value={testFlows}
           onChange={(e) => setTestFlows(e.target.value)}
           placeholder={`Describe the flows you want tested. For example:\n- User registration and login\n- Product search and add to cart\n- Checkout with payment form\n- Profile settings update`}
