@@ -324,6 +324,41 @@ class Grounding(BaseModel):
     heal_attempts: int = 0
 
 
+class ScoreComponent(BaseModel):
+    key: str
+    label: str
+    passed: int
+    total: int
+    rate: float
+    weight: float
+    detail: str = ""
+
+
+class SuccessRate(BaseModel):
+    """The share of our automated checks a generated suite passed.
+
+    Distinct from `Grounding`, which reports individual measurements: this
+    aggregates them into the single number the UI leads with. It is a
+    *generation* success rate — planned files delivered, code parsed, selectors
+    traced, tests produced — and explicitly not a prediction that the tests pass
+    against the running app, which we never execute. `measures` and
+    `not_measured` carry that distinction in the payload so the caveat travels
+    with the number. See services/success_rate.py.
+    """
+    score: Optional[int] = None              # 0–100; None when nothing was measurable
+    grade: str = "—"
+    measured: bool = True
+    components: list[ScoreComponent] = []
+    measures: str = ""
+    not_measured: str = ""
+
+
+class ExcludedSecret(BaseModel):
+    path: str
+    reason: str
+    kind: str                                # "path" | "content"
+
+
 class GenerateResponse(BaseModel):
     success: bool
     files: list[GeneratedFile]
@@ -337,6 +372,12 @@ class GenerateResponse(BaseModel):
     # suite missing every spec file downloaded looking exactly like a whole one.
     failed_files: list[str] = []
     grounding: Optional[Grounding] = None
+    # The single headline number, aggregated from validation + grounding +
+    # completeness. See services/success_rate.py for what it does and does not
+    # claim.
+    success_rate: Optional[SuccessRate] = None
+    # Credential files held back before anything was sent to the model.
+    excluded_secrets: list[ExcludedSecret] = []
     # Richer grounding with per-selector provenance (file:line) and, when a live
     # URL was given, live-DOM verification. See services/grounding.py.
     selector_grounding: Optional[dict] = None
@@ -358,6 +399,19 @@ class PublishResponse(BaseModel):
     all_valid: bool = True                   # did every generated test file pass validation
     validation: list[dict] = []              # per-file syntax-validity results
     grounding: Optional[Grounding] = None
+    success_rate: Optional[SuccessRate] = None
+    # Credential files that were withheld from the push. Named, not just
+    # counted: a user whose .env silently vanished will debug a missing-config
+    # error we caused.
+    excluded_secrets: list[ExcludedSecret] = []
+    # True when the pushed tree was read back from GitHub and every expected
+    # file was found with the exact content we uploaded. False means the check
+    # itself couldn't complete — `verification_note` says why. A genuinely
+    # missing file fails the publish outright rather than arriving here.
+    files_verified: bool = False
+    verification_note: str = ""
+    # Files that needed a second commit before they appeared in the repo.
+    repaired_files: list[str] = []
     provenance: Optional[Provenance] = None
     warnings: list[str] = []
 

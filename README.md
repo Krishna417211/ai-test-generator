@@ -1,23 +1,25 @@
 # Testra 🧪
 
-> Paste a GitHub URL. Get production-ready E2E tests in seconds.
+> Point at your repo and your live site. Get a grounded, runnable E2E suite.
 
-Testra scans your web project's codebase and automatically generates complete, runnable test scripts for **Playwright**, **Cypress**, or **Selenium** — with real selectors from your actual source code, Page Object Models, CI/CD pipelines, and inline comments.
+Testra generates complete, runnable test scripts for **Playwright**, **Cypress**, or **Selenium** — with Page Object Models, CI/CD pipelines, inline comments, and every selector traced back to something that provably exists in your app.
 
-**100% free. No account. No credit card.**
+Free tier included (a monthly generation allowance, no card required); Pro removes the cap and routes to a stronger model. An account is required, because publishing pushes to GitHub on your behalf.
 
 ---
 
 ## ✨ Features
 
-- **Two-agent LLM pipeline** — Agent 1 filters your repo to UI-relevant files only. Agent 2 writes tests with real selectors from your code.
-- **Smart LLM rotation** — Automatically rotates through Gemini 1.5 Flash → Groq LLaMA 3.1 → Claude Haiku. Never hits rate limits.
+- **Two generation modes.** *Generate* is crawl-first: it renders and crawls your deployed site and writes tests from the real DOM — your repo's file contents never reach the model. *Publish* is source-first: upload a ZIP, get a new GitHub repo with the project plus a validated suite and working CI.
+- **Grounded selectors, with provenance.** Every id, test-id and class the model writes is checked back against your real source or live DOM, and the UI cites the file and line it came from rather than asking for trust.
+- **Self-heal loop.** Files that don't parse, and selectors that don't resolve, are sent back to the model *with the real anchors that do exist* — a grounded substitution, not a second guess.
+- **Generation success rate.** One 0–100 score with a full breakdown of the checks behind it. Explicitly not a pass rate — see [Limitations](docs/LIMITATIONS.md).
+- **Credentials never leave your machine.** `.env`, SSH keys, `.pem`, cloud service-account JSONs and hard-coded API tokens are detected and withheld from both the model prompt and the push — and every withheld file is named, never silently dropped.
+- **Verified pushes.** After publishing, the commit tree is read back from GitHub and every file confirmed present with the exact content hash uploaded. Missing files are re-pushed; anything still missing fails loudly.
+- **Smart LLM rotation** — rotates across Gemini (`gemini-3.6-flash`) → Groq (`llama-3.3-70b-versatile`) → Claude (`claude-haiku-4-5`), with per-key cooldowns on 429. The provenance report always names the model that actually answered.
 - **Multi-framework** — Playwright (JS/TS/Python), Cypress (JS/TS), Selenium (Python/Java)
-- **Page Object Model** — Generates POM classes, not spaghetti scripts
-- **CI/CD included** — GitHub Actions + GitLab CI yaml bundled in every download
-- **Selector validation** — Post-processing pass flags hallucinated selectors with ⚠️ warnings
-- **GitHub public + private repos** — Paste a URL or upload a ZIP
-- **Real-time streaming** — Watch tests being written token by token
+- **Security scanning** — passive configuration audit of a deployed URL, plus optional active scanning via OWASP ZAP.
+- **Real-time streaming** — watch tests being written token by token.
 
 ---
 
@@ -44,9 +46,9 @@ cp backend/.env.example backend/.env
 Get your free API keys:
 | Provider | Free Tier | Get Key |
 |----------|-----------|---------|
-| Google Gemini 1.5 Flash | 1M context, 15 RPM | [aistudio.google.com](https://aistudio.google.com/app/apikey) |
-| Groq (LLaMA 3.1 70B) | Ultra-fast, generous limits | [console.groq.com](https://console.groq.com) |
-| Anthropic Claude Haiku | Reliable fallback | [console.anthropic.com](https://console.anthropic.com) |
+| Google Gemini (`gemini-3.6-flash`) | Large context, generous free tier | [aistudio.google.com](https://aistudio.google.com/app/apikey) |
+| Groq (`llama-3.3-70b-versatile`) | Ultra-fast, generous limits | [console.groq.com](https://console.groq.com) |
+| Anthropic (`claude-haiku-4-5`) | Reliable fallback | [console.anthropic.com](https://console.anthropic.com) |
 
 You only need **one** key to get started. Add more for better rate limit handling.
 
@@ -118,34 +120,49 @@ npm run dev
 
 ```
 testra/
-├── frontend/                  # React + Vite + Tailwind
+├── frontend/                   # React + Vite + Tailwind + React Router
 │   └── src/
+│       ├── pages/              # One per route: Home, Generate, Publish, Scan,
+│       │                       #   Dashboard, Settings, auth flows, admin console
 │       ├── components/
-│       │   ├── InputStep.tsx       # Step 1: GitHub URL / ZIP upload
-│       │   ├── PreviewStep.tsx     # Step 2: Project analysis preview
-│       │   ├── ConfigureStep.tsx   # Step 3: Framework/language config
-│       │   ├── StreamingOutput.tsx # Step 4: Live token streaming
-│       │   ├── ResultsStep.tsx     # Step 5: Download generated tests
-│       │   ├── StepIndicator.tsx   # Wizard progress bar
-│       │   └── ProviderStatus.tsx  # LLM health dashboard
-│       └── utils/
-│           ├── api.ts              # All backend API calls
-│           └── download.ts         # ZIP/file download helpers
+│       │   ├── GenerateInput.tsx    # Repo URL + hosted URL + optional site login
+│       │   ├── ConfigureStep.tsx    # Framework / language / flows
+│       │   ├── StreamingOutput.tsx  # Live token streaming
+│       │   ├── ResultsStep.tsx      # The generated suite + downloads
+│       │   ├── SuccessRate.tsx      # Headline score + its breakdown
+│       │   ├── TrustPanel.tsx       # What we checked, and what we didn't
+│       │   ├── ExcludedSecrets.tsx  # Credential files we withheld
+│       │   ├── PublishPanel.tsx     # ZIP → new GitHub repo
+│       │   ├── ScanPanel.tsx        # Security scan of a deployed URL
+│       │   └── FlowPipeline.tsx     # Live per-step progress
+│       ├── context/AuthContext.tsx
+│       └── utils/{api,download,format}.ts
 │
-├── backend/                   # FastAPI (Python)
+├── backend/                    # FastAPI (Python)
 │   ├── agents/
 │   │   ├── filter_agent.py     # Agent 1: file filtering + project analysis
-│   │   └── writer_agent.py     # Agent 2: test script generation
+│   │   ├── writer_agent.py     # Agent 2: test generation, grounding, self-heal
+│   │   └── scaffold.py         # Templated configs, CI pipelines, README
 │   ├── services/
-│   │   ├── llm_router.py       # ⭐ Multi-provider rotation engine
-│   │   ├── github_service.py   # GitHub API + raw file fetching
-│   │   └── file_extractor.py   # Smart file filtering + scoring
-│   ├── models/
-│   │   └── schemas.py          # Pydantic request/response models
-│   ├── tests/
-│   │   └── test_file_extractor.py
+│   │   ├── llm_router.py       # ⭐ Multi-provider rotation + provenance
+│   │   ├── file_extractor.py   # File filtering, scoring, push preparation
+│   │   ├── importance_model.py # From-scratch logistic regression (file value)
+│   │   ├── live_crawler.py     # Renders + crawls the deployed site
+│   │   ├── grounding.py        # Selector → source/DOM provenance
+│   │   ├── fragility.py        # Selector durability scoring
+│   │   ├── validator.py        # Static validation of generated files
+│   │   ├── success_rate.py     # The headline score
+│   │   ├── secrets_guard.py    # Credential detection + exclusion
+│   │   ├── safe_paths.py       # Safe filenames, no-overwrite merging
+│   │   ├── git_publisher.py    # Create repo, push, verify every file landed
+│   │   ├── security_scanner.py # Passive audit;  zap_scanner.py = active
+│   │   ├── store.py            # Durable SQLite job store
+│   │   └── auth / quota / billing / admin / mailer / progress
+│   ├── models/schemas.py       # Pydantic request/response models
+│   ├── tests/                  # 958 tests across 32 suites
 │   └── main.py                 # FastAPI app + all routes
 │
+├── docs/                       # ARCHITECTURE.md · DEPLOY.md · LIMITATIONS.md
 └── docker-compose.yml
 ```
 
@@ -155,7 +172,7 @@ testra/
 Request comes in
      │
      ▼
-Try Gemini 1.5 Flash (key 1)
+Try Gemini flash (key 1)
   ├── ✅ Success → return result
   └── ❌ Rate limit → mark key exhausted (60s cooldown)
          │
@@ -165,7 +182,7 @@ Try Gemini 1.5 Flash (key 1)
        └── ❌ All Gemini keys exhausted
               │
               ▼
-          Try Groq LLaMA 3.1 (key 1)
+          Try Groq llama-3.3-70b (key 1)
             ├── ✅ Success → return result
             └── ❌ Rate limit → next key...
                    │
@@ -197,13 +214,26 @@ When the repo exceeds the 600k token budget:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/analyze` | Fetch repo, run Filter Agent, return project analysis |
-| `POST` | `/api/upload-zip` | Same as above but from ZIP file upload |
-| `POST` | `/api/generate/{job_id}` | Run Writer Agent, return generated test files |
-| `GET` | `/api/stream/{job_id}` | SSE stream for real-time generation output |
+| `POST` | `/api/analyze-crawl` | **Crawl-first**: render + crawl the hosted site, create the job |
+| `POST` | `/api/analyze` | Source-first: fetch repo, run Filter Agent, return project analysis |
+| `POST` | `/api/upload-zip` | Same as `/api/analyze` but from a ZIP upload |
+| `POST` | `/api/crawl-preview` | Run the crawler standalone and report what it saw |
+| `GET` | `/api/stream/{job_id}` | SSE stream of Agent 2's output, token by token |
+| `POST` | `/api/generate/{job_id}` | Run Agent 2, ground, self-heal, validate, score, return files |
+| `POST` | `/api/publish-zip` | ZIP → brand-new GitHub repo (+ optional suite & CI), verified |
+| `GET` | `/api/repos` · `DELETE /api/repo/{owner}/{repo}` | List / undo published repos |
+| `POST` | `/api/scan` · `GET /api/scan/capabilities` | Security scan a deployed URL |
 | `GET` | `/api/status` | LLM provider health + key availability |
-| `GET` | `/api/logs` | Recent API call log |
-| `GET` | `/health` | Basic health check |
+| `GET` | `/api/dashboard` · `/api/profile` · `/api/settings` | Account surfaces |
+| `GET` | `/health` · `/metrics` | Health check and metrics |
+
+Auth (`/api/auth/*` — signup, login, OTP, password reset, GitHub and Google
+OAuth), billing (`/api/billing/*`) and the admin console (`/api/admin/*`) are
+documented in the interactive schema.
+
+The streaming endpoints report per-step progress as NDJSON over the request that
+started them, so anything decidable up front (a malformed URL, a corrupt archive)
+is still a plain HTTP error rather than an in-band one.
 
 Full interactive docs: http://localhost:8000/docs
 
@@ -213,52 +243,67 @@ Full interactive docs: http://localhost:8000/docs
 
 ```bash
 cd backend
-pytest tests/ -v
+pytest tests/ -q          # 958 tests across 32 suites
+ruff check .
+```
+
+Frontend:
+
+```bash
+cd frontend
+npx tsc --noEmit && npm run build
 ```
 
 ---
 
-## 🚢 Deployment (Free)
+## 🚢 Deployment
 
-### Backend → Render.com (free tier)
-1. Push to GitHub
-2. New Web Service → connect repo → set root to `backend/`
-3. Build command: `pip install -r requirements.txt`
-4. Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-5. Add environment variables from `.env`
+Production runs as containers behind [Caddy](https://caddyserver.com) (automatic
+TLS + static serving) on a single host. The scripts in `deploy/` provision it:
 
-### Frontend → Vercel (free tier)
-1. Import frontend/ directory to Vercel
-2. Set `VITE_API_URL` environment variable to your Render backend URL
-3. Deploy
+```bash
+deploy/aws-setup.sh        # provision the host
+deploy/bootstrap.sh        # install docker, pull, first boot
+# topology: deploy/docker-compose.prod.yml
+```
+
+**Full walkthrough — including the CI deploy-over-SSH job, DNS, and the ZAP
+sidecar — is in [docs/DEPLOY.md](docs/DEPLOY.md).**
+
+The frontend needs `VITE_API_URL` pointed at the API's public origin at build
+time. Note that the crawl-first generate flow needs a **headless browser on the
+server** (Playwright + Chromium, installed by `backend/Dockerfile`); without one,
+`/api/analyze-crawl` returns a 503 that says so rather than silently falling back.
 
 ---
 
 ## 🗺️ Roadmap
 
-### Phase 1 — Core MVP ✅
-- [x] GitHub URL input + ZIP upload
-- [x] Two-agent LLM pipeline
-- [x] Multi-provider key rotation
-- [x] Playwright / Cypress / Selenium output
-- [x] Page Object Model generation
-- [x] CI/CD yaml (GitHub Actions + GitLab)
-- [x] Real-time streaming output
-- [x] ZIP download of all generated files
+Shipped:
 
-### Phase 2 — Smart Features
-- [ ] Selector validation pass (post-generation)
-- [ ] Multiple language options per framework
-- [ ] Show file tree preview before generating
-- [ ] Live API status indicator in UI
+- [x] Crawl-first generation from the live DOM · ZIP upload · publish to a new repo
+- [x] Two-agent pipeline · multi-provider key rotation with provenance
+- [x] Playwright / Cypress / Selenium, Page Object Models, GitHub Actions + GitLab CI
+- [x] Selector grounding with file:line provenance, and the self-heal loop
+- [x] Fragility (durability) grading · generation success rate
+- [x] Credential exclusion · safe filenames · verified pushes
+- [x] Accounts, quota and plans · security scanning (passive + ZAP)
 
-### Phase 3 — God Mode
-- [ ] Self-healing tests (LLM suggests alternatives for broken selectors)
-- [ ] Diff detection (re-upload new version → see which tests need updating)
-- [ ] Auto-run tests in sandboxed Playwright (Docker + Railway free tier)
-- [ ] Chat interface: "add a test for forgot password flow"
-- [ ] Visual selector picker: screenshot + highlight → auto-generate locators
-- [ ] Multi-LLM comparison mode
+Next, in order of how much each would change what the product can honestly claim
+(full detail in the [project report](Testra-Report.html), §23):
+
+- [ ] **Sandboxed execution** — run the suite in Docker against a live target and
+      report real pass/fail, turning the success rate into a measured outcome
+- [ ] **AST-based selector extraction** — replace regex, capturing roles,
+      accessible names, visible text and dynamic classes
+- [ ] **Entropy-based secret scanning** — catch bespoke credentials, not just
+      issuer-prefixed tokens
+- [ ] **Retrieval-based context selection** — stop relying on summarization for
+      very large repos
+- [ ] **Re-fit both ML models on real outcomes** (the plumbing already exists)
+- [ ] **Incremental publishing** — push to an existing repo on a branch, with a PR
+- [ ] **Diff-aware regeneration** · **conversational refinement** ·
+      **self-healing suites over time** · **visual selector picking**
 
 ---
 
@@ -269,6 +314,8 @@ PRs welcome! The codebase is intentionally straightforward:
 1. **Adding a new LLM provider**: add a `_call_<provider>` method in `llm_router.py` and add it to `PROVIDER_PRIORITY`
 2. **Adding a new test framework**: add instructions to `FRAMEWORK_INSTRUCTIONS` in `writer_agent.py`
 3. **Improving file filtering**: edit `UI_EXTENSIONS`, `SKIP_PATTERNS`, or `score_file()` in `file_extractor.py`
+4. **Teaching it a new kind of secret**: add to `SECRET_FILENAMES` / `CONTENT_RULES` in `services/secrets_guard.py`. Content rules must be issuer-prefixed or otherwise unambiguous — a rule with false positives drops real source and gets the whole guard switched off. Add the case to `tests/test_secrets_guard.py` from the *leak's* point of view, and a counter-case proving ordinary code still passes.
+5. **Changing what the success rate measures**: `services/success_rate.py`. A component with nothing to measure must be dropped, never scored 100% — see the tests for why.
 
 ---
 

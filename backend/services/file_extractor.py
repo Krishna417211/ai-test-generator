@@ -26,6 +26,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from services import safe_paths, secrets_guard
 from services.importance_model import learned_score
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,10 @@ CONFIG_FILES = {
     "nuxt.config.js", "nuxt.config.ts",
     "angular.json",
     "svelte.config.js",
-    ".env", ".env.example", ".env.local",
+    # Only the example. A real .env is the app's live credentials, and this set
+    # decides what gets pasted into a third-party model's prompt — see
+    # services/secrets_guard.py, which drops it even if it were listed here.
+    ".env.example",
     "tailwind.config.js", "tailwind.config.ts",
     "tsconfig.json",
 }
@@ -135,6 +139,9 @@ class ExtractionResult:
     skipped_count: int
     truncated: bool
     warnings: list[str] = field(default_factory=list)
+    # Credential files held back before anything was sent to a model.
+    # See services/secrets_guard.py.
+    excluded_secrets: list[dict] = field(default_factory=list)
 
 
 # ─────────────────────────────────────────────
@@ -359,6 +366,18 @@ class FileExtractor:
         warnings = []
         original_count = len(raw_files)
 
+        # Step 0: credentials never reach the model. This runs before every
+        # other step — including framework detection — because the whole point
+        # is that no code path downstream of here has the opportunity to send a
+        # secret anywhere. A prompt cannot be un-sent.
+        raw_files, secrets = secrets_guard.scrub(raw_files)
+        if secrets:
+            logger.info(
+                f"Withheld {len(secrets)} sensitive file(s) from the LLM context: "
+                + ", ".join(f.path for f in secrets[:5])
+            )
+            warnings.append(secrets_guard.summarize(secrets))
+
         # Step 1: Filter out junk
         filtered = self._filter_files(raw_files)
 
@@ -434,6 +453,7 @@ class FileExtractor:
             skipped_count=original_count - len(selected),
             truncated=truncated,
             warnings=warnings,
+            excluded_secrets=[f.as_dict() for f in secrets],
         )
 
     def _filter_files(self, raw_files: dict[str, str]) -> dict[str, str]:
@@ -622,17 +642,29 @@ PUSH_SKIP_EXTENSIONS = {
 PUSH_MAX_FILE_BYTES = 1_000_000  # 1 MB
 
 
-def filter_for_push(files: dict[str, str]) -> tuple[dict[str, str], list[str]]:
+def filter_for_push(
+    files: dict[str, str],
+) -> tuple[dict[str, str], list[str], list[dict]]:
     """
     Filter a raw {path: content} map down to what belongs in a fresh repo.
 
-    Drops dependency/build/VCS junk, binary assets, and oversized files.
-    Returns (kept_files, warnings).
+    Drops credential files, dependency/build/VCS junk, binary assets, oversized
+    files, and anything whose path can't be written safely.
+
+    Returns (kept_files, warnings, excluded_secrets). The third value is
+    separate from `warnings` because it is the one category the caller may want
+    to render differently — a dropped node_modules is housekeeping; a withheld
+    `.env` is something the user has to know about before they wonder why their
+    deploy has no configuration.
     """
     kept: dict[str, str] = {}
     skipped_dirs = 0
     skipped_binary = 0
     skipped_large = 0
+    unsafe_paths: list[str] = []
+
+    # Credentials first, so a `.env` can never be reprieved by a later rule.
+    files, secrets = secrets_guard.scrub(files)
 
     for path, content in files.items():
         parts = [p.lower() for p in path.replace("\\", "/").split("/")]
@@ -646,13 +678,35 @@ def filter_for_push(files: dict[str, str]) -> tuple[dict[str, str], list[str]]:
         if len(content.encode("utf-8", errors="replace")) > PUSH_MAX_FILE_BYTES:
             skipped_large += 1
             continue
-        kept[path] = content
+        # An unwritable path (traversal, reserved device name, trailing dot)
+        # would either escape the repo or make it un-clonable on Windows.
+        # Sanitizing can rename, so check for a collision before accepting it.
+        safe = safe_paths.sanitize(path)
+        if safe is None:
+            unsafe_paths.append(path)
+            continue
+        if safe != path and safe in kept:
+            unsafe_paths.append(path)
+            continue
+        kept[safe] = content
 
     warnings: list[str] = []
+    if secrets:
+        logger.info(
+            f"Withheld {len(secrets)} sensitive file(s) from the push: "
+            + ", ".join(f.path for f in secrets[:5])
+        )
+        warnings.append(secrets_guard.summarize(secrets))
     if skipped_dirs:
         warnings.append(f"Skipped {skipped_dirs} build/dependency file(s) (node_modules, dist, etc.)")
     if skipped_binary:
         warnings.append(f"Skipped {skipped_binary} binary asset(s)")
     if skipped_large:
         warnings.append(f"Skipped {skipped_large} file(s) larger than 1 MB")
-    return kept, warnings
+    if unsafe_paths:
+        listed = ", ".join(unsafe_paths[:3])
+        warnings.append(
+            f"Skipped {len(unsafe_paths)} file(s) whose path can't be written to a "
+            f"git repo ({listed}{'...' if len(unsafe_paths) > 3 else ''})"
+        )
+    return kept, warnings, [f.as_dict() for f in secrets]

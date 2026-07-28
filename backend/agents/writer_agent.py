@@ -25,6 +25,7 @@ from services import grounding as grounding_svc
 from services import fragility as fragility_svc
 from services import renderer as renderer_svc
 from services import live_crawler as crawler_svc
+from services import safe_paths
 
 # How many of the deployed site's own routes a live crawl will render and merge
 # before it stops. Enough to reach the login/signup/checkout surfaces that the
@@ -160,6 +161,32 @@ Generate tests using Selenium WebDriver with Java (TestNG or JUnit 5).
 # ─────────────────────────────────────────────
 # Output types
 # ─────────────────────────────────────────────
+
+class GenerationFailedError(Exception):
+    """The model produced nothing we can ship as a test suite.
+
+    Distinct from a partial run (`WriterResult.failed_files`), which still has
+    real files in it. This is the total case: no files at all, or the single
+    "JSON parsing failed" fallback that `_parse_response` returns when the
+    response wasn't JSON.
+
+    It is raised rather than returned because the alternative is what used to
+    happen — the fallback file was scaffolded, validated, zipped and handed over
+    as `e2e/tests/generated.ts`, a file containing the model's prose. It parses
+    as nothing, collects no tests, and looks from the outside exactly like a
+    successful generation. A failure that presents as success is the one outcome
+    worth an exception.
+    """
+
+    def __init__(self, detail: str = ""):
+        self.detail = detail
+        super().__init__(
+            "The AI didn't return a usable test suite"
+            + (f" ({detail})" if detail else "")
+            + ". This is usually a provider hiccup mid-run — try again, and if it "
+            "persists, try a different framework or a narrower set of test flows."
+        )
+
 
 @dataclass
 class GeneratedFile:
@@ -312,6 +339,15 @@ class WriterAgent:
                 base_url=base_url,
                 language=language,
                 tier=tier,
+            )
+
+        # Stop here if there is no suite. Everything below — scaffolding,
+        # validation, the README listing the files — happily runs on the
+        # single-file "JSON parsing failed" fallback and produces a plausible
+        # archive containing the model's prose. See GenerationFailedError.
+        if self._looks_truncated(generated_files):
+            raise GenerationFailedError(
+                "no files" if not generated_files else "the response wasn't valid JSON"
             )
 
         # DOM grounding: if the user gave us a URL they own, fetch the live page
@@ -573,23 +609,59 @@ class WriterAgent:
         The suite gets its own directory because the repo root is already taken:
         a React app has a package.json there, and writing ours over it would
         destroy the manifest of the app under test.
+
+        This is also the one place every model-authored filename passes through,
+        so it is where they get made safe. The names come out of an LLM's JSON:
+        `../../src/App.tsx` and `/etc/hosts` are both a plausible token sequence,
+        and the suffix `SUITE_DIR + "/" + name` does not stop either — the first
+        still resolves outside the suite once git normalises it. See
+        services/safe_paths.py.
         """
         owned = self._SCAFFOLD_OWNED + self._SCAFFOLD_OWNED_BY_FRAMEWORK.get(
             framework_key, ()
         )
         placed: list[GeneratedFile] = []
+        taken: set[str] = set()
         for f in files:
-            name = f.filename.lstrip("./")
+            name = f.filename
+            # Sanitize BEFORE anything else reads the path. The previous
+            # `name.lstrip("./")` here stripped *characters*, so "../../x.tsx"
+            # silently became "x.tsx" — the traversal was erased rather than
+            # rejected, and the file landed in the suite as if it had always
+            # been a plain name.
+            safe = safe_paths.sanitize(name)
+            if safe is None:
+                # Recorded as a failed file, not merely dropped: a spec that
+                # never lands still leaves the specs that import it dangling,
+                # and `failed_files` is what withholds the CI workflow and warns
+                # the user. Silently losing it would ship a suite that can't run
+                # and report it as whole.
+                logger.warning(f"Dropping model-written file with unsafe path: {name!r}")
+                self._failed_files.append(name)
+                continue
+
             # Anchored to the suite root, not matched on basename: only a file
             # that would land ON one of ours conflicts. A nested
             # tests/README.md or a fixture named package.json is the model's to
-            # keep, and dropping those silently lost real work.
-            if name.lower() in owned:
-                logger.info(f"Dropping model-written {name} — scaffold owns this file")
+            # keep, and dropping those silently lost real work. Not counted as a
+            # failure — ours winning here is the design.
+            if safe.lower() in owned:
+                logger.info(f"Dropping model-written {safe} — scaffold owns this file")
                 continue
-            if not name.startswith(f"{scaffold.SUITE_DIR}/"):
-                name = f"{scaffold.SUITE_DIR}/{name}"
-            placed.append(GeneratedFile(name, f.content, f.description))
+
+            if not safe.startswith(f"{scaffold.SUITE_DIR}/"):
+                safe = f"{scaffold.SUITE_DIR}/{safe}"
+
+            # Two planned files with the same name: keep both under distinct
+            # names rather than letting the second overwrite the first, which
+            # loses a spec and still reports the full count.
+            deduped = safe_paths.dedupe(safe, taken)
+            if deduped != safe:
+                logger.warning(
+                    f"Model wrote {safe} twice — keeping the second as {deduped}"
+                )
+            taken.add(deduped)
+            placed.append(GeneratedFile(deduped, f.content, f.description))
         return placed
 
     def _scaffold_files(

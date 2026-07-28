@@ -14,7 +14,7 @@ The LLM's job here is to:
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from services.file_extractor import ExtractionResult, FileExtractor
@@ -40,6 +40,61 @@ Focus on:
 Be precise and practical. Output only valid JSON when asked."""
 
 
+WHAT_WE_SUPPORT = (
+    "Testra writes browser-based E2E tests, so it needs a project with pages or "
+    "components it can drive — .jsx, .tsx, .vue, .svelte, .html, or server-rendered "
+    "templates (Django, Rails, Laravel, Jinja)."
+)
+
+
+def _diagnose(raw_files: dict[str, str], framework: str) -> tuple[str, str, str]:
+    """Say *which* kind of unsupported this is: (code, what happened, what to do).
+
+    A single "no testable UI found" for every one of these is technically true
+    and practically useless — the fix for an empty upload, an API-only backend,
+    and a zip of the wrong folder are three different actions, and the user
+    cannot tell from the message which one they are in. Each branch here maps to
+    a mistake someone actually makes.
+    """
+    if not raw_files:
+        return (
+            "empty_project",
+            "The project came through with no readable files at all.",
+            "If you uploaded a ZIP, check it isn't empty or password-protected. "
+            "If you pasted a repo URL, check the repo isn't empty.",
+        )
+
+    suffixes = [("." + p.rsplit(".", 1)[-1].lower()) if "." in p else "" for p in raw_files]
+    docs_like = {".md", ".rst", ".txt", ".pdf", ".adoc", ""}
+    if all(s in docs_like for s in suffixes):
+        return (
+            "docs_only",
+            f"All {len(raw_files)} file(s) are documentation or plain text — there is "
+            "no application to test.",
+            "Point Testra at the repo that contains the app itself.",
+        )
+
+    backend_only = {".py", ".rb", ".go", ".rs", ".java", ".php", ".cs", ".sql", ".sh"}
+    code_suffixes = {s for s in suffixes if s}
+    if code_suffixes and code_suffixes <= backend_only | docs_like | {".json", ".yml", ".yaml", ".toml", ".cfg", ".ini"}:
+        return (
+            "backend_only",
+            f"This looks like a backend or API-only project (detected: {framework}) — "
+            "none of its files render in a browser.",
+            "Testra tests user interfaces, not APIs. If this repo has a separate "
+            "frontend directory, point it at that. For a server-rendered app, make "
+            "sure its templates are included in the upload.",
+        )
+
+    return (
+        "no_testable_ui",
+        f"None of the {len(raw_files)} file(s) scanned render in a browser "
+        f"(detected: {framework}).",
+        "If this is a monorepo, upload or link the frontend package on its own — "
+        "the app's UI files may be under a path that was filtered out.",
+    )
+
+
 class NoTestableUIError(Exception):
     """No browser-renderable files survived extraction.
 
@@ -47,17 +102,28 @@ class NoTestableUIError(Exception):
     LLM has nothing to describe, and it answers by echoing the shape of the
     example in the prompt — inventing a login page, a /dashboard route and a JWT
     flow for a project that has none. Failing loudly beats a confident fiction.
+
+    Carries a machine-readable `code` alongside the sentence so the API can
+    return a structured 422 and the UI can render a real "we can't test this
+    kind of project" state instead of printing a string in an error toast.
     """
 
-    def __init__(self, framework: str, scanned: int):
+    def __init__(self, framework: str, scanned: int, raw_files: dict[str, str] | None = None):
         self.framework = framework
         self.scanned = scanned
-        super().__init__(
-            f"No testable UI found. Testra writes browser-based E2E tests, but none "
-            f"of the {scanned} file(s) scanned render in a browser "
-            f"(detected: {framework}). Point it at a project with pages or "
-            f"components — .jsx, .tsx, .vue, .svelte or .html."
-        )
+        self.code, self.reason, self.suggestion = _diagnose(raw_files or {}, framework)
+        super().__init__(f"{self.reason} {WHAT_WE_SUPPORT} {self.suggestion}")
+
+    def as_dict(self) -> dict:
+        return {
+            "code": self.code,
+            "message": str(self),
+            "reason": self.reason,
+            "supported": WHAT_WE_SUPPORT,
+            "suggestion": self.suggestion,
+            "framework": self.framework,
+            "files_scanned": self.scanned,
+        }
 
 
 @dataclass
@@ -71,6 +137,9 @@ class FilterResult:
     files: dict[str, str]          # final filtered file contents (from extractor)
     total_tokens: int
     file_count: int                # number of files kept (read by the API layer)
+    # Credential files the extractor held back before the LLM saw anything.
+    # See services/secrets_guard.py.
+    excluded_secrets: list[dict] = field(default_factory=list)
 
 
 class FilterAgent:
@@ -114,7 +183,7 @@ class FilterAgent:
                 f"No UI files extracted from {len(raw_files)} raw file(s); "
                 f"framework={extraction.framework}. Refusing to analyze."
             )
-            raise NoTestableUIError(extraction.framework, len(raw_files))
+            raise NoTestableUIError(extraction.framework, len(raw_files), raw_files)
 
         await say.done(
             "extract",
@@ -150,6 +219,7 @@ class FilterAgent:
             files=extraction.files,
             total_tokens=extraction.total_tokens,
             file_count=extraction.file_count,
+            excluded_secrets=extraction.excluded_secrets,
         )
 
     async def _analyze_with_llm(

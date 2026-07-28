@@ -5,6 +5,8 @@ import { downloadAsZip, downloadSingleFile } from "../utils/download";
 import { frameworkLabel, pluralize } from "../utils/format";
 import CodeViewer from "./CodeViewer";
 import TrustPanel from "./TrustPanel";
+import SuccessRate from "./SuccessRate";
+import ExcludedSecrets from "./ExcludedSecrets";
 
 interface Props {
   result: GenerateResponse;
@@ -170,6 +172,10 @@ export default function ResultsStep({ result, onReset }: Props) {
         </button>
       </div>
 
+      {/* The headline number, above the per-measurement detail: most people
+          want "how did this go?" and only then "which checks say so". */}
+      <SuccessRate data={result.success_rate} />
+
       {/* What we verified, and which model wrote it. Carries the "we didn't run
           these" disclaimer that used to sit in the summary bar above. */}
       <TrustPanel
@@ -213,6 +219,8 @@ export default function ResultsStep({ result, onReset }: Props) {
           </ul>
         </div>
       )}
+
+      <ExcludedSecrets files={result.excluded_secrets} where="sent to the AI" />
 
       {/* Selector warnings */}
       {result.selector_warnings.length > 0 && (

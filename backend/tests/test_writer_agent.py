@@ -206,6 +206,55 @@ class TestTruncationDetection:
         assert WriterAgent()._looks_truncated(gf) is False
 
 
+class TestSuitePlacementIsSafe:
+    """`_place_in_suite_dir` is the single gate every model-authored filename
+    passes through, so it is where they have to be made safe.
+
+    Prefixing with the suite directory is not a containment mechanism: git
+    normalises `e2e/../../src/App.tsx` right back out of the suite and onto the
+    user's application code.
+    """
+
+    def _place(self, names):
+        w = WriterAgent()
+        w._failed_files = []
+        placed = w._place_in_suite_dir(
+            [GeneratedFile(n, "content", "d") for n in names], "playwright_js")
+        return [f.filename for f in placed], w._failed_files
+
+    def test_ordinary_files_land_under_the_suite_directory(self):
+        out, failed = self._place(["tests/login.spec.ts", "tests/pages/LoginPage.ts"])
+        assert out == ["e2e/tests/login.spec.ts", "e2e/tests/pages/LoginPage.ts"]
+        assert failed == []
+
+    def test_traversal_never_escapes_the_suite(self):
+        out, failed = self._place(["../../src/App.tsx", "tests/ok.spec.ts"])
+        assert out == ["e2e/tests/ok.spec.ts"]
+        # Recorded as failed, not merely dropped: the specs importing it are now
+        # dangling, and failed_files is what withholds CI and warns the user.
+        assert failed == ["../../src/App.tsx"]
+
+    def test_absolute_path_is_pulled_back_into_the_suite(self):
+        out, _ = self._place(["/tests/login.spec.ts"])
+        assert out == ["e2e/tests/login.spec.ts"]
+
+    def test_duplicate_names_keep_both_files(self):
+        """Last-write-wins loses a spec and still reports the full count."""
+        out, _ = self._place(["tests/a.spec.ts", "tests/a.spec.ts"])
+        # ".spec." survives the rename — it's what the runner discovers on.
+        assert out == ["e2e/tests/a.spec.ts", "e2e/tests/a-2.spec.ts"]
+
+    def test_scaffold_owned_files_are_still_dropped(self):
+        out, failed = self._place(["package.json", "tests/a.spec.ts"])
+        assert out == ["e2e/tests/a.spec.ts"]
+        # Ours winning is by design, not a generation failure.
+        assert failed == []
+
+    def test_files_already_under_the_suite_dir_are_not_nested_twice(self):
+        out, _ = self._place(["e2e/tests/a.spec.ts"])
+        assert out == ["e2e/tests/a.spec.ts"]
+
+
 class TestStripFence:
     def test_strips_json_and_lang_fences(self):
         w = WriterAgent()

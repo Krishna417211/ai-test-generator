@@ -6,6 +6,7 @@ blobs → tree → commit → ref sequence is exercised without hitting GitHub.
 """
 
 import asyncio
+import json
 
 import httpx
 import pytest
@@ -25,27 +26,55 @@ class TestFilterForPush:
             "dist/bundle.js": "built",
             "src/nested/__pycache__/x.pyc": "cache",
         }
-        kept, warnings = filter_for_push(files)
+        kept, warnings, _ = filter_for_push(files)
         assert kept == {"src/App.tsx": "code"}
         assert any("build/dependency" in w for w in warnings)
 
     def test_drops_binary_assets(self):
         files = {"logo.png": "\x89PNG...", "readme.md": "# hi"}
-        kept, _ = filter_for_push(files)
+        kept, _, _ = filter_for_push(files)
         assert "logo.png" not in kept
         assert "readme.md" in kept
 
     def test_drops_oversized_files(self):
         files = {"big.txt": "x" * 2_000_000, "small.txt": "ok"}
-        kept, warnings = filter_for_push(files)
+        kept, warnings, _ = filter_for_push(files)
         assert "big.txt" not in kept
         assert "small.txt" in kept
         assert any("larger than" in w for w in warnings)
 
     def test_keeps_normal_source(self):
         files = {"a.ts": "1", "docs/guide.md": "2", "package.json": "{}"}
-        kept, _ = filter_for_push(files)
+        kept, _, _ = filter_for_push(files)
         assert kept == files
+
+    def test_credentials_never_reach_the_push(self):
+        """The whole point: a working tree gets zipped, .env and all."""
+        files = {
+            "src/App.tsx": "code",
+            ".env": "STRIPE_SECRET=sk_live_x",
+            ".env.example": "STRIPE_SECRET=",
+            "deploy/id_rsa": "-----BEGIN OPENSSH PRIVATE KEY-----",
+            "certs/server.pem": "-----BEGIN CERTIFICATE-----",
+        }
+        kept, warnings, secrets = filter_for_push(files)
+
+        assert set(kept) == {"src/App.tsx", ".env.example"}
+        assert {s["path"] for s in secrets} == {".env", "deploy/id_rsa", "certs/server.pem"}
+        # Named, not just counted — the user has to know which files to go and check.
+        assert any(".env" in w for w in warnings)
+
+    def test_hardcoded_key_in_source_is_withheld(self):
+        files = {"src/config.ts": 'export const k = "AKIAIOSFODNN7EXAMPLE";'}
+        kept, _, secrets = filter_for_push(files)
+        assert kept == {}
+        assert secrets[0]["kind"] == "content"
+
+    def test_unsafe_paths_are_skipped_not_written(self):
+        files = {"../../etc/passwd": "root:x", "src/ok.ts": "1"}
+        kept, warnings, _ = filter_for_push(files)
+        assert kept == {"src/ok.ts": "1"}
+        assert any("can't be written" in w for w in warnings)
 
 
 # ── GitPublisher ─────────────────────────────
@@ -60,28 +89,94 @@ def _install_mock_transport(monkeypatch, handler):
     monkeypatch.setattr(git_publisher.httpx, "AsyncClient", fake_client)
 
 
-def _happy_handler(calls):
-    def handler(request: httpx.Request) -> httpx.Response:
-        calls.append((request.method, request.url.path))
+class FakeGitHub:
+    """A GitHub git-data API that actually stores what you push at it.
+
+    A handler that answers every write with a canned 201 cannot exercise the
+    verification step at all — the read-back has nothing to read. This keeps a
+    real path→sha map so a test can ask the interesting question: what happens
+    when the tree that comes back is not the tree we sent?
+
+    `drop` names paths to swallow on the *first* commit only, simulating the
+    failure this verification exists to catch: every call returns 2xx and the
+    repo is still short a file.
+    """
+
+    def __init__(self, *, drop: set[str] | None = None, truncated: bool = False,
+                 tree_read_status: int = 200):
+        self.drop = set(drop or ())
+        self.truncated = truncated
+        self.tree_read_status = tree_read_status
+        self.calls: list[tuple[str, str]] = []
+        self.blobs: dict[str, str] = {}       # sha → content
+        self.trees: dict[str, dict] = {}      # tree sha → {path: blob sha}
+        self.commits: dict[str, str] = {}     # commit sha → tree sha
+        self._n = 0
+
+    def _next(self, prefix: str) -> str:
+        self._n += 1
+        return f"{prefix}{self._n}"
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.calls.append((request.method, request.url.path))
         p, m = request.url.path, request.method
+
         if p == "/user" and m == "GET":
             return httpx.Response(200, json={"login": "tester"})
         if p == "/user/repos" and m == "POST":
             return httpx.Response(201, json={"name": "myrepo", "default_branch": "main"})
         if p.endswith("/git/ref/heads/main") and m == "GET":
             return httpx.Response(200, json={"object": {"sha": "basecommit"}})
-        if "/git/commits/basecommit" in p and m == "GET":
-            return httpx.Response(200, json={"tree": {"sha": "basetree"}})
+
         if p.endswith("/git/blobs") and m == "POST":
-            return httpx.Response(201, json={"sha": "blobsha"})
+            content = json.loads(request.content)["content"]
+            sha = self._next("blob")
+            self.blobs[sha] = content
+            return httpx.Response(201, json={"sha": sha})
+
         if p.endswith("/git/trees") and m == "POST":
-            return httpx.Response(201, json={"sha": "newtree"})
+            body = json.loads(request.content)
+            entries = dict(self.trees.get(body.get("base_tree", ""), {}))
+            for item in body["tree"]:
+                if item["path"] in self.drop:
+                    continue            # accepted, silently not stored
+                entries[item["path"]] = item["sha"]
+            # Only the first commit loses files; the repair must be able to work.
+            self.drop = set()
+            sha = self._next("tree")
+            self.trees[sha] = entries
+            return httpx.Response(201, json={"sha": sha})
+
         if p.endswith("/git/commits") and m == "POST":
-            return httpx.Response(201, json={"sha": "newcommit"})
+            body = json.loads(request.content)
+            sha = self._next("commit")
+            self.commits[sha] = body["tree"]
+            return httpx.Response(201, json={"sha": sha})
+
+        if "/git/commits/" in p and m == "GET":
+            sha = p.rsplit("/", 1)[-1]
+            if sha == "basecommit":
+                return httpx.Response(200, json={"tree": {"sha": "basetree"}})
+            return httpx.Response(200, json={"tree": {"sha": self.commits[sha]}})
+
         if p.endswith("/git/refs/heads/main") and m == "PATCH":
             return httpx.Response(200, json={})
+
+        # The verification read: GET /git/trees/{commit_sha}?recursive=1
+        if "/git/trees/" in p and m == "GET":
+            if self.tree_read_status != 200:
+                return httpx.Response(self.tree_read_status, json={"message": "nope"})
+            sha = p.rsplit("/", 1)[-1]
+            entries = self.trees.get(self.commits.get(sha, ""), {})
+            return httpx.Response(200, json={
+                "truncated": self.truncated,
+                "tree": [
+                    {"path": path, "type": "blob", "sha": blob}
+                    for path, blob in entries.items()
+                ],
+            })
+
         return httpx.Response(500, json={"message": f"unexpected {m} {p}"})
-    return handler
 
 
 class TestGitPublisher:
@@ -90,8 +185,8 @@ class TestGitPublisher:
             GitPublisher(token="")
 
     def test_publish_full_sequence(self, monkeypatch):
-        calls: list[tuple[str, str]] = []
-        _install_mock_transport(monkeypatch, _happy_handler(calls))
+        gh = FakeGitHub()
+        _install_mock_transport(monkeypatch, gh)
 
         result = asyncio.run(
             GitPublisher("ghp_test").publish(
@@ -104,15 +199,14 @@ class TestGitPublisher:
         assert result.full_name == "tester/myrepo"
         assert result.repo_url == "https://github.com/tester/myrepo"
         assert result.branch == "main"
-        assert result.commit_sha == "newcommit"
         assert result.files_pushed == 2
 
-        methods = [c[0] for c in calls]
+        methods = [c[0] for c in gh.calls]
         assert methods.count("POST") >= 4          # 2 blobs + tree + commit
-        assert ("PATCH", "/repos/tester/myrepo/git/refs/heads/main") in calls
+        assert ("PATCH", "/repos/tester/myrepo/git/refs/heads/main") in gh.calls
 
     def test_empty_files_rejected(self, monkeypatch):
-        _install_mock_transport(monkeypatch, _happy_handler([]))
+        _install_mock_transport(monkeypatch, FakeGitHub())
         with pytest.raises(GitPublishError):
             asyncio.run(GitPublisher("ghp_test").publish("myrepo", {}))
 
@@ -135,6 +229,101 @@ class TestGitPublisher:
 
         with pytest.raises(GitPublishError, match="invalid or expired"):
             asyncio.run(GitPublisher("ghp_bad").publish("myrepo", {"a.txt": "hi"}))
+
+
+class TestPushVerification:
+    """"18 files pushed" has to mean 18 files are in the repo.
+
+    Every write in the sequence can return 2xx and still leave the branch short
+    — that is the failure these cover, and it is invisible without reading the
+    tree back. The user finds out days later, when CI runs a suite that is
+    missing a page object.
+    """
+
+    FILES = {
+        "src/App.tsx": "code",
+        "e2e/tests/login.spec.ts": "test('x', () => {})",
+        "e2e/package.json": "{}",
+        "README.md": "# demo",
+    }
+
+    def _publish(self, monkeypatch, gh, files=None):
+        _install_mock_transport(monkeypatch, gh)
+        return asyncio.run(
+            GitPublisher("ghp_test").publish("myrepo", files or self.FILES)
+        )
+
+    def test_every_file_is_confirmed_present_in_the_repo(self, monkeypatch):
+        gh = FakeGitHub()
+        result = self._publish(monkeypatch, gh)
+
+        assert result.verified is True
+        assert result.repaired_files == []
+        # The claim is checked against the repo's own tree, not our bookkeeping.
+        pushed = gh.trees[gh.commits[result.commit_sha]]
+        assert set(pushed) >= set(self.FILES)
+        assert result.files_pushed == len(self.FILES)
+
+    def test_content_is_verified_not_just_the_path(self, monkeypatch):
+        """A path present with the wrong blob is a mismatch, not a pass.
+
+        Git shas are content hashes, so this is decidable — and the failure it
+        catches (a truncated blob upload) leaves a file that exists and is
+        wrong, which is worse than one that's missing.
+        """
+        gh = FakeGitHub()
+        _install_mock_transport(monkeypatch, gh)
+        publisher = GitPublisher("ghp_test")
+
+        async def go():
+            async with httpx.AsyncClient() as client:
+                expected = [{"path": "a.ts", "sha": "blob-we-uploaded"}]
+                gh.commits["c1"] = "t1"
+                gh.trees["t1"] = {"a.ts": "some-other-sha"}
+                return await publisher._verify_tree(client, "tester", "myrepo", "c1", expected)
+
+        missing, note = asyncio.run(go())
+        assert missing == {"a.ts"}
+        assert note == ""
+
+    def test_a_file_lost_on_the_first_commit_is_re_pushed(self, monkeypatch):
+        gh = FakeGitHub(drop={"e2e/tests/login.spec.ts"})
+        result = self._publish(monkeypatch, gh)
+
+        assert result.repaired_files == ["e2e/tests/login.spec.ts"]
+        assert result.verified is True
+        # And it really is there now — checked against the repo, not the flag.
+        assert set(gh.trees[gh.commits[result.commit_sha]]) >= set(self.FILES)
+        assert any("pushed again" in w for w in result.warnings)
+
+    def test_repair_keeps_the_files_that_did_land(self, monkeypatch):
+        """The second commit must layer on the live tree, not the empty base —
+        otherwise fixing one missing file deletes the other three."""
+        gh = FakeGitHub(drop={"README.md"})
+        result = self._publish(monkeypatch, gh)
+        assert set(gh.trees[gh.commits[result.commit_sha]]) == set(self.FILES)
+
+    def test_a_file_still_missing_after_the_retry_is_an_error(self, monkeypatch):
+        class NeverStores(FakeGitHub):
+            def __call__(self, request):
+                self.drop = {"e2e/tests/login.spec.ts"}   # re-arm on every call
+                return super().__call__(request)
+
+        with pytest.raises(GitPublishError, match="not in the repository"):
+            self._publish(monkeypatch, NeverStores())
+
+    def test_unreadable_tree_is_reported_not_guessed(self, monkeypatch):
+        """We could not check. That is not the same as "files are missing", and
+        it is not the same as "verified" either — say which it is."""
+        result = self._publish(monkeypatch, FakeGitHub(tree_read_status=502))
+        assert result.verified is False
+        assert "confirm every file arrived" in result.verification_note
+        assert result.repaired_files == []
+
+    def test_truncated_tree_is_reported_not_guessed(self, monkeypatch):
+        result = self._publish(monkeypatch, FakeGitHub(truncated=True))
+        assert result.verified is False
+        assert "too large" in result.verification_note
 
 
 class TestForbiddenReason:
