@@ -851,6 +851,66 @@ export async function saveGeminiKey(
   return res.json();
 }
 
+/** Read an image file and return a small square PNG data URI.
+ *
+ *  Resized in the browser rather than on the server: it keeps the payload inside
+ *  the size cap without the backend needing an image library, and `data:` is the
+ *  one image source the site's CSP allows without opening `img-src` to a third
+ *  party. 256px is enough for the largest place an avatar is drawn.
+ *
+ *  Centre-cropped to a square so a portrait photo isn't squashed. */
+export function imageFileToSquareDataUrl(file: File, size = 256): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith("image/")) {
+      reject(new Error("That file isn't an image."));
+      return;
+    }
+    if (file.type === "image/svg+xml") {
+      // Refused here as well as on the server, so the user finds out before the
+      // upload rather than after it.
+      reject(new Error("SVG images aren't supported — please use a PNG or JPEG."));
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Your browser couldn't process the image.");
+        // Centre crop: take the largest square the image contains.
+        const side = Math.min(img.width, img.height);
+        ctx.drawImage(
+          img,
+          (img.width - side) / 2, (img.height - side) / 2, side, side,
+          0, 0, size, size,
+        );
+        resolve(canvas.toDataURL("image/png"));
+      } catch (e: any) {
+        reject(new Error(e?.message || "Couldn't process that image."));
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("That image couldn't be read. Try a different file."));
+    };
+    img.src = url;
+  });
+}
+
+/** Set (or clear, with "") the signed-in user's profile picture. */
+export async function saveAvatar(image: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/profile/avatar`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ image }),
+  });
+  if (!res.ok) await parseError(res, "Could not update your picture");
+  return (await res.json()).message || "";
+}
+
 /** Revoke every session, including this one — so drop the local token too. */
 export async function logoutEverywhere(): Promise<string> {
   const res = await fetch(`${API_BASE}/api/auth/logout-all`, {

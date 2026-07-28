@@ -49,7 +49,7 @@ from models.schemas import (
     CliAuthStartResponse, CliAuthApproveRequest, CliAuthTokenRequest,
     CliAuthTokenResponse,
     EmailRequest, TokenRequest, ResetPasswordRequest, VerifyOtpRequest,
-    SimpleResponse, ChangePasswordRequest, DeleteAccountRequest,
+    SimpleResponse, ChangePasswordRequest, DeleteAccountRequest, AvatarRequest,
     UserSettings, UserSettingsResponse,
     AdminUser, AdminUserList, AdminUserDetail, AdminSetPlanRequest,
     AdminSuspendRequest, AdminSetUsageRequest, AdminOverview, AdminSystem,
@@ -1523,6 +1523,26 @@ async def profile(ctx: dict = Depends(require_user)):
 # scrolling for rows the user can already see in more detail elsewhere.
 DASHBOARD_FEED_LIMIT = 8
 DASHBOARD_SERIES_DAYS = 30
+
+
+@app.put("/api/profile/avatar", response_model=SimpleResponse,
+         dependencies=[Depends(rate_limit(analyze_limiter))])
+async def set_avatar(payload: AvatarRequest, ctx: dict = Depends(require_user)):
+    """Set or clear the signed-in user's profile picture.
+
+    Stored on the user row as a data URI (see AvatarRequest for why), so there is
+    no upload directory to secure, no static route to serve, and nothing left
+    behind when an account is deleted.
+    """
+    store.update_user(ctx["user_id"], avatar_url=payload.image or None)
+    logger.info(
+        f"{'Set' if payload.image else 'Removed'} profile picture for {ctx['user_id']}"
+    )
+    return SimpleResponse(
+        success=True,
+        message="Picture updated." if payload.image else
+                "Picture removed — your initial will be shown instead.",
+    )
 
 
 @app.get("/api/dashboard")

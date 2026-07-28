@@ -328,3 +328,71 @@ class TestSecurityHeaders:
         if r.status_code == 404:
             pytest.skip("docs disabled in this configuration")
         assert "Content-Security-Policy" not in r.headers
+
+
+# ── 5. profile pictures ──────────────────────
+
+class TestAvatar:
+    """A picture is user-supplied content that every page renders, so the
+    interesting cases are what must be refused."""
+
+    def _png(self, n=40):
+        import base64
+        return "data:image/png;base64," + base64.b64encode(b"x" * n).decode()
+
+    def _auth(self, client):
+        client.store.create_user({"id": "u1", "email": "a@b.c", "password_hash": "x",
+                                  "email_verified": 1})
+        return {"Authorization": f"Bearer {auth_svc.create_login_session('u1')}"}
+
+    def test_a_png_is_accepted_and_stored(self, client):
+        h = self._auth(client)
+        r = client.put("/api/profile/avatar", json={"image": self._png()}, headers=h)
+        assert r.status_code == 200, r.text
+        assert client.store.get_user_by_id("u1")["avatar_url"].startswith("data:image/png")
+
+    def test_svg_is_refused(self, client):
+        """The one that matters. An SVG is a document that can carry <script>;
+        browsers mostly refuse to run it inside an <img>, but that is their
+        behaviour to change, not ours to rely on."""
+        import base64
+        svg = "data:image/svg+xml;base64," + base64.b64encode(
+            b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+        ).decode()
+        r = client.put("/api/profile/avatar", json={"image": svg}, headers=self._auth(client))
+        assert r.status_code == 422
+        assert "SVG" in r.text
+
+    def test_a_remote_url_is_refused(self, client):
+        """Only data: URIs. A remote URL would be fetched by every viewer's
+        browser, turning a profile picture into a tracking pixel."""
+        r = client.put("/api/profile/avatar",
+                       json={"image": "https://evil.example/track.png"},
+                       headers=self._auth(client))
+        assert r.status_code == 422
+
+    def test_an_oversized_picture_is_refused(self, client):
+        import base64
+        big = "data:image/png;base64," + base64.b64encode(b"x" * (300 * 1024)).decode()
+        r = client.put("/api/profile/avatar", json={"image": big},
+                       headers=self._auth(client))
+        assert r.status_code == 422
+        assert "too large" in r.text
+
+    def test_malformed_base64_is_refused(self, client):
+        r = client.put("/api/profile/avatar",
+                       json={"image": "data:image/png;base64,!!!not-base64!!!"},
+                       headers=self._auth(client))
+        assert r.status_code == 422
+
+    def test_empty_clears_the_picture(self, client):
+        h = self._auth(client)
+        client.put("/api/profile/avatar", json={"image": self._png()}, headers=h)
+        r = client.put("/api/profile/avatar", json={"image": ""}, headers=h)
+        assert r.status_code == 200
+        assert not client.store.get_user_by_id("u1")["avatar_url"]
+        assert "initial" in r.json()["message"]
+
+    def test_it_requires_a_session(self, client):
+        r = client.put("/api/profile/avatar", json={"image": self._png()})
+        assert r.status_code in (401, 403)

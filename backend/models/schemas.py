@@ -154,6 +154,54 @@ class VerifyOtpRequest(BaseModel):
     code: str
 
 
+class AvatarRequest(BaseModel):
+    """A profile picture, as a data: URI.
+
+    Sent as a data URI rather than multipart because the browser has already
+    resized it to a small square on a canvas, and because `data:` is the one
+    image source the site's CSP allows without opening `img-src` to a third
+    party. It therefore needs no upload directory, no static route, and no
+    cleanup job — the picture lives in the same row as the user.
+
+    Pass "" to remove the picture and fall back to the initial.
+    """
+    image: str
+
+    @field_validator("image")
+    @classmethod
+    def validate_image(cls, v):
+        v = (v or "").strip()
+        if not v:
+            return ""
+
+        # SVG is refused explicitly, and this is the important line here. An SVG
+        # is a document, not a bitmap: it can carry <script>, and although most
+        # browsers refuse to run it inside an <img>, that protection is a browser
+        # behaviour rather than something this application controls. A raster
+        # allow-list is a decision we can actually enforce.
+        allowed = ("data:image/png;base64,", "data:image/jpeg;base64,",
+                   "data:image/webp;base64,")
+        if not v.startswith(allowed):
+            raise ValueError(
+                "The picture must be a PNG, JPEG or WebP. (SVG is not accepted.)"
+            )
+
+        # ~256 KB of base64 ≈ a 190 KB image, which is generous for a 256px
+        # square. The cap matters because this string goes in a database row
+        # that is read on every authenticated request.
+        if len(v) > 256 * 1024:
+            raise ValueError("That picture is too large — please use one under about 190 KB.")
+
+        # It has to actually decode. Otherwise a malformed string is stored and
+        # every page that renders it shows a broken image instead.
+        import base64
+        try:
+            base64.b64decode(v.split(",", 1)[1], validate=True)
+        except Exception:
+            raise ValueError("That image could not be read. Try a different file.")
+        return v
+
+
 class ChangePasswordRequest(BaseModel):
     """The current password is required even though the caller already holds a
     session: a session proves the tab is logged in, not that the person at the
