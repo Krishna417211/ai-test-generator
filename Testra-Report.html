@@ -244,13 +244,14 @@
       <li><a href="#s16">Security scanning</a></li>
       <li><a href="#s17">Accounts, billing, admin</a></li>
       <li><a href="#s18">Frontend</a></li>
-      <li><a href="#s19">Testing &amp; CI</a></li>
-      <li><a href="#s20">Deployment</a></li>
-      <li><a href="#s21">Benchmarking</a></li>
-      <li><a href="#s22">Limitations</a></li>
-      <li><a href="#s23">Roadmap &amp; future enhancements</a></li>
-      <li><a href="#s24">Conclusion</a></li>
-      <li><a href="#s25">Glossary</a></li>
+      <li><a href="#s19">The command-line client</a></li>
+      <li><a href="#s20">Testing &amp; CI</a></li>
+      <li><a href="#s21">Deployment</a></li>
+      <li><a href="#s22">Benchmarking</a></li>
+      <li><a href="#s23">Limitations</a></li>
+      <li><a href="#s24">Roadmap &amp; future enhancements</a></li>
+      <li><a href="#s25">Conclusion</a></li>
+      <li><a href="#s26">Glossary</a></li>
     </ol>
   </nav>
 
@@ -277,7 +278,7 @@
     <!-- 1 -->
     <section id="s1">
       <h2><span class="num">01</span>Abstract</h2>
-      <p>Testra is a full-stack web application that converts a source repository into a complete, ready-to-run end-to-end (E2E) test suite. A user supplies a GitHub URL or a ZIP archive; Testra filters the repository down to browser-facing files, has one LLM agent build a structured reading of the project, has a second LLM agent write Page Object Model classes and specification files grounded in selectors extracted from the real source, verifies every selector it produced, repairs the ones that failed, grades the suite for long-term durability, and delivers the result as a downloadable archive or a freshly published GitHub repository with working CI.</p>
+      <p>Testra is a full-stack web application that converts a source repository into a complete, ready-to-run end-to-end (E2E) test suite. A user supplies a GitHub URL or a ZIP archive; Testra filters the repository down to browser-facing files, has one LLM agent build a structured reading of the project, has a second LLM agent write Page Object Model classes and specification files grounded in selectors extracted from the real source, verifies every selector it produced, repairs the ones that failed, grades the suite for long-term durability, scores the run against the checks it can actually perform, and delivers the result as a downloadable archive or a freshly published GitHub repository with working CI. A zero-dependency command-line client publishes the same way from inside the project, where the project's own ignore rules apply and credentials can be caught before anything is transmitted.</p>
       <p>Two machine-learning components sit inside that pipeline. The first is a <strong>logistic-regression classifier implemented from scratch</strong> — no numpy, no scikit-learn — that learns which files in a given codebase are actually worth testing. The second is a <strong>linear weighted scorer</strong> that predicts how likely each generated selector is to break as the application evolves. Both are deliberately small, fully inspectable, and serialized to human-readable JSON.</p>
       <p>The organising principle of the project is <strong>evidential honesty</strong>: the system never asserts a property it did not measure. It reports that a selector provably resolves to a real element; it never claims the test will pass, because it never executes the suite.</p>
       <div class="grid g4">
@@ -346,12 +347,13 @@
         <span class="cm">│</span> Gemini → Groq → Claude<span class="cm">│</span>                <span class="cm">│</span> durable · TTL-pruned   <span class="cm">│</span>
         <span class="cm">│</span> rotation · 429 cooldown<span class="cm">│</span>               <span class="cm">│</span> survives restarts      <span class="cm">│</span>
         <span class="cm">└───────────────────────┘</span>                <span class="cm">└────────────────────────┘</span></pre>
-      <h3>The two working flows</h3>
-      <p>Testra has two entry points, and they differ in <em>what the suite is written from</em>. The distinction matters more than any other design decision in the system, so it is worth stating before the step lists.</p>
+      <h3>The working flows</h3>
+      <p>There are two <em>pipelines</em>, and they differ in <em>what the suite is written from</em>. That distinction matters more than any other design decision in the system, so it is worth stating before the step lists.</p>
       <div class="grid g2">
         <div class="card"><span class="tag">Generate · crawl-first</span><h4>Written from the live site</h4><p>The user supplies a GitHub URL <em>and</em> a hosted URL. Testra renders and crawls the deployed application and writes tests from its real, rendered DOM. Repository file contents are never sent to the model at all — the repo is touched only to confirm access, name the stack, and later publish the suite back.</p></div>
-        <div class="card"><span class="tag">Publish · source-first</span><h4>Written from the source</h4><p>The user uploads a project ZIP. Testra filters it, optionally generates a validated suite from the source files, folds it in, and pushes the whole thing to a brand-new GitHub repository in a single commit.</p></div>
+        <div class="card"><span class="tag">Publish · source-first</span><h4>Written from the source</h4><p>The project is filtered, a validated suite is optionally generated from its source files and folded in, and the whole thing is pushed to a brand-new GitHub repository in a single commit.</p></div>
       </div>
+      <p>The publish pipeline has <strong>two front doors</strong>. The browser takes a ZIP the user assembled by hand; the command-line client (§19) runs inside the project instead, so the project's own <code>.gitignore</code> decides what is uploaded and credentials are detected before anything is transmitted rather than after it arrives. Both reach the same <code>/api/publish-zip</code> and the same pipeline below — only the way the files are gathered differs, and that difference is the whole reason the CLI exists.</p>
 
       <h3>Flow 1 — generate (crawl-first)</h3>
       <ol class="body">
@@ -390,7 +392,8 @@
           <tr><td>Security</td><td>OWASP ZAP (opt-in daemon)</td><td>Active scanning without bundling it into the default runtime</td></tr>
           <tr><td>Packaging</td><td>Docker · docker-compose</td><td>One command to run the whole system, profiles for optional services</td></tr>
           <tr><td>Serving</td><td>Caddy</td><td>Automatic TLS, static frontend, reverse proxy to the API</td></tr>
-          <tr><td>CI</td><td>GitHub Actions</td><td>Backend matrix across three Python versions plus a frontend build on every push</td></tr>
+          <tr><td>CLI</td><td>Node &ge;18, zero dependencies</td><td>Publishes from inside the project; standard library only, so there is no dependency tree to audit (&sect;19)</td></tr>
+          <tr><td>CI</td><td>GitHub Actions</td><td>Backend matrix across three Python versions, a frontend build, and the CLI suite on Node 20 and 18</td></tr>
         </tbody>
       </table></div>
     </section>
@@ -805,28 +808,67 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
 
     <!-- 19 -->
     <section id="s19">
-      <h2><span class="num">19</span>Testing and continuous integration</h2>
-      <p>The backend carries <strong>1026 automated tests across 35 suites</strong> — roughly one test file per service, covering the extractor and scoring, framework detection, router failover and key rotation, writer-agent logic, grounding, fragility, the importance model, validation, the store, quota, billing, authentication, both OAuth flows, the publisher and its push verification, credential exclusion, path safety, the success-rate scorer, the scaffold, the security scanner and the ZAP integration.</p>
-      <div class="grid g4">
-        <div class="card stat"><span class="n">1026</span><span class="l">tests</span></div>
-        <div class="card stat"><span class="n">35</span><span class="l">test suites</span></div>
-        <div class="card stat"><span class="n">3</span><span class="l">Python versions in CI</span></div>
-        <div class="card stat"><span class="n">867</span><span class="l">lines in the largest suite (security scanner)</span></div>
+      <h2><span class="num">19</span>The command-line client</h2>
+      <p>The web application can only ever be handed an archive somebody made by hand, and that is a real limit rather than an inconvenience. It cannot know which files the project considers its own, and it cannot inspect anything until the bytes have already crossed the network. <code>cli/</code> is a small Node package (<code>npx testra</code>) that runs <em>inside</em> the project and closes both gaps.</p>
+
+      <h3>What running in the project buys</h3>
+      <div class="grid g2">
+        <div class="card"><span class="tag">cli/src/collect.js</span><h4>The user's own ignore rules</h4><p>Files come from <code>git ls-files -co --exclude-standard</code> — git's answer to "what belongs to this project", honouring nested <code>.gitignore</code>s, <code>.git/info/exclude</code> and the global excludes file. The server must guess with a fixed skip-list that knows <code>node_modules</code> and <code>dist</code> but not <code>.turbo</code>, <code>.astro</code>, or whatever this year's build tool named its cache. The project's own ignore file already lists them.</p></div>
+        <div class="card"><span class="tag">cli/src/secrets.js</span><h4>Credentials that never leave the machine</h4><p>The scan of §12 runs <em>before</em> the upload rather than after it. On the web, the server is the earliest point at which a <code>.env</code> can be caught, and by then it has already been transmitted. Here it never is. The server re-scans regardless — defence in depth — so the layers fail safe in only one direction.</p></div>
       </div>
-      <div class="note"><span class="tag">How the safety tests are written</span>The suites for <code>secrets_guard</code>, <code>safe_paths</code> and push verification are written from the <em>failure's</em> point of view rather than the code's: each case names a file someone really does have in their working tree, or a repository state that really does occur. That framing found two live defects — a <code>lstrip("./")</code> that turned <code>.env</code> into <code>env</code> and let it through, and a dedupe that renamed <code>login.spec.ts</code> to <code>login.spec-2.ts</code>, producing a valid file the test runner would never collect. Neither would have been caught by tests written to confirm the implementation does what it says.</div>
-      <p>CI (<code>.github/workflows/ci.yml</code>) runs the backend matrix across Python 3.11, 3.12 and 3.13 plus a frontend build on every push. Linting is Ruff.</p>
+      <p>It also runs headlessly in CI with a token from a secret store, which the upload page cannot do at all.</p>
+
+      <h3>Zero dependencies, and why that is load-bearing</h3>
+      <p>The package declares no runtime dependencies and uses only Node's standard library. For a tool whose stated value is "your credentials never leave this machine", every transitive dependency is something a reviewer has to take on trust — so the ZIP encoder is written against <code>node:zlib</code> (roughly a hundred lines: CRC-32, local and central headers, EOCD) and the flag parser is <code>node:util</code>.</p>
+      <div class="note"><span class="tag">How a hand-rolled encoder is made defensible</span>Not by inspection. <code>backend/tests/test_cli_zip.py</code> builds archives with the CLI's encoder and extracts them with <code>services.file_extractor.extract_zip()</code> — the exact function <code>/api/publish-zip</code> calls — asserting the round-trip byte for byte, and Python's <code>zipfile.testzip()</code> independently verifies every CRC. Unicode paths, empty files, CRLF and a 600-entry archive are all covered. If the encoder is wrong, it fails against its real consumer rather than against a mock of one.</div>
+
+      <h3>Signing in without a password — RFC 8628</h3>
+      <p>A command-line tool cannot own a browser redirect: it may be running over SSH on a machine with no browser and no way to receive a loopback callback. The device authorization grant solves exactly this. The CLI requests a short code, the user approves that code in a browser <em>anywhere</em> — a phone is sufficient — and the CLI polls until the approval lands. <strong>The password never passes through the CLI at all.</strong></p>
+      <p>Two codes are issued, and conflating them would be the security bug in this design:</p>
+      <div class="scroller"><table>
+        <thead><tr><th></th><th><code>device_code</code></th><th><code>user_code</code></th></tr></thead>
+        <tbody>
+          <tr><td>Shape</td><td>43 random characters</td><td><code>ABCD-EFGH</code></td></tr>
+          <tr><td>Held by</td><td>the CLI, never displayed</td><td>the human, read off one screen and typed into another</td></tr>
+          <tr><td>Is it secret?</td><td><strong>Yes</strong> — possession entitles the bearer to collect the session token</td><td><strong>No</strong> — it is designed to be shown, and grants nothing on its own</td></tr>
+          <tr><td>Defence</td><td>entropy; returned exactly once, then destroyed</td><td>needs an authenticated browser session to approve; 10-minute life; hard submission cap</td></tr>
+        </tbody>
+      </table></div>
+      <p>The signed-in browser session is the entire authorisation: the token the terminal receives belongs to whoever approved it. The <code>user_code</code> alone approves nothing, which is what makes it safe to display.</p>
+      <div class="note"><span class="tag">A rate limit on the wrong endpoint</span>The intuitive move is to throttle the endpoint that <em>mints</em> codes. It is wrong twice: minting hands the caller a code they already know, so it buys an attacker nothing, and a strict per-IP cap there locks out an entire office behind one NAT address — these buckets are per-IP. The tight cap belongs on code <em>submission</em>, the only brute-force surface, where ten attempts per ten minutes puts a 6.6&times;10<sup>11</sup> space many orders of magnitude out of reach within a code's lifetime. A test pins the reasoning so it is not "simplified" later.</div>
+      <p>The browser half (<code>/cli</code>) is written as a consent screen rather than a confirmation dialog, because it must be possible to arrive there having <em>not</em> started a login: a prefilled code is never auto-approved, Reject is a peer of Approve rather than a cancel link, and the page states what approving grants before granting it.</p>
+
+      <h3>What the CLI cannot do</h3>
+      <p>It publishes; it does not generate from a live crawl. That flow needs a headless browser driving the deployed site, which belongs on the server (§04). The CLI's scope is deliberately the one flow where running beside the source is an advantage.</p>
+      <p class="plain"><span class="lbl">In plain words</span>The website has to be handed a folder in a box. The terminal tool is already standing in the folder — so it can read the project's own list of what to ignore, and it can check for passwords before anything is posted rather than after it arrives. And signing in never involves typing your password into the terminal: it shows you a short code, you tap approve on your phone, and it carries on.</p>
     </section>
 
     <!-- 20 -->
     <section id="s20">
-      <h2><span class="num">20</span>Deployment</h2>
-      <p>The whole system runs with one command: <code>docker compose up</code> — frontend on port 5173, API on 8000, interactive OpenAPI docs at <code>/docs</code>. Optional active scanning is a compose profile rather than a default dependency.</p>
-      <p>Production is containerised behind Caddy for automatic TLS and static serving, with <code>deploy/aws-setup.sh</code> and <code>deploy/bootstrap.sh</code> provisioning the host and <code>deploy/docker-compose.prod.yml</code> describing the production topology. Configuration is typed via <code>pydantic-settings</code>; logging is structured JSON with request IDs correlating every line of a request.</p>
+      <h2><span class="num">20</span>Testing and continuous integration</h2>
+      <p>The backend carries <strong>1026 automated tests across 35 suites</strong> — roughly one test file per service, covering the extractor and scoring, framework detection, router failover and key rotation, writer-agent logic, grounding, fragility, the importance model, validation, the store, quota, billing, authentication, both OAuth flows, the publisher and its push verification, credential exclusion, path safety, the success-rate scorer, the scaffold, the security scanner and the ZAP integration.</p>
+      <div class="grid g4">
+        <div class="card stat"><span class="n">1026</span><span class="l">backend tests</span></div>
+        <div class="card stat"><span class="n">47</span><span class="l">CLI tests</span></div>
+        <div class="card stat"><span class="n">35</span><span class="l">backend suites</span></div>
+        <div class="card stat"><span class="n">3</span><span class="l">Python versions in CI</span></div>
+      </div>
+      <p>The CLI carries a further <strong>47 tests</strong> on Node's built-in runner, covering the ZIP encoder, the file collector against a real temporary git repository, the NDJSON reader, and the device-code login driven end to end against a local HTTP server.</p>
+      <div class="note"><span class="tag">How the safety tests are written</span>The suites for <code>secrets_guard</code>, <code>safe_paths</code> and push verification are written from the <em>failure's</em> point of view rather than the code's: each case names a file someone really does have in their working tree, or a repository state that really does occur. That framing found two live defects — a <code>lstrip("./")</code> that turned <code>.env</code> into <code>env</code> and let it through, and a dedupe that renamed <code>login.spec.ts</code> to <code>login.spec-2.ts</code>, producing a valid file the test runner would never collect. Neither would have been caught by tests written to confirm the implementation does what it says.</div>
+      <p>CI (<code>.github/workflows/ci.yml</code>) runs the backend matrix across Python 3.11, 3.12 and 3.13, a frontend type-check and build, and the CLI suite on Node 20 <em>and</em> Node 18 — the floor declared in its <code>engines</code>. Linting is Ruff. Deployment is gated on all three jobs.</p>
+      <div class="note"><span class="tag">A green tick is not evidence</span>The CLI job was added invoking <code>node --test "test/**/*.test.js"</code>, which passes on Node 22 — where the runner expands globs itself — and matches nothing on 18 and 20, where the quoted string is taken as a literal path. It failed loudly there, which was lucky: a job that runs <em>zero</em> tests otherwise exits 0 and is indistinguishable from one that passes. The invocation is now shell-expanded, and the fix was confirmed by reading <code># tests 47</code> out of the job log on both versions rather than by trusting the tick. The multi-version matrix earned its keep on the first commit that used it.</div>
     </section>
 
     <!-- 21 -->
     <section id="s21">
-      <h2><span class="num">21</span>Benchmarking</h2>
+      <h2><span class="num">21</span>Deployment</h2>
+      <p>The whole system runs with one command: <code>docker compose up</code> — frontend on port 5173, API on 8000, interactive OpenAPI docs at <code>/docs</code>. Optional active scanning is a compose profile rather than a default dependency.</p>
+      <p>Production is containerised behind Caddy for automatic TLS and static serving, with <code>deploy/aws-setup.sh</code> and <code>deploy/bootstrap.sh</code> provisioning the host and <code>deploy/docker-compose.prod.yml</code> describing the production topology. Configuration is typed via <code>pydantic-settings</code>; logging is structured JSON with request IDs correlating every line of a request.</p>
+    </section>
+
+    <!-- 22 -->
+    <section id="s22">
+      <h2><span class="num">22</span>Benchmarking</h2>
       <p><code>services/benchmark.py</code> runs the grounding and fragility analysis over a set of <em>(repository, generated suite)</em> cases and prints a markdown leaderboard. It reports:</p>
       <ul>
         <li><strong>Verified-selector rate</strong> — of every selector the model wrote, the fraction that provably resolves to a real element in the source or the live DOM. Pooled and per-repository.</li>
@@ -836,9 +878,9 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
       <div class="note"><span class="tag">Why this metric</span>Because Testra never executes the generated suite, "pass rate" would be an invented number. "Selectors provably resolve" is the strongest claim the system can actually support, so it is the one reported.</div>
     </section>
 
-    <!-- 22 -->
-    <section id="s22">
-      <h2><span class="num">22</span>Limitations</h2>
+    <!-- 23 -->
+    <section id="s23">
+      <h2><span class="num">23</span>Limitations</h2>
       <p>The project ships a model card (<code>docs/LIMITATIONS.md</code>). The green "passed a syntax check" badge means each generated file passed a <strong>static structural check only</strong>. It does <em>not</em> mean the tests were executed, that the selectors resolve against your running application, or that the assertions pass.</p>
       <p>The same qualification governs the generation success rate of §11, and is the most important sentence to carry away from this report: <strong>it is not a pass rate.</strong> A suite can score 100 and still fail on its first run — every planned file was written, all of it parses, every selector exists somewhere in the application, and the assertion about what the page does after clicking is still the model's guess. The score measures the quality of the <em>generation</em>, which is the only thing measurable without executing anything, and the API ships that caveat in the payload so no client can display the number without it.</p>
       <div class="grid g2">
@@ -852,9 +894,9 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
       <p class="plain"><span class="lbl">In plain words</span>Saying "I checked <b>this</b> much, and no further" is not a weakness in the project. It is the thing that makes everything else it says believable.</p>
     </section>
 
-    <!-- 23 -->
-    <section id="s23">
-      <h2><span class="num">23</span>Roadmap and future enhancements</h2>
+    <!-- 24 -->
+    <section id="s24">
+      <h2><span class="num">24</span>Roadmap and future enhancements</h2>
       <p>Ordered by how much each would change what the system can honestly claim, not by how hard it is to build. The first item is the one that would retire the largest caveat in this report.</p>
 
       <h3>Near term — closing the measurement gap</h3>
@@ -870,7 +912,8 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
         <li><strong>Retrieval-based context selection.</strong> Per-provider context budgeting with embedding retrieval over the repository, so very large codebases stop relying on the summarization path that currently degrades selector accuracy.</li>
         <li><strong>Re-fit both models on real outcomes.</strong> Retrain the logistic regression on which files actually produced verified, low-fragility selectors, and re-fit <code>FEATURE_WEIGHTS</code> from observed selector breakage in real repositories over time. The plumbing for both already exists and is unused only because the outcome data does not exist yet — which sandboxed execution would produce.</li>
         <li><strong>Weight the success rate empirically.</strong> The four component weights in §11 are reasoned, not fitted. Once real pass/fail data exists, they can be regressed against it, so the score predicts something measured instead of encoding a judgement about which failure hurts most.</li>
-        <li><strong>Incremental publishing.</strong> Push into an existing repository on a branch with a pull request, instead of only creating a new one. This is the most-requested capability the current design cannot express, and it makes the collision handling in §12 load-bearing rather than defensive.</li>
+        <li><strong>Incremental publishing.</strong> Push into an existing repository on a branch with a pull request, instead of only creating a new one. This is the most-requested capability the current design cannot express, and it makes the collision handling in §12 load-bearing rather than defensive. It matters most from the CLI (§19), which already runs where the repository is.</li>
+        <li><strong>A capture extension for the browser.</strong> The crawler follows links and application routes; it does not drive the interface, so a modal, a wizard step or a menu that only opens on click is never visited, and its selectors are never grounded (§23). A browser extension would let the user navigate to the exact state they want tested — a cart with three items, step two of checkout — and capture the anchors from the page in front of them, with no credentials handed over at all. The wire format already exists: <code>grounding.index_to_dicts()</code> is what the crawl-first flow already persists, so the writer's crawl-only mode would consume it unchanged.</li>
       </ol>
 
       <h3>Longer term — product surface</h3>
@@ -882,17 +925,17 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
       </ol>
     </section>
 
-    <!-- 24 -->
-    <section id="s24">
-      <h2><span class="num">24</span>Conclusion</h2>
+    <!-- 25 -->
+    <section id="s25">
+      <h2><span class="num">25</span>Conclusion</h2>
       <p>Testra takes a task that is universally agreed to be valuable and universally avoided — writing end-to-end tests — and reduces it to pasting a URL. The engineering interest is not that it calls a language model; almost anything can call a language model. It is the apparatus built <em>around</em> the model: a deterministic pre-filter that spends no tokens, a learned classifier that adapts file selection to the codebase in front of it, a grounding layer that traces every generated selector back to the line of source it came from, a repair loop that fixes misses with evidence rather than with another guess, a durability model that grades what will still work next quarter, and a benchmark that refuses to flatter itself with a convenient denominator.</p>
       <p>The two ML components embody the project's technical thesis: prefer the small, explainable thing. A 226-line logistic regression with named weights, readable JSON and a safe fallback path is a better engineering answer than a dependency-heavy black box when the model is small, the data is thin, and somebody will eventually need to ask <em>why did it score that file a 9?</em></p>
       <p class="plain"><span class="lbl">In plain words</span>A robot that checks your website, written by a robot that read your website — and a receipt showing exactly what was checked, and what wasn't.</p>
     </section>
 
-    <!-- 25 -->
-    <section id="s25">
-      <h2><span class="num">25</span>Glossary</h2>
+    <!-- 26 -->
+    <section id="s26">
+      <h2><span class="num">26</span>Glossary</h2>
       <div class="scroller"><table>
         <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
         <tbody>

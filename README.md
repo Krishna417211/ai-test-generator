@@ -299,6 +299,7 @@ server** (Playwright + Chromium, installed by `backend/Dockerfile`); without one
 Shipped:
 
 - [x] Crawl-first generation from the live DOM · ZIP upload · publish to a new repo
+- [x] Zero-dependency CLI (`npx testra`) with device-code login
 - [x] Two-agent pipeline · multi-provider key rotation with provenance
 - [x] Playwright / Cypress / Selenium, Page Object Models, GitHub Actions + GitLab CI
 - [x] Selector grounding with file:line provenance, and the self-heal loop
