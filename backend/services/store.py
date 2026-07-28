@@ -8,6 +8,7 @@ FilterResult from Agent 1, the original request, and any streamed output.
 """
 
 import os
+import hashlib
 import json
 import time
 import uuid
@@ -124,6 +125,28 @@ class JobStore:
                 )
                 """
             )
+            # One-time migration to hashed session keys (see _skey).
+            #
+            # Rows written before that change hold the token itself in
+            # session_id. Hashing them in place is exactly what a lookup will now
+            # compute, so the migration is lossless: nobody is logged out.
+            #
+            # PRAGMA user_version is the guard, and it has to be a guard rather
+            # than a heuristic — a second run would hash the hashes and log out
+            # every user at once, with no way back. It is set inside the same
+            # transaction as the rewrite, so a crash mid-migration rolls both
+            # back and the next start retries cleanly.
+            if c.execute("PRAGMA user_version").fetchone()[0] < 1:
+                rows = c.execute("SELECT session_id FROM sessions").fetchall()
+                for (raw,) in rows:
+                    c.execute(
+                        "UPDATE sessions SET session_id = ? WHERE session_id = ?",
+                        (self._skey(raw), raw),
+                    )
+                if rows:
+                    logger.info(f"Migrated {len(rows)} session key(s) to hashed storage")
+                c.execute("PRAGMA user_version = 1")
+
             # User accounts (email/password and/or GitHub-linked).
             c.execute(
                 """
@@ -330,13 +353,44 @@ class JobStore:
 
     # ── OAuth sessions ───────────────────────
 
+    # ── session key hashing ──────────────────
+    #
+    # The `sessions` table is keyed by a HASH of the token, never the token.
+    #
+    # A session token is a bearer credential: whoever holds it is the user, with
+    # no second factor to stop them. Stored verbatim, this table turned any
+    # read-only glimpse of the database — a leaked backup, a stray volume
+    # snapshot, an SQL injection anywhere in the app, a support engineer with a
+    # copy — into live account takeover for every signed-in user simultaneously.
+    # Hashed, the same glimpse yields nothing usable: the digest cannot be
+    # presented as a token, and there is no cheap inversion because the input is
+    # 32 bytes of `secrets.token_urlsafe` rather than a guessable password.
+    #
+    # This is why it is done HERE rather than at the call sites. Every reader and
+    # writer of the table goes through these methods, so hashing inside them
+    # makes it structurally impossible for a new endpoint to store a raw token by
+    # forgetting a helper — the mistake is not available.
+    #
+    # Plain SHA-256, deliberately, with no salt and no work factor: those defend
+    # guessable secrets, and this input is already high-entropy and random. A
+    # per-row salt would also break the primary-key lookup that makes session
+    # validation a single indexed read on the hot path of every request.
+    #
+    # The same protection extends to the OAuth CSRF states, the CLI device codes
+    # and the user codes that share this table, because they share these methods.
+    @staticmethod
+    def _skey(session_id: str) -> str:
+        if not session_id:
+            return ""
+        return hashlib.sha256(session_id.encode("utf-8")).hexdigest()
+
     def create_session(self, session_id: str, data: dict, ttl_seconds: int) -> None:
         now = time.time()
         with self._lock, self._conn() as c:
             c.execute(
                 "INSERT OR REPLACE INTO sessions (session_id, created_at, expires_at, data) "
                 "VALUES (?, ?, ?, ?)",
-                (session_id, now, now + ttl_seconds, json.dumps(data)),
+                (self._skey(session_id), now, now + ttl_seconds, json.dumps(data)),
             )
 
     def get_session(self, session_id: str) -> dict | None:
@@ -344,7 +398,7 @@ class JobStore:
             return None
         with self._lock, self._conn() as c:
             row = c.execute(
-                "SELECT data, expires_at FROM sessions WHERE session_id = ?", (session_id,)
+                "SELECT data, expires_at FROM sessions WHERE session_id = ?", (self._skey(session_id),)
             ).fetchone()
         if not row:
             return None
@@ -363,7 +417,7 @@ class JobStore:
         with self._lock, self._conn() as c:
             cur = c.execute(
                 "UPDATE sessions SET data = ? WHERE session_id = ? AND expires_at > ?",
-                (json.dumps(data), session_id, time.time()),
+                (json.dumps(data), self._skey(session_id), time.time()),
             )
             return cur.rowcount > 0
 
@@ -394,12 +448,12 @@ class JobStore:
             c.execute(
                 "UPDATE sessions SET expires_at = ? "
                 "WHERE session_id = ? AND expires_at > ? AND expires_at < ?",
-                (new_expiry, session_id, now, new_expiry - min_extension_seconds),
+                (new_expiry, self._skey(session_id), now, new_expiry - min_extension_seconds),
             )
 
     def delete_session(self, session_id: str) -> None:
         with self._lock, self._conn() as c:
-            c.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+            c.execute("DELETE FROM sessions WHERE session_id = ?", (self._skey(session_id),))
 
     def delete_sessions_for_user(self, user_id: str, keep: str | None = None) -> int:
         """Revoke every login session belonging to a user.
@@ -415,9 +469,12 @@ class JobStore:
         """
         removed = 0
         with self._lock, self._conn() as c:
+            keep_key = self._skey(keep) if keep else ""
             rows = c.execute("SELECT session_id, data FROM sessions").fetchall()
             for session_id, blob in rows:
-                if session_id == keep:
+                # `session_id` here is already the stored hash; `keep` arrives
+                # as a plaintext token, so it has to be hashed to compare.
+                if keep_key and session_id == keep_key:
                     continue
                 try:
                     if json.loads(blob).get("user_id") != user_id:

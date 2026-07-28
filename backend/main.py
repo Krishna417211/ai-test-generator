@@ -15,6 +15,7 @@ Endpoints:
 """
 
 import os
+import re
 import json
 import time
 import uuid
@@ -54,7 +55,9 @@ from models.schemas import (
     AdminSuspendRequest, AdminSetUsageRequest, AdminOverview, AdminSystem,
     CrawlPreviewRequest, CrawlPreviewResponse, CrawledRoute, CrawlAnchor,
 )
-from services.file_extractor import extract_zip, filter_for_push, detect_framework
+from services.file_extractor import (
+    extract_zip, filter_for_push, detect_framework, ZipBombError,
+)
 from services.github_service import GitHubService, parse_github_url, RepoNotFoundError, RepoAccessError
 from services.git_publisher import GitPublisher, GitPublishError
 from services.security_scanner import SecurityScanner, ScanError, precheck_target
@@ -63,6 +66,7 @@ from services import github_oauth, google_oauth
 from services import auth as auth_svc
 from services import billing
 from services import verification
+from services import login_guard
 from services.auth import require_user
 from services.admin import require_admin
 from services.mailer import EmailNotConfigured, EmailDeliveryError
@@ -147,9 +151,37 @@ app.add_middleware(
 )
 
 
+# Security headers set by the application itself.
+#
+# Caddy already sets a fuller set in production (frontend/Caddyfile), and that
+# remains the authority for the browser-facing site. These exist because the API
+# is not always behind it: it is reached directly in development, by the CLI, and
+# by any deployment that exposes port 8000 — a container published without the
+# proxy, an internal load balancer, a `docker run` for debugging. Defence in
+# depth, and the cost is four constant strings per response.
+#
+# Deliberately narrow, because this is an API rather than a page:
+#   • nosniff        — stops a JSON error body being re-interpreted as HTML/JS
+#   • DENY           — nothing here should ever be framed
+#   • no-referrer    — API URLs can carry ids; they don't belong in Referer
+#   • CSP            — `frame-ancestors 'none'` covers browsers that ignore
+#                      X-Frame-Options, and `default-src 'none'` is correct for
+#                      responses that are never a document. NOT the site's CSP:
+#                      that one has to permit the app's own scripts and fonts,
+#                      and Caddy sets it for the pages that need it.
+_DOCS_PATHS = re.compile(r"^/(docs|redoc|openapi\.json)")
+
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+}
+
+
 @app.middleware("http")
 async def add_request_id(request: Request, call_next):
-    """Attach a correlation ID to every request (logs + X-Request-ID header)."""
+    """Attach a correlation ID to every request, and the baseline security headers."""
     rid = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
     token = request_id_var.set(rid)
     try:
@@ -157,6 +189,14 @@ async def add_request_id(request: Request, call_next):
     finally:
         request_id_var.reset(token)
     response.headers["X-Request-ID"] = rid
+    # The interactive docs are the one exception, and they have to be excluded by
+    # path rather than by setdefault: they are a real HTML page that pulls
+    # Swagger's stylesheet and bundle from a CDN, they set no CSP of their own,
+    # and `default-src 'none'` would render them blank. They are disabled
+    # entirely in production anyway (docs_url=None above).
+    if not _DOCS_PATHS.match(request.url.path):
+        for header, value in _SECURITY_HEADERS.items():
+            response.headers.setdefault(header, value)
     return response
 
 # ─────────────────────────────────────────────
@@ -615,6 +655,10 @@ async def upload_zip(
         raw_files = extract_zip(content)
     except zipfile.BadZipFile:
         raise HTTPException(400, "Invalid ZIP file")
+    except ZipBombError as e:
+        # A refusal, not a crash: the message names the offending file and the
+        # limit, so someone who zipped their venv by accident can fix it.
+        raise HTTPException(413, str(e))
 
     logger.info(f"ZIP upload: {len(raw_files)} files extracted")
 
@@ -818,10 +862,32 @@ async def signup(payload: SignupRequest):
 async def login(payload: LoginRequest):
     """Check email + password, then hand off to verification or the OTP step."""
     email = (payload.email or "").strip().lower()
+
+    # Per-account throttle, checked BEFORE the password is verified. The per-IP
+    # limiter above cannot see a credential-stuffing run spread across hundreds
+    # of addresses, which is the shape most real account takeovers take. See
+    # services/login_guard.py — it delays, never disables, so knowing someone's
+    # email can't be used to lock them out.
+    allowed, wait = login_guard.check(email)
+    if not allowed:
+        raise HTTPException(
+            429,
+            f"Too many failed sign-in attempts for this account. "
+            f"Try again in {wait} second{'s' if wait != 1 else ''}, "
+            f"or reset your password.",
+        )
+
     user = store.get_user_by_email(email)
     if not user or not auth_svc.verify_password(payload.password, user.get("password_hash")):
+        # Counted for the address as typed, whether or not the account exists —
+        # otherwise the throttle itself becomes an account-existence oracle:
+        # "this one slows down, that one never does".
+        login_guard.record_failure(email)
         # Same message for both cases — don't reveal whether the email exists.
         raise HTTPException(401, "Incorrect email or password.")
+
+    # The password was right, so whatever guessing was happening has stopped.
+    login_guard.clear(email)
     return await _issue_login(user)
 
 
@@ -2057,6 +2123,10 @@ async def publish_zip(
         raw_files = extract_zip(content)
     except zipfile.BadZipFile:
         raise HTTPException(400, "Invalid ZIP file")
+    except ZipBombError as e:
+        # A refusal, not a crash: the message names the offending file and the
+        # limit, so someone who zipped their venv by accident can fix it.
+        raise HTTPException(413, str(e))
     if not raw_files:
         raise HTTPException(400, "The ZIP archive contained no files")
 

@@ -160,7 +160,7 @@ testra/
 │   │   ├── store.py            # Durable SQLite job store
 │   │   └── auth / quota / billing / admin / mailer / progress
 │   ├── models/schemas.py       # Pydantic request/response models
-│   ├── tests/                  # 1026 tests across 35 suites
+│   ├── tests/                  # 1050 tests across 36 suites
 │   └── main.py                 # FastAPI app + all routes
 │
 ├── cli/                        # `npx testra` — zero runtime dependencies
@@ -172,6 +172,7 @@ testra/
 │       ├── api.js              # HTTP + NDJSON progress stream
 │       └── commands/           # publish · login/logout/whoami
 │
+├── site/                       # Static landing site (deployable to GitHub Pages)
 ├── docs/                       # ARCHITECTURE.md · DEPLOY.md · LIMITATIONS.md
 └── docker-compose.yml
 ```
@@ -253,7 +254,7 @@ Full interactive docs: http://localhost:8000/docs
 
 ```bash
 cd backend
-pytest tests/ -q          # 1026 tests across 35 suites
+pytest tests/ -q          # 1050 tests across 36 suites
 ruff check .
 ```
 
@@ -269,6 +270,18 @@ CLI:
 ```bash
 cd cli
 npm test
+```
+
+---
+
+## 🌐 Landing site
+
+`site/index.html` is a standalone, dependency-free page presenting the project —
+deployable as-is to GitHub Pages (Settings → Pages → deploy from `master`,
+`/site`), or served locally with:
+
+```bash
+cd site && python3 -m http.server
 ```
 
 ---
@@ -299,11 +312,13 @@ server** (Playwright + Chromium, installed by `backend/Dockerfile`); without one
 Shipped:
 
 - [x] Crawl-first generation from the live DOM · ZIP upload · publish to a new repo
+- [x] Zero-dependency CLI (`npx testra`) with device-code login
 - [x] Two-agent pipeline · multi-provider key rotation with provenance
 - [x] Playwright / Cypress / Selenium, Page Object Models, GitHub Actions + GitLab CI
 - [x] Selector grounding with file:line provenance, and the self-heal loop
 - [x] Fragility (durability) grading · generation success rate
 - [x] Credential exclusion · safe filenames · verified pushes
+- [x] Hashed session tokens · per-account login throttling · zip-bomb guard
 - [x] Accounts, quota and plans · security scanning (passive + ZAP)
 
 Next, in order of how much each would change what the product can honestly claim
