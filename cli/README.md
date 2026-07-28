@@ -3,8 +3,8 @@
 > Publish a project to a fresh GitHub repo, with a generated E2E suite, from the directory it lives in.
 
 ```bash
-npx @testra/cli login
-npx @testra/cli publish --with-ci
+npx testra-cli login
+npx testra-cli publish --with-ci
 ```
 
 No install, no dependencies — the package has **zero** runtime dependencies and
@@ -19,9 +19,10 @@ uses only Node's standard library.
 > node ai-test-generator/cli/bin/testra.js publish --with-ci
 > ```
 >
-> Note that the unscoped name `testra` on npm belongs to an unrelated project (a
-> minimal test runner), which is why this package is scoped. Do not run
-> `npx testra` — it is somebody else's code.
+> Note that the bare name `testra` on npm belongs to an unrelated project (a
+> minimal test runner), and the `@testra` scope belongs to someone else too.
+> **Do not run `npx testra`** — that is somebody else's code. The package is
+> `testra-cli`; the command it installs is still `testra`.
 
 ---
 
@@ -135,7 +136,7 @@ GitHub token; the server holds it, encrypted at rest.
 ### In CI
 
 ```yaml
-- run: npx @testra/cli publish --repo ${{ github.event.repository.name }}-e2e --with-ci --yes
+- run: npx testra-cli publish --repo ${{ github.event.repository.name }}-e2e --with-ci --yes
   env:
     TESTRA_TOKEN: ${{ secrets.TESTRA_TOKEN }}
 ```
@@ -205,12 +206,11 @@ and other one-engine constructs.
 
 ```bash
 cd cli
-npm publish --access public
+npm publish
 ```
 
-The scope makes `--access public` necessary: npm treats scoped packages as
-private by default, and `publishConfig.access` in package.json sets it too so a
-bare `npm publish` cannot accidentally publish a private one.
+No `--access` flag: that is only needed for *scoped* packages, which npm treats
+as private by default. This one is unscoped and public by nature.
 
 There is nothing to build — `files` in package.json ships `bin/`, `src/` and this
 README, and there are no dependencies to resolve. Check what would go in the
@@ -220,8 +220,11 @@ tarball first:
 npm pack --dry-run
 ```
 
-**Why the package is scoped.** The unscoped name `testra` was already taken on
-npm by an unrelated "minimal test runner". Documenting `npx testra` would have
-told every user to download and execute a stranger's code — on a tool whose
-entire premise is that your credentials never leave your machine. A scope also
-makes the name unsquattable once the org is owned.
+**Why the package is `testra-cli` and not `testra`.** The bare name was already
+taken on npm by an unrelated "minimal test runner", and `@testra` turned out to
+be an existing scope as well. Documenting `npx testra` would have told every user
+to download and execute a stranger's code — on a tool whose entire premise is
+that your credentials never leave your machine.
+
+Unscoped names are first-come, so publish promptly after cloning this, or the
+same problem recurs with a different owner.

@@ -506,7 +506,7 @@ function ApiKeySection() {
 
 /** Where the CLI is discoverable at all.
  *
- *  Without this, `npx @testra/cli` exists and nobody using the web app ever learns
+ *  Without this, `npx testra-cli` exists and nobody using the web app ever learns
  *  it does — and the CLI is strictly better for the publish flow, because it
  *  runs inside the project: your .gitignore decides what uploads, and the
  *  credential scan happens before anything leaves your machine rather than after
@@ -517,7 +517,7 @@ function ApiKeySection() {
  */
 function CliSection() {
   const [copied, setCopied] = useState(false);
-  const command = "npx @testra/cli login && npx @testra/cli publish --with-ci";
+  const command = "npx testra-cli login && npx testra-cli publish --with-ci";
 
   const copy = async () => {
     try {
