@@ -31,7 +31,10 @@ from fastapi.responses import StreamingResponse, RedirectResponse
 
 from config import settings
 from logging_config import configure_logging, request_id_var
-from ratelimit import rate_limit, analyze_limiter, generate_limiter, email_limiter, otp_limiter
+from ratelimit import (
+    rate_limit, analyze_limiter, generate_limiter, email_limiter, otp_limiter,
+    cli_start_limiter, cli_code_limiter, cli_poll_limiter,
+)
 from agents.filter_agent import FilterAgent, FilterResult, NoTestableUIError
 from agents.writer_agent import WriterAgent, CRAWL_MAX_PAGES, GenerationFailedError
 from services import live_crawler as crawler_svc
@@ -42,6 +45,8 @@ from models.schemas import (
     ProjectAnalysis, FilePreview, StatusResponse, ProviderStatus,
     PublishResponse, ScanRequest, ScanResponse,
     SignupRequest, LoginRequest, AuthResponse, LoginResponse,
+    CliAuthStartResponse, CliAuthApproveRequest, CliAuthTokenRequest,
+    CliAuthTokenResponse,
     EmailRequest, TokenRequest, ResetPasswordRequest, VerifyOtpRequest,
     SimpleResponse, ChangePasswordRequest, DeleteAccountRequest,
     UserSettings, UserSettingsResponse,
@@ -841,6 +846,207 @@ async def verify_login_otp(payload: VerifyOtpRequest):
     logger.info(f"Login completed with OTP: {user_id}")
     return AuthResponse(
         token=auth_svc.create_login_session(user_id),
+        user=auth_svc.public_user(user),
+    )
+
+
+# ─────────────────────────────────────────────
+# CLI login: the device-code grant (RFC 8628)
+# ─────────────────────────────────────────────
+#
+# The CLI cannot use a browser redirect. It may be running over SSH on a box with
+# no browser and no way to receive a loopback callback, which rules out the flow
+# the web app uses. So: the CLI asks for a code, the user approves that code in a
+# browser *anywhere* — including a phone — and the CLI polls until it is approved.
+#
+# The property that makes this worth the extra endpoints is that **the password
+# never passes through the CLI**. Before this, a headless machine had only
+# `--token`, which meant copying a live session token around by hand.
+#
+# Two codes, two very different jobs:
+#
+#   device_code  the secret. High-entropy, held only by the CLI, never displayed.
+#                Possession of it is what entitles a caller to collect the
+#                session token, so it is the thing that must not be guessable.
+#
+#   user_code    short and human-typeable, and deliberately NOT a secret: it is
+#                designed to be read off one screen and typed into another. Its
+#                defence is that it is useless without a browser session to
+#                approve it, plus a 10-minute life and a hard rate limit on
+#                submissions (ratelimit.cli_code_limiter).
+
+_CLI_AUTH_TTL = 600            # 10 min to walk to a browser and approve
+_CLI_POLL_INTERVAL = 5         # seconds the client must wait between polls
+_CLI_DEVICE_PREFIX = "cliauth:"     # device_code  → the pending request
+_CLI_USER_PREFIX = "cliusercode:"   # user_code    → the device_code it belongs to
+
+# Unambiguous alphabet: no 0/O, no 1/I/L. Someone is reading this off a terminal
+# and typing it into a phone, and "was that a one or an ell" is a support ticket.
+_CLI_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"
+_CLI_CODE_LEN = 8
+
+
+def _new_user_code() -> str:
+    """XXXX-XXXX from the unambiguous alphabet. 30^8 ≈ 6.6e11 possibilities."""
+    raw = "".join(secrets.choice(_CLI_CODE_ALPHABET) for _ in range(_CLI_CODE_LEN))
+    return f"{raw[:4]}-{raw[4:]}"
+
+
+def _normalize_user_code(raw: str) -> str:
+    """Accept what a human actually types: spaces, lower case, missing dash.
+
+    Rejecting 'bdfg hjkl' because it wasn't 'BDFG-HJKL' is a pointless failure —
+    the code is a shared secret between two screens, not a syntax exercise.
+    """
+    cleaned = "".join(ch for ch in raw.upper() if ch.isalnum())
+    if len(cleaned) != _CLI_CODE_LEN:
+        return ""
+    return f"{cleaned[:4]}-{cleaned[4:]}"
+
+
+@app.post("/api/auth/cli/start", response_model=CliAuthStartResponse,
+          dependencies=[Depends(rate_limit(cli_start_limiter))])
+async def cli_auth_start():
+    """Begin a CLI login. Unauthenticated — this *is* the start of authenticating.
+
+    Deliberately on a looser limiter than /approve. Minting a code hands the
+    caller a code they already know, so this is not the guessing surface; the
+    tight cap belongs on code *submission*. A strict limit here would instead
+    lock out a whole office sharing one NAT address, since the buckets are
+    per-IP.
+    """
+    device_code = secrets.token_urlsafe(32)
+    user_code = _new_user_code()
+
+    store.create_session(
+        _CLI_DEVICE_PREFIX + device_code,
+        {"kind": "cli_auth", "user_code": user_code, "state": "pending", "user_id": ""},
+        _CLI_AUTH_TTL,
+    )
+    # Reverse index so `approve` can find the request from the typed code. Held
+    # separately (rather than scanning) because the device_code must stay secret:
+    # approving must not require, or reveal, it.
+    store.create_session(
+        _CLI_USER_PREFIX + user_code,
+        {"kind": "cli_user_code", "device_code": device_code},
+        _CLI_AUTH_TTL,
+    )
+
+    base = settings.frontend_url.rstrip("/")
+    logger.info(f"CLI login started, user_code={user_code}")
+    return CliAuthStartResponse(
+        device_code=device_code,
+        user_code=user_code,
+        verification_uri=f"{base}/cli",
+        verification_uri_complete=f"{base}/cli?code={user_code}",
+        expires_in=_CLI_AUTH_TTL,
+        interval=_CLI_POLL_INTERVAL,
+    )
+
+
+def _cli_pending(user_code: str) -> tuple[str, dict]:
+    """Resolve a typed user_code to (device_code, request). Raises 404 if unknown.
+
+    One message for "never existed" and "expired" on purpose: distinguishing them
+    tells someone guessing codes which of their guesses were once real.
+    """
+    mapping = store.get_session(_CLI_USER_PREFIX + user_code) if user_code else None
+    if not mapping:
+        raise HTTPException(404, "That code isn't valid or has expired. Start again in your terminal.")
+    device_code = mapping.get("device_code", "")
+    pending = store.get_session(_CLI_DEVICE_PREFIX + device_code) if device_code else None
+    if not pending:
+        raise HTTPException(404, "That code isn't valid or has expired. Start again in your terminal.")
+    return device_code, pending
+
+
+@app.post("/api/auth/cli/approve", response_model=SimpleResponse,
+          dependencies=[Depends(rate_limit(cli_code_limiter))])
+async def cli_auth_approve(payload: CliAuthApproveRequest, ctx: dict = Depends(require_user)):
+    """Approve a pending CLI login, from a signed-in browser.
+
+    require_user is the whole security model here: the session token the CLI
+    eventually collects belongs to *this* caller, so the browser session is what
+    authorises it. A code alone approves nothing.
+    """
+    user_code = _normalize_user_code(payload.user_code)
+    device_code, pending = _cli_pending(user_code)
+
+    if pending.get("state") != "pending":
+        # Already decided. Not an error worth alarming anyone about — most likely
+        # a double-click on the approve button.
+        return SimpleResponse(success=True, message="That request was already handled.")
+
+    pending.update(state="approved", user_id=ctx["user_id"])
+    store.update_session(_CLI_DEVICE_PREFIX + device_code, pending)
+    # Retire the typed code immediately: it has done its one job, and leaving it
+    # live would let the same code be replayed against a different account.
+    store.delete_session(_CLI_USER_PREFIX + user_code)
+
+    logger.info(f"CLI login approved for {ctx['user_id']} (code={user_code})")
+    return SimpleResponse(success=True, message="Your terminal is signed in.")
+
+
+@app.post("/api/auth/cli/deny", response_model=SimpleResponse,
+          dependencies=[Depends(rate_limit(cli_code_limiter))])
+async def cli_auth_deny(payload: CliAuthApproveRequest, ctx: dict = Depends(require_user)):
+    """Reject a pending CLI login.
+
+    Exists so that "I didn't start this" has a button. Without it the only option
+    is to ignore the prompt and let it expire, which leaves someone who has just
+    seen an unexpected code with nothing to do about it.
+    """
+    user_code = _normalize_user_code(payload.user_code)
+    device_code, pending = _cli_pending(user_code)
+
+    pending.update(state="denied", user_id="")
+    store.update_session(_CLI_DEVICE_PREFIX + device_code, pending)
+    store.delete_session(_CLI_USER_PREFIX + user_code)
+
+    logger.info(f"CLI login denied by {ctx['user_id']} (code={user_code})")
+    return SimpleResponse(success=True, message="Request rejected.")
+
+
+@app.post("/api/auth/cli/token", response_model=CliAuthTokenResponse,
+          dependencies=[Depends(rate_limit(cli_poll_limiter))])
+async def cli_auth_token(payload: CliAuthTokenRequest):
+    """Poll for the session token. Unauthenticated; the device_code is the proof.
+
+    The token is returned exactly once and the request is destroyed with it, so a
+    leaked device_code from a completed login is worth nothing.
+    """
+    device_code = (payload.device_code or "").strip()
+    pending = store.get_session(_CLI_DEVICE_PREFIX + device_code) if device_code else None
+
+    # Unknown, expired, or already collected — all the same answer. "Start over"
+    # is the only useful instruction for any of them.
+    if not pending:
+        return CliAuthTokenResponse(status="expired")
+
+    state = pending.get("state")
+    if state == "pending":
+        return CliAuthTokenResponse(status="pending")
+
+    if state == "denied":
+        store.delete_session(_CLI_DEVICE_PREFIX + device_code)
+        return CliAuthTokenResponse(status="denied")
+
+    user = store.get_user_by_id(pending.get("user_id", ""))
+    # One-time, whatever happens next: consumed before the token is minted so a
+    # failure below cannot leave a reusable approval behind.
+    store.delete_session(_CLI_DEVICE_PREFIX + device_code)
+    if not user:
+        return CliAuthTokenResponse(status="expired")
+
+    # The same session-issuing path the browser uses, including the suspended
+    # check — an account locked between approving and polling must not get in.
+    if user.get("suspended"):
+        return CliAuthTokenResponse(status="denied")
+
+    logger.info(f"CLI login completed for {user['id']}")
+    return CliAuthTokenResponse(
+        status="approved",
+        token=auth_svc.create_login_session(user["id"]),
         user=auth_svc.public_user(user),
     )
 

@@ -38,7 +38,12 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
     );
   }
   if (!user) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    // pathname + search + hash, not pathname alone. A guarded route can carry
+    // state in its query string that the page cannot reconstruct — /cli?code=
+    // is the clear case: dropping it sends the user back to an empty form and
+    // makes them retype a code they were one click from approving.
+    const from = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to="/login" replace state={{ from }} />;
   }
   return <>{children}</>;
 }

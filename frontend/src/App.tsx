@@ -17,6 +17,7 @@ import Publish from "./pages/Publish";
 import Scan from "./pages/Scan";
 import Status from "./pages/Status";
 import Settings from "./pages/Settings";
+import CliAuth from "./pages/CliAuth";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import AuthCallback from "./pages/AuthCallback";
@@ -61,6 +62,12 @@ function AnimatedRoutes() {
           <Route path="/status" element={<Status />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/profile" element={<Profile />} />
+          {/* The browser half of the CLI's device-code login. Inside the guard
+              on purpose: the signed-in session IS the authorisation for the
+              token the terminal collects, so an anonymous visitor must be sent
+              to sign in first — and ProtectedRoute brings them back here with
+              the ?code= intact. */}
+          <Route path="/cli" element={<CliAuth />} />
         </Route>
 
         {/* The admin console is its own portal, not a section of the app.

@@ -19,9 +19,17 @@ const USAGE = `${c.bold("testra")} — grounded E2E tests, from the directory yo
 
 ${c.bold("Usage")}
   testra publish [dir] [options]     Create a GitHub repo and push this project
-  testra login [--email <e>]         Sign in (or --token <t> for CI)
+  testra login                       Sign in by approving a code in a browser
   testra logout                      Remove the locally stored token
   testra whoami                      Show the signed-in account
+
+${c.bold("Login options")}
+  ${c.grey("(default)")}              Show a short code, approve it in a browser — your
+                         password never passes through this tool. Works over SSH:
+                         approve from any device, a phone included.
+  --token <t>            Use a token directly. This is what CI wants.
+  --email <e>            Password login instead, for a machine with no browser
+                         reachable at all.
 
 ${c.bold("Publish options")}
   --repo <name>          Repository name            ${c.grey("(default: directory name)")}

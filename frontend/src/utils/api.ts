@@ -828,6 +828,29 @@ export async function changePassword(currentPassword: string, newPassword: strin
   return (await res.json()).message || "Password updated.";
 }
 
+/** Approve or reject a pending CLI device-code login.
+ *
+ *  The signed-in session *is* the authorisation here: the token the terminal
+ *  collects belongs to whoever calls this, which is why the code alone approves
+ *  nothing. See the RFC 8628 block in backend/main.py. */
+export async function decideCliLogin(
+  userCode: string,
+  decision: "approve" | "deny",
+): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/auth/cli/${decision}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ user_code: userCode }),
+  });
+  if (!res.ok) {
+    await parseError(
+      res,
+      decision === "approve" ? "Could not approve that code" : "Could not reject that code",
+    );
+  }
+  return (await res.json()).message || "";
+}
+
 /** Revoke every session, including this one — so drop the local token too. */
 export async function logoutEverywhere(): Promise<string> {
   const res = await fetch(`${API_BASE}/api/auth/logout-all`, {

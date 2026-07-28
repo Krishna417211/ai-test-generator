@@ -1,19 +1,36 @@
 /**
  * secrets.test.js — The local credential scan.
  *
- * Mirrors backend/tests/test_secrets_guard.py case for case on purpose. The two
- * implementations can drift, and these tests are how the drift gets noticed: if
- * you add a rule to one side and not the other, one of these suites is missing a
- * case that the other has.
+ * The load-bearing test here is the first one: it runs the `self_test` corpus
+ * out of `secret-rules.json`, the same corpus `backend/tests/
+ * test_secrets_guard.py` runs against the Python implementation. That is what
+ * makes "these two agree" a checked fact rather than a hope — a case added to
+ * the JSON is enforced in both languages at once, and neither can pass a case
+ * the other fails.
  *
- * Written from the leak's point of view — each case names a file someone really
- * does have in their working tree when they run this in it.
+ * The tests after it cover behaviour that isn't expressible as a corpus entry:
+ * the scan window, and how scrub() partitions its input.
  */
 
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { inspect, scrub } from "../src/secrets.js";
+import { inspect, scrub, selfTest } from "../src/secrets.js";
+
+test("the shared specification corpus passes", () => {
+  assert.ok(selfTest.length >= 30, "corpus should be substantial");
+  for (const c of selfTest) {
+    const finding = inspect(c.path, c.content);
+    const label = `${c.path} — ${c.note || (c.excluded ? "must be excluded" : "must be kept")}`;
+    if (c.excluded) {
+      assert.ok(finding, `${label}: expected excluded, was kept`);
+      assert.ok(finding.reason, `${label}: exclusion needs a reason a user can act on`);
+      assert.ok(["path", "content"].includes(finding.kind), `${label}: bad kind`);
+    } else {
+      assert.equal(finding, null, `${label}: expected kept, was excluded`);
+    }
+  }
+});
 
 test("dotenv files are caught", () => {
   // The one that matters most, and the one a naive lstrip("./") misses: it

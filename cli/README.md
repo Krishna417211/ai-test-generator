@@ -40,7 +40,7 @@ through".)
 
 ```
 testra publish [dir] [options]     Create a GitHub repo and push this project
-testra login [--email <e>]         Sign in (--token <t> for CI)
+testra login                       Approve a code in a browser (--token <t> for CI)
 testra logout                      Remove the locally stored token
 testra whoami                      Show the signed-in account
 ```
@@ -74,11 +74,43 @@ testra publish --repo checkout-service --with-ci \
 
 ## Authentication
 
+`testra login` uses the **device-code flow** ([RFC 8628](https://datatracker.ietf.org/doc/html/rfc8628)):
+
+```
+$ testra login
+
+  Your code:  BDFG-HJKM
+  Approve at: https://app.testra.dev/cli?code=BDFG-HJKM
+
+  Waiting for approval… (Ctrl-C to cancel)
+
+✓ Signed in as dev@example.com
+```
+
+**Your password never passes through this tool.** You approve the code in a
+browser — and it does not have to be a browser on this machine, so this works
+over SSH on a box with no browser at all. A phone is fine.
+
+Two codes are involved and they are not the same kind of thing. The short one
+(`BDFG-HJKM`) is designed to be read off one screen and typed into another, so it
+is **not** a secret — it grants nothing until someone already signed in approves
+it, it dies after 10 minutes, and submissions are hard rate-limited. The other,
+which the CLI holds and never prints, is the secret that entitles it to collect
+the session token — exactly once.
+
+If a code you didn't ask for appears in your browser, press **Reject**.
+
+### Other ways in
+
 Resolution order, most explicit first:
 
 1. **`TESTRA_TOKEN`** in the environment — use this in CI, from a secret store
 2. **`~/.config/testra/config.json`** — written by `testra login`, mode `0600` in
    a `0700` directory (`XDG_CONFIG_HOME` is honoured if set)
+
+`testra login --email you@example.com` falls back to a password prompt (echo
+suppressed, never stored). It exists for a machine that can reach no browser at
+all, not even a phone — prefer the device flow.
 
 `testra logout` removes the local copy only; the session stays valid until it
 expires. Use *log out everywhere* in the web app to revoke it server-side.
@@ -129,6 +161,26 @@ consumer: `backend/tests/test_cli_zip.py` builds an archive with it and extracts
 it with the server's own `extract_zip()`, the exact function `/api/publish-zip`
 calls.
 
-`src/secrets.js` mirrors `backend/services/secrets_guard.py`. **If you add a rule
-to one, add it to the other and to both test suites** — the two suites are
-written case-for-case so a missing one is visible.
+### The credential rules are shared, not duplicated
+
+`src/secret-rules.json` is a verbatim copy of
+`backend/services/secret_rules.json`, the canonical set that the Python guard
+reads too. The copy exists only because npm publishes `cli/` alone and a package
+cannot read a file outside its own directory.
+
+```bash
+npm run sync-rules        # refresh the copy from the canonical file
+```
+
+**Never hand-edit the copy.** Edit the canonical file and re-run that —
+`backend/tests/test_secret_rules_sync.py` compares the two byte for byte and
+fails CI on any difference, naming the command.
+
+The `self_test` array inside that JSON is the *specification* of what the rules
+decide, and both languages execute it (`cli/test/secrets.test.js` and
+`backend/tests/test_secrets_guard.py`). Add a case there and both are covered at
+once — neither implementation can pass a case the other fails.
+
+Patterns must stay inside the subset that means the same thing in Python `re` and
+JavaScript `RegExp`. `test_secret_rules_sync.py` rejects named groups, lookbehind
+and other one-engine constructs.

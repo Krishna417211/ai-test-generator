@@ -1,5 +1,5 @@
 /**
- * secrets.js — Client-side mirror of backend/services/secrets_guard.py.
+ * secrets.js — Credential detection, run before anything is uploaded.
  *
  * The server already refuses to store or push credential files, and will do so
  * again on whatever this uploads. So why scan here too?
@@ -11,75 +11,68 @@
  * to run the CLI instead of the upload page, so it runs first, always, and
  * cannot be turned off.
  *
- * ## On duplicating the rules
+ * ## The rules are not in this file
  *
- * These are the same rules in a second language, which is a real cost — they can
- * drift. It is accepted deliberately, because the drift is *safe in one
- * direction*: the server re-scans everything regardless, so a rule this file
- * lacks is still caught server-side. Drift can only ever mean "the CLI sent
- * something it could have stopped locally", never "a credential got through".
- * Defence in depth, with the weaker layer first.
+ * `secret-rules.json` holds them, and it is a verbatim copy of
+ * `backend/services/secret_rules.json` — the canonical set that
+ * `services/secrets_guard.py` also reads. The patterns used to be written out
+ * twice, once per language, which meant a rule added to one side silently did
+ * not exist on the other.
  *
- * If you add a rule to one side, add it to the other and to both test suites.
+ * The copy exists only because npm publishes `cli/` alone and cannot reach
+ * outside it. Refresh it with `npm run sync-rules`; the backend test
+ * `test_secret_rules_sync.py` fails CI if the two files differ, so the copy
+ * cannot quietly go stale.
+ *
+ * The shared `self_test` corpus in that JSON is run by both implementations
+ * (here in `test/secrets.test.js`, and in `tests/test_secrets_guard.py`), so the
+ * two cannot disagree about a case even if the code paths differ.
  */
 
-import path from "node:path";
+import fs from "node:fs";
 
-const SECRET_EXTENSIONS = new Set([
-  ".pem", ".key", ".p12", ".pfx", ".jks", ".keystore",
-  ".ppk", ".asc", ".gpg", ".pgp", ".kdbx",
+const RULES = JSON.parse(
+  fs.readFileSync(new URL("./secret-rules.json", import.meta.url), "utf8")
+);
+
+const P = RULES.path_rules;
+
+const SECRET_EXTENSIONS = new Set(P.secret_extensions);
+const SECRET_FILENAMES = new Set(P.secret_filenames);
+const SECRET_DIRECTORIES = new Set(P.secret_directories);
+const PRIVATE_KEY_STEMS = P.private_key_stems;
+const DOTENV_RE = new RegExp(P.dotenv_pattern, "i");
+const DOTENV_SAFE_SUFFIXES = P.dotenv_safe_suffixes;
+const CLOUD_KEY_RE = new RegExp(P.cloud_key_pattern, "i");
+
+const CONTENT_RULES = RULES.content_rules.map((r) => [
+  r.label,
+  new RegExp(r.pattern, r.flags?.includes("i") ? "i" : ""),
 ]);
 
-const SECRET_FILENAMES = new Set([
-  ".npmrc", ".pypirc", ".netrc", "_netrc", ".htpasswd",
-  ".git-credentials", ".dockercfg", ".s3cfg", ".pgpass",
-  "credentials", "credentials.json", "client_secret.json",
-  "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519",
-  "secring.gpg", "terraform.tfstate", "terraform.tfstate.backup",
-  ".flaskenv", ".secrets", "secrets.json", "secrets.yml", "secrets.yaml",
-]);
+const CONTENT_SCAN_BYTES = RULES.content_scan_bytes;
 
-const SECRET_DIRECTORIES = new Set([".aws", ".ssh", ".gnupg", ".gcloud", ".kube"]);
-
-const DOTENV_RE = /^\.env(\..+)?$/i;
-const DOTENV_SAFE_SUFFIXES = [
-  ".example", ".sample", ".template", ".dist", ".defaults", ".test",
-];
-const GCP_KEY_RE = /(service[-_]?account|gcp|google).*(key|credential)s?\.json$/i;
-
-const CONTENT_RULES = [
-  ["an AWS access key id", /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/],
-  ["a GitHub token", /\bgh[pousr]_[A-Za-z0-9]{36,}\b/],
-  ["a GitHub fine-grained token", /\bgithub_pat_[A-Za-z0-9_]{60,}\b/],
-  ["a Slack token", /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/],
-  ["a Stripe live secret key", /\bsk_live_[A-Za-z0-9]{20,}\b/],
-  ["a Google API key", /\bAIza[0-9A-Za-z_\-]{35}\b/],
-  ["an OpenAI API key", /\bsk-(?:proj-)?[A-Za-z0-9_\-]{32,}\b/],
-  ["an Anthropic API key", /\bsk-ant-[A-Za-z0-9_\-]{20,}\b/],
-  ["a SendGrid API key", /\bSG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}\b/],
-  ["a Twilio account sid", /\bAC[0-9a-fA-F]{32}\b/],
-  ["a private key block", /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
-  ["a PGP private key block", /-----BEGIN PGP PRIVATE KEY BLOCK-----/],
-  [
-    "a database URL with an inline password",
-    /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp):\/\/[^\s:@/]+:[^\s:@/]{6,}@[^\s/]+/,
-  ],
-];
-
-const CONTENT_SCAN_BYTES = 100_000;
+/** The file's extension, including the dot, or "" — the last dot in the
+ *  basename, not counting a leading one (".npmrc" has no extension). */
+function extname(basename) {
+  const dot = basename.lastIndexOf(".");
+  return dot > 0 ? basename.slice(dot) : "";
+}
 
 /** Strip a leading "./" as a *prefix*.
  *
- *  Not a regex character class and never String.replace(/^[./]+/): the Python
+ *  Not `lstrip`-style character stripping and not a `/^[./]+/` regex: the Python
  *  original used lstrip("./"), which strips characters, so ".env" became "env"
  *  and the single most important file this module exists to catch walked
- *  straight through. Same mistake is available in JS; it is not repeated here.
+ *  straight through.
+ *
+ *  Backslashes are converted unconditionally, never via path.sep. Using the
+ *  platform separator makes the rule platform-dependent, so "backend\\.env"
+ *  would be caught on Windows and sail past on Linux — and the archive is built
+ *  on one machine and unpacked on another, which is exactly when that asymmetry
+ *  bites. Both cases are in the shared self_test corpus.
  */
 function normalise(p) {
-  // Backslashes are converted unconditionally, not via path.sep. Using path.sep
-  // makes the rule platform-dependent, so "backend\\.env" would be caught on
-  // Windows and sail past on Linux — and the archive is built on one machine
-  // and unpacked on another, which is exactly when that asymmetry bites.
   let out = p.replace(/\\/g, "/");
   while (out.startsWith("./")) out = out.slice(2);
   return out.replace(/^\/+/, "");
@@ -103,15 +96,14 @@ function pathReason(filePath) {
   }
   if (SECRET_FILENAMES.has(low)) return "known credential file";
 
-  const ext = path.extname(low);
+  const ext = extname(low);
   if (SECRET_EXTENSIONS.has(ext)) return `${ext} key/certificate file`;
 
-  if (GCP_KEY_RE.test(low)) return "looks like a cloud service-account key";
+  if (CLOUD_KEY_RE.test(low)) return "looks like a cloud service-account key";
 
   // id_rsa.pub is a public key and harmless; id_rsa.bak is the private one
   // under another name.
-  const privateStems = ["id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"];
-  if (privateStems.some((s) => low.startsWith(s)) && !low.endsWith(".pub")) {
+  if (PRIVATE_KEY_STEMS.some((s) => low.startsWith(s)) && !low.endsWith(".pub")) {
     return "private SSH key";
   }
   return null;
@@ -148,3 +140,6 @@ export function scrub(entries) {
   }
   return { safe, excluded };
 }
+
+/** The shared specification corpus, so both languages' tests can run it. */
+export const selfTest = RULES.self_test;

@@ -29,46 +29,60 @@ Two detectors, because they catch different mistakes:
 
 Excluded files are reported, never dropped silently — the user has to know their
 `.env` did not reach the repo, or they will assume the deploy is configured.
+
+## Where the rules live
+
+Not here. `secret_rules.json`, next to this file, is the canonical set, and
+`cli/src/secrets.js` reads a synchronised copy of the same file. The rules were
+previously written out twice, once per language, which meant a rule added to one
+side silently did not exist on the other. Now there is one list, one set of
+patterns, and one shared `self_test` corpus that both implementations run — so a
+case added in JSON is covered in both languages at once.
+
+`tests/test_secret_rules_sync.py` fails CI if the CLI's copy drifts.
 """
 
+import json
 import re
 from pathlib import Path
 
 # ─────────────────────────────────────────────
-# Path-based rules
+# Rules, loaded from the canonical JSON
 # ─────────────────────────────────────────────
 
-# Suffixes that identify a key/cert file whatever it is called.
-SECRET_EXTENSIONS = {
-    ".pem", ".key", ".p12", ".pfx", ".jks", ".keystore",
-    ".ppk", ".asc", ".gpg", ".pgp", ".kdbx",
-}
+RULES_PATH = Path(__file__).with_name("secret_rules.json")
 
-# Exact basenames that are credential stores.
-SECRET_FILENAMES = {
-    ".npmrc", ".pypirc", ".netrc", "_netrc", ".htpasswd",
-    ".git-credentials", ".dockercfg", ".s3cfg", ".pgpass",
-    "credentials", "credentials.json", "client_secret.json",
-    "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519",
-    "secring.gpg", "terraform.tfstate", "terraform.tfstate.backup",
-    ".flaskenv", ".secrets", "secrets.json", "secrets.yml", "secrets.yaml",
-}
 
-# Directories whose whole contents are credentials.
-SECRET_DIRECTORIES = {".aws", ".ssh", ".gnupg", ".gcloud", ".kube"}
+def _load_rules() -> dict:
+    """Read the rule set. A failure here is fatal, and deliberately so.
+
+    Falling back to an empty rule set would leave the guard silently passing
+    every credential file through — the one failure mode this module exists to
+    prevent, arrived at by being helpful about a missing file. The file ships
+    alongside this module and is copied into the image by `COPY . .`; if it is
+    genuinely absent, the process should not start.
+    """
+    with RULES_PATH.open(encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+RULES = _load_rules()
+
+_PATH_RULES = RULES["path_rules"]
+
+SECRET_EXTENSIONS = frozenset(_PATH_RULES["secret_extensions"])
+SECRET_FILENAMES = frozenset(_PATH_RULES["secret_filenames"])
+SECRET_DIRECTORIES = frozenset(_PATH_RULES["secret_directories"])
+_PRIVATE_KEY_STEMS = tuple(_PATH_RULES["private_key_stems"])
 
 # A dotenv that carries real values. `.env`, `.env.local`, `.env.production` …
-# The example/template variants below are the documented placeholders and are
-# the one thing in this file we deliberately keep.
-_DOTENV_RE = re.compile(r"^\.env(\..+)?$", re.IGNORECASE)
-_DOTENV_SAFE_SUFFIXES = (
-    ".example", ".sample", ".template", ".dist", ".defaults", ".test",
-)
+# The example/template variants are the documented placeholders and are the one
+# thing here we deliberately keep.
+_DOTENV_RE = re.compile(_PATH_RULES["dotenv_pattern"], re.IGNORECASE)
+_DOTENV_SAFE_SUFFIXES = tuple(_PATH_RULES["dotenv_safe_suffixes"])
 
 # Google service-account / GCP key JSONs, which are named freely.
-_GCP_KEY_RE = re.compile(
-    r"(service[-_]?account|gcp|google).*(key|credential)s?\.json$", re.IGNORECASE
-)
+_GCP_KEY_RE = re.compile(_PATH_RULES["cloud_key_pattern"], re.IGNORECASE)
 
 
 def _path_reason(path: str) -> str | None:
@@ -104,7 +118,7 @@ def _path_reason(path: str) -> str | None:
 
     # id_rsa.pub is a public key and harmless, but id_rsa.bak / id_rsa.old are
     # the private one under another name.
-    if low.startswith(("id_rsa", "id_dsa", "id_ecdsa", "id_ed25519")) and not low.endswith(".pub"):
+    if low.startswith(_PRIVATE_KEY_STEMS) and not low.endswith(".pub"):
         return "private SSH key"
 
     return None
@@ -116,29 +130,20 @@ def _path_reason(path: str) -> str | None:
 
 # Only issuer-prefixed tokens and PEM blocks. Each of these has a fixed,
 # unmistakable prefix chosen by the issuer precisely so scanners can find it, so
-# a match is evidence rather than a guess.
+# a match is evidence rather than a guess. Compiled from the canonical JSON —
+# see the module docstring for why they are not written out here.
 CONTENT_RULES: list[tuple[str, re.Pattern]] = [
-    ("an AWS access key id", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
-    ("a GitHub token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b")),
-    ("a GitHub fine-grained token", re.compile(r"\bgithub_pat_[A-Za-z0-9_]{60,}\b")),
-    ("a Slack token", re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b")),
-    ("a Stripe live secret key", re.compile(r"\bsk_live_[A-Za-z0-9]{20,}\b")),
-    ("a Google API key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b")),
-    ("an OpenAI API key", re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_\-]{32,}\b")),
-    ("an Anthropic API key", re.compile(r"\bsk-ant-[A-Za-z0-9_\-]{20,}\b")),
-    ("a SendGrid API key", re.compile(r"\bSG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}\b")),
-    ("a Twilio account sid", re.compile(r"\bAC[0-9a-fA-F]{32}\b")),
-    ("a private key block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
-    ("a PGP private key block", re.compile(r"-----BEGIN PGP PRIVATE KEY BLOCK-----")),
-    ("a database URL with an inline password",
-     re.compile(r"\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp)://"
-                r"[^\s:@/]+:[^\s:@/]{6,}@[^\s/]+")),
+    (
+        rule["label"],
+        re.compile(rule["pattern"], re.IGNORECASE if "i" in rule.get("flags", "") else 0),
+    )
+    for rule in RULES["content_rules"]
 ]
 
 # Only scan the head of a file. A real key sits in a config block near the top,
 # and reading 200 KB of minified vendor bundle per file — for every file, on
 # every request — costs more than it catches.
-_CONTENT_SCAN_BYTES = 100_000
+_CONTENT_SCAN_BYTES = RULES["content_scan_bytes"]
 
 
 def _content_reason(content: str) -> str | None:
