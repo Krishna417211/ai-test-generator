@@ -1,5 +1,5 @@
 {
-  "name": "testra",
+  "name": "@testra/cli",
   "version": "0.1.0",
   "description": "Publish a project to a fresh GitHub repo with a generated E2E test suite, from the directory it lives in.",
   "type": "module",
@@ -19,5 +19,15 @@
     "node": ">=18"
   },
   "license": "MIT",
-  "keywords": ["e2e", "testing", "playwright", "cypress", "selenium", "codegen"]
+  "keywords": [
+    "e2e",
+    "testing",
+    "playwright",
+    "cypress",
+    "selenium",
+    "codegen"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

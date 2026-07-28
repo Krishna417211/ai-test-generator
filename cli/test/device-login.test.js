@@ -223,3 +223,27 @@ test("publish without a token tells you to log in", async () => {
   assert.equal(r.code, 1);
   assert.match(r.output, /testra login/);
 });
+
+test("--help exits 0, no args exits 1", async () => {
+  // Asking for help is a successful thing to do. Returning 1 for it fails any
+  // CI step or `set -e` script that runs `testra --help`. Being invoked with no
+  // command at all is a usage error and keeps its non-zero exit.
+  const help = await runCli(["--help"]);
+  assert.equal(help.code, 0, help.output);
+  assert.match(help.output, /Usage/);
+
+  const bare = await runCli([]);
+  assert.equal(bare.code, 1, "no command is a usage error");
+});
+
+test("--version prints just the version", async () => {
+  const r = await runCli(["--version"]);
+  assert.equal(r.code, 0);
+  assert.match(r.output.trim(), /^\d+\.\d+\.\d+$/);
+});
+
+test("an unknown command exits non-zero and names it", async () => {
+  const r = await runCli(["frobnicate"]);
+  assert.equal(r.code, 1);
+  assert.match(r.output, /frobnicate/);
+});

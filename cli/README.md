@@ -3,12 +3,25 @@
 > Publish a project to a fresh GitHub repo, with a generated E2E suite, from the directory it lives in.
 
 ```bash
-npx testra login
-npx testra publish --with-ci
+npx @testra/cli login
+npx @testra/cli publish --with-ci
 ```
 
 No install, no dependencies — the package has **zero** runtime dependencies and
 uses only Node's standard library.
+
+> **Not on npm yet.** The commands above are what will work once it is published.
+> Until then, run it from a clone:
+>
+> ```bash
+> git clone https://github.com/Krishna417211/ai-test-generator
+> node ai-test-generator/cli/bin/testra.js login
+> node ai-test-generator/cli/bin/testra.js publish --with-ci
+> ```
+>
+> Note that the unscoped name `testra` on npm belongs to an unrelated project (a
+> minimal test runner), which is why this package is scoped. Do not run
+> `npx testra` — it is somebody else's code.
 
 ---
 
@@ -122,7 +135,7 @@ GitHub token; the server holds it, encrypted at rest.
 ### In CI
 
 ```yaml
-- run: npx testra publish --repo ${{ github.event.repository.name }}-e2e --with-ci --yes
+- run: npx @testra/cli publish --repo ${{ github.event.repository.name }}-e2e --with-ci --yes
   env:
     TESTRA_TOKEN: ${{ secrets.TESTRA_TOKEN }}
 ```
@@ -184,3 +197,31 @@ once — neither implementation can pass a case the other fails.
 Patterns must stay inside the subset that means the same thing in Python `re` and
 JavaScript `RegExp`. `test_secret_rules_sync.py` rejects named groups, lookbehind
 and other one-engine constructs.
+
+
+---
+
+## Publishing
+
+```bash
+cd cli
+npm publish --access public
+```
+
+The scope makes `--access public` necessary: npm treats scoped packages as
+private by default, and `publishConfig.access` in package.json sets it too so a
+bare `npm publish` cannot accidentally publish a private one.
+
+There is nothing to build — `files` in package.json ships `bin/`, `src/` and this
+README, and there are no dependencies to resolve. Check what would go in the
+tarball first:
+
+```bash
+npm pack --dry-run
+```
+
+**Why the package is scoped.** The unscoped name `testra` was already taken on
+npm by an unrelated "minimal test runner". Documenting `npx testra` would have
+told every user to download and execute a stranger's code — on a tool whose
+entire premise is that your credentials never leave your machine. A scope also
+makes the name unsquattable once the org is owned.

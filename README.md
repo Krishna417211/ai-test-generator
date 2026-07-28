@@ -10,7 +10,7 @@ Free tier included (a monthly generation allowance, no card required); Pro remov
 
 ## ✨ Features
 
-- **CLI for the terminal** — `npx testra publish --with-ci` from inside your project. Your `.gitignore` decides what uploads, and credentials are scanned *before* anything is sent. Zero dependencies. See [`cli/`](cli/README.md).
+- **CLI for the terminal** — `npx @testra/cli publish --with-ci` from inside your project (not yet on npm — run from a clone for now, see [`cli/`](cli/README.md)). Your `.gitignore` decides what uploads, and credentials are scanned *before* anything is sent. Zero dependencies. See [`cli/`](cli/README.md).
 - **Two generation modes.** *Generate* is crawl-first: it renders and crawls your deployed site and writes tests from the real DOM — your repo's file contents never reach the model. *Publish* is source-first: upload a ZIP, get a new GitHub repo with the project plus a validated suite and working CI.
 - **Grounded selectors, with provenance.** Every id, test-id and class the model writes is checked back against your real source or live DOM, and the UI cites the file and line it came from rather than asking for trust.
 - **Self-heal loop.** Files that don't parse, and selectors that don't resolve, are sent back to the model *with the real anchors that do exist* — a grounded substitution, not a second guess.
@@ -163,7 +163,7 @@ testra/
 │   ├── tests/                  # 1050 tests across 36 suites
 │   └── main.py                 # FastAPI app + all routes
 │
-├── cli/                        # `npx testra` — zero runtime dependencies
+├── cli/                        # `npx @testra/cli` — zero runtime dependencies
 │   ├── bin/testra.js           # Entry point + arg parsing
 │   └── src/
 │       ├── collect.js          # git ls-files → what belongs to the project
@@ -312,7 +312,7 @@ server** (Playwright + Chromium, installed by `backend/Dockerfile`); without one
 Shipped:
 
 - [x] Crawl-first generation from the live DOM · ZIP upload · publish to a new repo
-- [x] Zero-dependency CLI (`npx testra`) with device-code login
+- [x] Zero-dependency CLI (`npx @testra/cli`) with device-code login
 - [x] Two-agent pipeline · multi-provider key rotation with provenance
 - [x] Playwright / Cypress / Selenium, Page Object Models, GitHub Actions + GitLab CI
 - [x] Selector grounding with file:line provenance, and the self-heal loop

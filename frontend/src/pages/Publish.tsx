@@ -42,7 +42,7 @@ export default function Publish() {
               decides what uploads, and credentials are found before anything is sent.
             </p>
             <code className="block rounded-lg bg-black/40 border border-grey-700 px-2.5 py-2 text-[11px] font-mono text-grey-200 overflow-x-auto">
-              npx testra publish --with-ci
+              npx @testra/cli publish --with-ci
             </code>
             <Link to="/settings" className="inline-block mt-3 text-xs text-brand-300 hover:text-brand-200">
               How to sign in →

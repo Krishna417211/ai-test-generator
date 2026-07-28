@@ -104,7 +104,11 @@ async function main(argv) {
   }
   if (values.help || !command) {
     info(USAGE);
-    return command ? 0 : 1;
+    // Asking for help is a successful thing to do, so it exits 0 even though
+    // the old code returned 1 for it — `testra --help` in a CI step or a
+    // `set -e` script would have failed the build. Being invoked with no
+    // command at all is different: that is a usage error, and 1 says so.
+    return values.help ? 0 : 1;
   }
 
   const cfg = config.load();
