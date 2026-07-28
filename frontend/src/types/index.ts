@@ -93,6 +93,39 @@ export interface Grounding {
   heal_attempts: number;
 }
 
+export interface ScoreComponent {
+  key: string;
+  label: string;
+  passed: number;
+  total: number;
+  rate: number;
+  weight: number;
+  detail: string;
+}
+
+/** The share of our automated checks a generated suite passed.
+ *
+ *  A *generation* success rate — planned files delivered, code parsed,
+ *  selectors traced, tests produced. Explicitly not a prediction that the tests
+ *  pass against the running app: we never execute them. `measures` and
+ *  `not_measured` come from the server so the caveat travels with the number
+ *  rather than depending on this file remembering to say it. */
+export interface SuccessRate {
+  score: number | null;      // null when nothing could be measured
+  grade: string;             // A–F, or "—"
+  measured: boolean;
+  components: ScoreComponent[];
+  measures: string;
+  not_measured: string;
+}
+
+/** A credential file that was held back from the model and the push. */
+export interface ExcludedSecret {
+  path: string;
+  reason: string;
+  kind: "path" | "content" | string;
+}
+
 /** Where a verified selector was declared in the user's source. */
 export interface Provenanced {
   file: string;
@@ -152,6 +185,10 @@ export interface GenerateResponse {
   /** Planned files the model never produced. Non-empty means a partial run. */
   failed_files?: string[];
   grounding?: Grounding | null;
+  /** The headline number, aggregated from the measurements above. */
+  success_rate?: SuccessRate | null;
+  /** Credential files withheld before anything was sent to the model. */
+  excluded_secrets?: ExcludedSecret[];
   selector_grounding?: SelectorGrounding | null;
   fragility?: Fragility | null;
   provenance?: Provenance | null;
@@ -171,6 +208,17 @@ export interface PublishResult {
   validation?: FileValidation[];
   /** null when no suite was generated (no CI requested, or the AI was down). */
   grounding?: Grounding | null;
+  success_rate?: SuccessRate | null;
+  /** Credential files withheld from the push. */
+  excluded_secrets?: ExcludedSecret[];
+  /** True when the pushed tree was read back from GitHub and every expected
+   *  file was found with the content we uploaded. False means the check itself
+   *  couldn't run — `verification_note` says why. A genuinely missing file
+   *  fails the publish outright and never reaches this response. */
+  files_verified?: boolean;
+  verification_note?: string;
+  /** Files that needed a second commit before they appeared in the repo. */
+  repaired_files?: string[];
   provenance?: Provenance | null;
   warnings: string[];
 }

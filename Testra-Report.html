@@ -236,20 +236,21 @@
       <li><a href="#s8">The fragility model</a></li>
       <li><a href="#s9">Models compared</a></li>
       <li><a href="#s10">The two agents</a></li>
-      <li><a href="#s11">Grounding &amp; self-heal</a></li>
-      <li><a href="#s12">The scaffold</a></li>
-      <li><a href="#s13">The LLM router</a></li>
-      <li><a href="#s14">Persistence &amp; progress</a></li>
-      <li><a href="#s15">Security scanning</a></li>
-      <li><a href="#s16">Accounts, billing, admin</a></li>
-      <li><a href="#s17">Frontend</a></li>
-      <li><a href="#s18">Testing &amp; CI</a></li>
-      <li><a href="#s19">Deployment</a></li>
-      <li><a href="#s20">Benchmarking</a></li>
-      <li><a href="#s21">Limitations</a></li>
-      <li><a href="#s22">Roadmap</a></li>
-      <li><a href="#s23">Conclusion</a></li>
-      <li><a href="#s24">Glossary</a></li>
+      <li><a href="#s11">Grounding, self-heal &amp; the success rate</a></li>
+      <li><a href="#s12">Safety gates &amp; failure handling</a></li>
+      <li><a href="#s13">The scaffold</a></li>
+      <li><a href="#s14">The LLM router</a></li>
+      <li><a href="#s15">Persistence &amp; progress</a></li>
+      <li><a href="#s16">Security scanning</a></li>
+      <li><a href="#s17">Accounts, billing, admin</a></li>
+      <li><a href="#s18">Frontend</a></li>
+      <li><a href="#s19">Testing &amp; CI</a></li>
+      <li><a href="#s20">Deployment</a></li>
+      <li><a href="#s21">Benchmarking</a></li>
+      <li><a href="#s22">Limitations</a></li>
+      <li><a href="#s23">Roadmap &amp; future enhancements</a></li>
+      <li><a href="#s24">Conclusion</a></li>
+      <li><a href="#s25">Glossary</a></li>
     </ol>
   </nav>
 
@@ -261,9 +262,9 @@
       <p class="subtitle">An AI system that reads a web codebase and writes a grounded, runnable end-to-end test suite — with two LLM agents, a from-scratch logistic-regression classifier, and a selector-durability model.</p>
       <div class="meta">
         <span>Author <b>krishnapriya</b></span>
-        <span>Date <b>23 July 2026</b></span>
+        <span>Date <b>28 July 2026</b></span>
         <span>Backend <b>~20,000 LOC Python</b></span>
-        <span>Tests <b>622</b></span>
+        <span>Tests <b>958</b></span>
         <span>Licence <b>MIT</b></span>
       </div>
     </header>
@@ -345,12 +346,32 @@
         <span class="cm">│</span> Gemini → Groq → Claude<span class="cm">│</span>                <span class="cm">│</span> durable · TTL-pruned   <span class="cm">│</span>
         <span class="cm">│</span> rotation · 429 cooldown<span class="cm">│</span>               <span class="cm">│</span> survives restarts      <span class="cm">│</span>
         <span class="cm">└───────────────────────┘</span>                <span class="cm">└────────────────────────┘</span></pre>
-      <h3>Request lifecycle</h3>
+      <h3>The two working flows</h3>
+      <p>Testra has two entry points, and they differ in <em>what the suite is written from</em>. The distinction matters more than any other design decision in the system, so it is worth stating before the step lists.</p>
+      <div class="grid g2">
+        <div class="card"><span class="tag">Generate · crawl-first</span><h4>Written from the live site</h4><p>The user supplies a GitHub URL <em>and</em> a hosted URL. Testra renders and crawls the deployed application and writes tests from its real, rendered DOM. Repository file contents are never sent to the model at all — the repo is touched only to confirm access, name the stack, and later publish the suite back.</p></div>
+        <div class="card"><span class="tag">Publish · source-first</span><h4>Written from the source</h4><p>The user uploads a project ZIP. Testra filters it, optionally generates a validated suite from the source files, folds it in, and pushes the whole thing to a brand-new GitHub repository in a single commit.</p></div>
+      </div>
+
+      <h3>Flow 1 — generate (crawl-first)</h3>
       <ol class="body">
-        <li><strong>Analyze</strong> — fetch the repository (GitHub API or ZIP) → run <code>FileExtractor</code> → run Agent 1 → persist the job in SQLite → return a <code>job_id</code> plus the project analysis. Each phase streams a progress step as it happens.</li>
-        <li><strong>Stream</strong> (optional) — Server-Sent Events push Agent 2's output token by token; the raw output is cached on the job so the generate call can reuse it, avoiding a second paid LLM call.</li>
-        <li><strong>Generate</strong> — load the job, run Agent 2 (or reuse the streamed output), ground and validate every selector, self-heal failures, grade fragility, and return the complete file set.</li>
+        <li><strong><code>POST /api/analyze-crawl</code></strong> — render and crawl the hosted site (<code>services/live_crawler.py</code>), merging every reachable route's anchors into one index. The crawl is first because everything downstream depends on it, so its failure short-circuits before anything is spent on the repo. There is deliberately <em>no</em> repo-file fallback: a suite silently written from source when the user asked for a live crawl is not the thing they asked for. A site that renders but exposes too little markup is refused with a reason rather than grounded against near-nothing.</li>
+        <li><strong>Repo touch</strong> — confirm access via the GitHub API and fetch only the manifest files (<code>package.json</code>, <code>requirements.txt</code>, <code>Gemfile</code>…) needed to name the stack. The job, including the crawl anchors, is persisted to SQLite.</li>
+        <li><strong><code>GET /api/stream/{job_id}</code></strong> — Server-Sent Events push Agent 2's output token by token. The raw output is cached on the job so the generate call can reuse it, avoiding a second paid LLM call.</li>
+        <li><strong><code>POST /api/generate/{job_id}</code></strong> — reserve a generation credit, run Agent 2 against the crawl index (or reuse the streamed output), then: sanitize every model-authored filename, place the suite under <code>e2e/</code>, ground each selector against the crawl anchors, self-heal both syntax failures and unverified selectors, add the templated scaffold and CI, validate the whole set, grade fragility, and compute the success rate. The credit is refunded on any failure; the job — and the user's source with it — is deleted immediately afterwards.</li>
       </ol>
+
+      <h3>Flow 2 — publish (source-first)</h3>
+      <ol class="body">
+        <li><strong>Read</strong> — the ZIP is decoded in memory with a zip-slip guard on every path.</li>
+        <li><strong>Filter</strong> — <code>filter_for_push</code> drops credentials first, then dependency and build junk, binary assets, oversized files, and any path that cannot be safely written. Withheld credential files are named in the response, not merely counted.</li>
+        <li><strong>Suite</strong> (when CI is requested) — Agent 1 reads the project, Agent 2 writes the suite with the self-heal loop running until it is green <em>before</em> the push, so what lands in git is already validated and we push exactly once. Nothing here can cost the user their push: a project with no testable UI, or a provider outage, skips this step with an explicit warning and the code still lands.</li>
+        <li><strong>Merge</strong> — generated files are added without ever overwriting one of the user's own; a collision keeps their version and says so.</li>
+        <li><strong>Push</strong> — blobs → tree → commit → ref via the GitHub Git Data API, no local <code>git</code> binary, one commit.</li>
+        <li><strong>Verify</strong> — the pushed tree is read back and every expected path is confirmed present with the exact content hash uploaded. Missing files are re-pushed once; anything still missing fails the publish outright.</li>
+        <li><strong>Record</strong> — the repository is remembered so the dashboard can show it and the user can undo the whole thing with one click.</li>
+      </ol>
+      <p>Both flows report their steps as NDJSON over the request that started them (<code>services/progress.py</code>), which is why a two-minute operation shows real progress without a message broker or a worker fleet. Anything decidable <em>before</em> the stream opens — a malformed URL, a missing repo name, a corrupt archive — stays a plain HTTP error, because an in-band error on a 200 response is harder for every client to handle.</p>
     </section>
 
     <!-- 5 -->
@@ -614,7 +635,7 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
 
     <!-- 11 -->
     <section id="s11">
-      <h2><span class="num">11</span>Grounding, self-heal and validation</h2>
+      <h2><span class="num">11</span>Grounding, self-heal and the success rate</h2>
       <p>The failure mode this product exists to prevent is a suite that looks perfect and breaks on its first run because the model invented a selector. Four components attack that, and none of them execute the generated code — they reason about it statically.</p>
       <div class="grid g2">
         <div class="card"><span class="tag">services/grounding.py</span><h4>Source grounding</h4><p>Extracts anchors that genuinely exist — ids, test-ids, classes, form names, ARIA roles, accessible labels, link and button text — each carrying <strong>provenance</strong>: the file and line it was declared on. The UI can therefore cite <code>LoginForm.tsx:42</code> rather than ask for trust. Works for any repository.</p></div>
@@ -624,11 +645,71 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
       </div>
       <p>Both grounding modes are constructed identically — extract an anchor set, then perform a membership test — so a selector verified against source and one verified against the live DOM are judged by the same rules. No CSS engine is required: the selectors emitted reduce to a handful of anchor kinds, and membership <em>is</em> the question "would <code>querySelector</code> find this".</p>
       <div class="note"><span class="tag">Honest accounting</span><code>FileValidation</code> records whether anything was <em>actually</em> verified, or whether there was simply no toolchain for that file type. Configuration and documentation files pass by default, so counting them as passes would inflate the number: "8/8 files passed syntax validation" reads as eight checked files when two of them were a README and a YAML nobody parsed. Callers reporting a rate count only genuinely checked files.</div>
+
+      <h3>The generation success rate — <code>services/success_rate.py</code></h3>
+      <p>The measurements above are individually meaningful but collectively hard to read: a user looking at four fractions cannot tell whether the run went well. <code>success_rate.py</code> aggregates them into a single 0–100 figure with a letter grade, from four components:</p>
+      <div class="scroller"><table>
+        <thead><tr><th>Component</th><th>Weight</th><th>What it measures</th></tr></thead>
+        <tbody>
+          <tr><td>Completeness</td><td class="num">0.35</td><td>Planned files that were actually written. A suite missing a page object cannot run at all.</td></tr>
+          <tr><td>Parse</td><td class="num">0.30</td><td>Code files that a real parser read successfully. Config and docs are excluded by <code>checked=False</code>.</td></tr>
+          <tr><td>Grounding</td><td class="num">0.25</td><td>Selectors traceable to the user's real source or live DOM.</td></tr>
+          <tr><td>Coverage</td><td class="num">0.10</td><td>Binary: did the suite end up containing runnable test cases at all?</td></tr>
+        </tbody>
+      </table></div>
+      <p>The weights are deliberately unequal, and reflect how load-bearing each failure is rather than how easy it is to measure. A component with nothing to measure — no selectors, no parseable files — is <strong>dropped and its weight redistributed</strong> over the rest, never scored as a free 100%. Crediting a check that never ran is the specific inflation this module exists to prevent, and it is the one a naive average would commit.</p>
+      <div class="note"><span class="tag">Naming</span>It is a <em>generation</em> success rate, and the payload says so in a field the UI cannot omit. Testra never executes the generated suite, so any number labelled "accuracy" or "pass rate" would be invented. The failure mode of inventing one is not a slightly wrong figure: the user trusts "94% accurate", runs the suite, watches it fail, and does not come back. The API therefore ships <code>measures</code> and <code>not_measured</code> alongside the score so the caveat travels with the number to every client.</div>
+      <p class="plain"><span class="lbl">In plain words</span>The score answers "how well did the robot do its homework?" — did it write everything it planned, is the code well-formed, do the buttons it mentions really exist. It does <b>not</b> answer "will the tests pass?", because nobody ran them yet, and the report says that out loud instead of hoping you assume it.</p>
     </section>
 
     <!-- 12 -->
     <section id="s12">
-      <h2><span class="num">12</span>The scaffold</h2>
+      <h2><span class="num">12</span>Safety gates and failure handling</h2>
+      <p>Two operations in this system send the user's files somewhere they can never be recalled from: an LLM prompt goes into a third-party provider's logs, and a git commit survives even a force-push in the reflog. A third — writing files into a repository — can destroy work that was already there. The components below exist because each of those is unrecoverable, so the correct place to be careful is <em>before</em>, not after.</p>
+
+      <h3>Credential exclusion — <code>services/secrets_guard.py</code></h3>
+      <p>A <code>.env</code> in an uploaded ZIP is the normal case, not the exotic one: people archive their working tree. Two detectors run before anything leaves the process.</p>
+      <div class="grid g2">
+        <div class="card"><span class="tag">path rules</span><h4>Files that <em>are</em> credentials</h4><p><code>.env</code> and its environment variants, <code>id_rsa</code>, <code>.pem</code>/<code>.key</code>/<code>.p12</code>/<code>.jks</code>, <code>.npmrc</code>, <code>.netrc</code>, <code>terraform.tfstate</code>, anything under <code>.aws/</code>, <code>.ssh/</code>, <code>.gnupg/</code>, and cloud service-account JSONs. Template variants (<code>.env.example</code>) are deliberately kept — they are documentation and contain placeholders by definition.</p></div>
+        <div class="card"><span class="tag">content rules</span><h4>Keys hard-coded in source</h4><p>Only issuer-prefixed tokens — <code>AKIA…</code>, <code>ghp_…</code>, <code>sk_live_…</code>, <code>AIza…</code>, <code>xox…</code> — PEM private-key blocks, and database URLs with inline passwords. Generic <code>api_key = "…"</code> assignments are pointedly <strong>not</strong> matched: they are overwhelmingly placeholders, and a guard that eats half a codebase is a guard that gets switched off.</p></div>
+      </div>
+      <p>Exclusions are reported and named, never silent. A user whose <code>.env</code> quietly disappeared from a push will deploy, hit a missing-configuration error, and spend an afternoon on a problem we caused — so the response carries the path and the reason for every withheld file, and the UI lists them.</p>
+      <div class="note"><span class="tag">A bug worth recording</span>The first implementation normalised paths with <code>path.lstrip("./")</code>. <code>lstrip</code> strips <em>characters</em>, not a prefix, so <code>".env"</code> became <code>"env"</code> and the single most important file the module exists to catch walked straight through. It was caught by a test written from the leak's point of view rather than the code's. The same defect existed independently in the writer agent's filename handling, where it silently erased <code>../</code> traversal instead of rejecting it.</div>
+
+      <h3>Safe filenames — <code>services/safe_paths.py</code></h3>
+      <p>Every path in a generated suite comes out of an LLM's JSON, which makes it untrusted input that happens to look structured. <code>sanitize()</code> repairs what can be repaired and rejects the rest:</p>
+      <ul>
+        <li><strong>Traversal is rejected, not repaired.</strong> A path that asked to be outside the suite root has no correct home to be moved to, and guessing one is how you overwrite the user's <code>src/</code>. Prefixing with the suite directory is not containment — git normalises <code>e2e/../../src/App.tsx</code> straight back out.</li>
+        <li><strong>Absolute paths are relativised</strong>, because <code>/tests/login.spec.ts</code> has an obvious intent that traversal does not.</li>
+        <li><strong>Windows-hostile names are repaired</strong> — trailing dots and spaces (silently trimmed by Windows, so the repo has two names for one file), reserved device stems (<code>con.ts</code> cannot be created at all), and the characters Windows forbids.</li>
+        <li><strong><code>.git/</code> is off limits.</strong> Writing there does not add a file; it corrupts the repository. <code>.github/workflows/</code> is explicitly allowed — the CI pipeline legitimately lives there.</li>
+        <li><strong>Duplicates are renamed, not overwritten.</strong> Two planned files with one name means last-write-wins loses a spec and still reports the full count. The rename splits at the <em>first</em> dot, so <code>login.spec.ts</code> becomes <code>login-2.spec.ts</code> and never <code>login.spec-2.ts</code> — <code>.spec.</code> is what the runner discovers on, and suffixing after it produces a file that exists, parses, validates, and is never collected.</li>
+      </ul>
+      <p>The counterpart, <code>merge_new_only()</code>, adds generated files to the push set without ever overwriting an existing key. Collisions are rare — the suite has its own directory — but "rare" is the wrong bar when the file being destroyed is the one thing in the request we did not write. It happens on a re-publish, or a repo that already has an <code>e2e/</code>.</p>
+
+      <h3>Push verification — <code>services/git_publisher.py</code></h3>
+      <p>"18 files pushed" is a claim about the repository, and until recently it was a claim about our own bookkeeping. Every write in the blobs → tree → commit → ref sequence can return <code>2xx</code> and still leave the branch short a file. The user is told the count, finds sixteen, and usually finds out much later — when CI runs a suite missing a page object.</p>
+      <p>The publisher now reads the pushed tree back (<code>GET /git/trees/{sha}?recursive=1</code>) and compares it against what it uploaded. Git makes this cheap and strict at once: a tree entry's SHA <em>is</em> the hash of its content, so comparing SHAs verifies bytes, not just names. A path present with different content counts as missing, which is the honest reading.</p>
+      <ol class="body">
+        <li>Anything missing is <strong>re-uploaded and committed again</strong>, layered onto the tree that is now live rather than the original base — otherwise repairing one file would delete the three that landed.</li>
+        <li>The second verification compares against the SHAs the repair actually uploaded, not the first attempt's.</li>
+        <li>Anything still missing <strong>raises</strong>. It is never a success with a footnote.</li>
+        <li>When the check itself cannot complete — GitHub truncates trees beyond roughly 100k entries — nothing is claimed as verified <em>and</em> nothing is claimed as missing. An unread tree is not evidence of absence, and the response says which case it was.</li>
+      </ol>
+
+      <h3>Unsupported projects and failed generation</h3>
+      <p>Two failure classes are handled explicitly rather than being allowed to present as success.</p>
+      <div class="grid g2">
+        <div class="card"><span class="tag">filter_agent</span><h4>Unsupported project</h4><p>An empty upload, a documentation repository, an API-only backend and a monorepo whose frontend was filtered out are four different mistakes needing four different actions. A single "no testable UI found" cannot tell the user which they are in, so <code>NoTestableUIError</code> diagnoses the case, carries a machine-readable <code>code</code>, and the API returns it as a structured 422 the client can render as a real screen.</p></div>
+        <div class="card"><span class="tag">writer_agent</span><h4>Total generation failure</h4><p>When a response is not valid JSON, the parser falls back to a single file containing the raw output. That file used to be scaffolded, validated, zipped and handed over as <code>e2e/tests/generated.ts</code> — a plausible-looking archive containing the model's prose, which parses as nothing and collects no tests. It now raises <code>GenerationFailedError</code>: a failure that presents as success is the one outcome worth an exception.</p></div>
+      </div>
+      <p>A <em>partial</em> run is a third, softer case and is treated differently: the files that generated are kept, the missing ones are named in <code>failed_files</code>, and the CI workflow is withheld — because a pipeline that runs an incomplete suite is guaranteed red, and a red pipeline is worse than none.</p>
+      <p class="plain"><span class="lbl">In plain words</span>Three promises. We never send your passwords anywhere. We never write a file on top of one of yours, or in a place you didn't ask for. And when we say we saved eighteen files to your account, we go and count them afterwards — and if one is missing we put it back, or we tell you we couldn't.</p>
+    </section>
+
+    <!-- 13 -->
+    <section id="s13">
+      <h2><span class="num">13</span>The scaffold</h2>
       <p><code>agents/scaffold.py</code> produces the dependency manifest, framework configuration, GitHub Actions and GitLab CI pipelines, and the README. These are <strong>templated, not generated</strong>: each has exactly one correct answer per framework, so asking a language model for them only introduces variance.</p>
       <p>The module exists because the alternative failed silently for every user: the CI template ran <code>npm ci</code> while nothing ever emitted a <code>package.json</code>. The pipeline could not pass on any repository, and neither half of the system knew about the other. The install step and the manifest it installs are now written by the same module.</p>
       <div class="grid g2">
@@ -637,9 +718,9 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
       </div>
     </section>
 
-    <!-- 13 -->
-    <section id="s13">
-      <h2><span class="num">13</span>The LLM router</h2>
+    <!-- 14 -->
+    <section id="s14">
+      <h2><span class="num">14</span>The LLM router</h2>
       <p><code>services/llm_router.py</code> (948 lines) is the availability layer. It tries providers in priority order, rotates round-robin through each provider's configured keys, and places a key on cooldown when it returns a 429 or errors. A <code>json_mode</code> flag forces valid JSON per provider, and per-request status updates are scoped with a <code>ContextVar</code> so concurrent streams never cross-talk.</p>
       <div class="scroller"><table>
         <thead><tr><th>Provider</th><th>Free tier model</th><th>Pro tier model</th><th>Cooldown</th></tr></thead>
@@ -657,9 +738,9 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
       <p class="plain"><span class="lbl">In plain words</span>It's like having three friends who can help with your homework. Ask the first one. If they're busy, ask the second. If everyone's busy, wait a minute and try again — and always say honestly which friend actually answered.</p>
     </section>
 
-    <!-- 14 -->
-    <section id="s14">
-      <h2><span class="num">14</span>Persistence and live progress</h2>
+    <!-- 15 -->
+    <section id="s15">
+      <h2><span class="num">15</span>Persistence and live progress</h2>
       <h3><code>services/store.py</code> — the durable job store</h3>
       <p>1,157 lines of SQLite-backed state using only the standard library. Jobs survive process restarts and are shared across workers; old jobs are pruned by TTL (24 hours). <code>FilterResult</code> is serialized to and from JSON transparently, so callers deal in typed objects, not rows.</p>
       <h3><code>services/progress.py</code> — NDJSON step streaming</h3>
@@ -669,9 +750,9 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
       <p>Step ids are a cross-language contract with <code>frontend/src/flows.ts</code>. A drifted id would be silent in the browser — the card simply never lights — so <code>Progress</code> rejects an unknown id rather than emitting an event nothing listens for.</p>
     </section>
 
-    <!-- 15 -->
-    <section id="s15">
-      <h2><span class="num">15</span>Security scanning</h2>
+    <!-- 16 -->
+    <section id="s16">
+      <h2><span class="num">16</span>Security scanning</h2>
       <h3>Passive configuration audit — <code>services/security_scanner.py</code></h3>
       <p>1,187 lines. Given a URL the user owns, it fetches the site and inspects its <em>configuration</em> for the issues that commonly bite web applications in production. It is deliberately non-intrusive: it reads headers, cookies, TLS and redirect behaviour, and probes a short curated list of files that should never be public. It sends no attack payloads and brute-forces nothing.</p>
       <ul>
@@ -689,9 +770,9 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
       <p>Scans of localhost, private ranges and link-local addresses are refused — <strong>including across redirect hops</strong>, so a public URL cannot redirect the scanner into an internal network. A scope gate additionally blocks third-party sites the user plainly does not own. The same guarded, non-executing fetch path is reused for DOM grounding.</p>
     </section>
 
-    <!-- 16 -->
-    <section id="s16">
-      <h2><span class="num">16</span>Accounts, billing and administration</h2>
+    <!-- 17 -->
+    <section id="s17">
+      <h2><span class="num">17</span>Accounts, billing and administration</h2>
       <div class="grid g2">
         <div class="card"><span class="tag">services/auth.py</span><h4>Authentication</h4><p>Email and password with verification and OTP, Google OAuth, GitHub OAuth, password reset, session revocation across all devices, and account deletion.</p></div>
         <div class="card"><span class="tag">services/quota.py + billing.py</span><h4>Plans and quota</h4><p>Free plan with a monthly generation allowance; Pro with unlimited runs and a stronger model. <code>limit_for()</code> and <code>tier_for()</code> are deliberately adjacent — they are the only two things a plan changes.</p></div>
@@ -705,9 +786,9 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
       </ol>
     </section>
 
-    <!-- 17 -->
-    <section id="s17">
-      <h2><span class="num">17</span>The frontend</h2>
+    <!-- 18 -->
+    <section id="s18">
+      <h2><span class="num">18</span>The frontend</h2>
       <p>A React 18 + TypeScript single-page application built with Vite: <strong>20 routes</strong> and <strong>29 components</strong>. Notable pieces:</p>
       <div class="grid g3">
         <div class="card"><h4>FlowPipeline</h4><p>Renders the live NDJSON step stream as a flowchart, so long operations show which phase is running.</p></div>
@@ -722,29 +803,30 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
       </div>
     </section>
 
-    <!-- 18 -->
-    <section id="s18">
-      <h2><span class="num">18</span>Testing and continuous integration</h2>
-      <p>The backend carries <strong>622 automated tests across 26 suites</strong> — roughly one test file per service, covering the extractor and scoring, framework detection, router failover and key rotation, writer-agent logic, grounding, fragility, the importance model, validation, the store, quota, billing, authentication, both OAuth flows, the publisher, the scaffold, the security scanner and the ZAP integration.</p>
+    <!-- 19 -->
+    <section id="s19">
+      <h2><span class="num">19</span>Testing and continuous integration</h2>
+      <p>The backend carries <strong>958 automated tests across 32 suites</strong> — roughly one test file per service, covering the extractor and scoring, framework detection, router failover and key rotation, writer-agent logic, grounding, fragility, the importance model, validation, the store, quota, billing, authentication, both OAuth flows, the publisher and its push verification, credential exclusion, path safety, the success-rate scorer, the scaffold, the security scanner and the ZAP integration.</p>
       <div class="grid g4">
-        <div class="card stat"><span class="n">622</span><span class="l">tests</span></div>
-        <div class="card stat"><span class="n">26</span><span class="l">test suites</span></div>
+        <div class="card stat"><span class="n">958</span><span class="l">tests</span></div>
+        <div class="card stat"><span class="n">32</span><span class="l">test suites</span></div>
         <div class="card stat"><span class="n">3</span><span class="l">Python versions in CI</span></div>
         <div class="card stat"><span class="n">867</span><span class="l">lines in the largest suite (security scanner)</span></div>
       </div>
+      <div class="note"><span class="tag">How the safety tests are written</span>The suites for <code>secrets_guard</code>, <code>safe_paths</code> and push verification are written from the <em>failure's</em> point of view rather than the code's: each case names a file someone really does have in their working tree, or a repository state that really does occur. That framing found two live defects — a <code>lstrip("./")</code> that turned <code>.env</code> into <code>env</code> and let it through, and a dedupe that renamed <code>login.spec.ts</code> to <code>login.spec-2.ts</code>, producing a valid file the test runner would never collect. Neither would have been caught by tests written to confirm the implementation does what it says.</div>
       <p>CI (<code>.github/workflows/ci.yml</code>) runs the backend matrix across Python 3.11, 3.12 and 3.13 plus a frontend build on every push. Linting is Ruff.</p>
-    </section>
-
-    <!-- 19 -->
-    <section id="s19">
-      <h2><span class="num">19</span>Deployment</h2>
-      <p>The whole system runs with one command: <code>docker compose up</code> — frontend on port 5173, API on 8000, interactive OpenAPI docs at <code>/docs</code>. Optional active scanning is a compose profile rather than a default dependency.</p>
-      <p>Production is containerised behind Caddy for automatic TLS and static serving, with <code>deploy/aws-setup.sh</code> and <code>deploy/bootstrap.sh</code> provisioning the host and <code>deploy/docker-compose.prod.yml</code> describing the production topology. Configuration is typed via <code>pydantic-settings</code>; logging is structured JSON with request IDs correlating every line of a request.</p>
     </section>
 
     <!-- 20 -->
     <section id="s20">
-      <h2><span class="num">20</span>Benchmarking</h2>
+      <h2><span class="num">20</span>Deployment</h2>
+      <p>The whole system runs with one command: <code>docker compose up</code> — frontend on port 5173, API on 8000, interactive OpenAPI docs at <code>/docs</code>. Optional active scanning is a compose profile rather than a default dependency.</p>
+      <p>Production is containerised behind Caddy for automatic TLS and static serving, with <code>deploy/aws-setup.sh</code> and <code>deploy/bootstrap.sh</code> provisioning the host and <code>deploy/docker-compose.prod.yml</code> describing the production topology. Configuration is typed via <code>pydantic-settings</code>; logging is structured JSON with request IDs correlating every line of a request.</p>
+    </section>
+
+    <!-- 21 -->
+    <section id="s21">
+      <h2><span class="num">21</span>Benchmarking</h2>
       <p><code>services/benchmark.py</code> runs the grounding and fragility analysis over a set of <em>(repository, generated suite)</em> cases and prints a markdown leaderboard. It reports:</p>
       <ul>
         <li><strong>Verified-selector rate</strong> — of every selector the model wrote, the fraction that provably resolves to a real element in the source or the live DOM. Pooled and per-repository.</li>
@@ -754,10 +836,11 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
       <div class="note"><span class="tag">Why this metric</span>Because Testra never executes the generated suite, "pass rate" would be an invented number. "Selectors provably resolve" is the strongest claim the system can actually support, so it is the one reported.</div>
     </section>
 
-    <!-- 21 -->
-    <section id="s21">
-      <h2><span class="num">21</span>Limitations</h2>
+    <!-- 22 -->
+    <section id="s22">
+      <h2><span class="num">22</span>Limitations</h2>
       <p>The project ships a model card (<code>docs/LIMITATIONS.md</code>). The green "passed a syntax check" badge means each generated file passed a <strong>static structural check only</strong>. It does <em>not</em> mean the tests were executed, that the selectors resolve against your running application, or that the assertions pass.</p>
+      <p>The same qualification governs the generation success rate of §11, and is the most important sentence to carry away from this report: <strong>it is not a pass rate.</strong> A suite can score 100 and still fail on its first run — every planned file was written, all of it parses, every selector exists somewhere in the application, and the assertion about what the page does after clicking is still the model's guess. The score measures the quality of the <em>generation</em>, which is the only thing measurable without executing anything, and the API ships that caveat in the payload so no client can display the number without it.</p>
       <div class="grid g2">
         <div class="card risk"><h4>Selector extraction is regex-based</h4><p>It can miss dynamic classes (<code>className={styles.x}</code>), CSS-in-JS, and some ARIA/role/text selectors, so both false positives and false negatives are possible. Selectors marked "not verified" need review.</p></div>
         <div class="card risk"><h4>Very large repositories</h4><p>May exceed the model's context window. Low-priority files are summarized rather than sent verbatim, which can reduce selector accuracy.</p></div>
@@ -769,30 +852,47 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
       <p class="plain"><span class="lbl">In plain words</span>Saying "I checked <b>this</b> much, and no further" is not a weakness in the project. It is the thing that makes everything else it says believable.</p>
     </section>
 
-    <!-- 22 -->
-    <section id="s22">
-      <h2><span class="num">22</span>Roadmap</h2>
+    <!-- 23 -->
+    <section id="s23">
+      <h2><span class="num">23</span>Roadmap and future enhancements</h2>
+      <p>Ordered by how much each would change what the system can honestly claim, not by how hard it is to build. The first item is the one that would retire the largest caveat in this report.</p>
+
+      <h3>Near term — closing the measurement gap</h3>
       <ol class="body">
-        <li><strong>Sandboxed execution.</strong> Actually run the generated suite in Docker against a live target and report real pass/fail — turning the honest "selectors resolve" metric into a measured one.</li>
-        <li><strong>AST-based selector extraction.</strong> Replace regex with a real parse, capturing roles, accessible names and visible text — removing the largest current source of false flags.</li>
-        <li><strong>Retrieval-based context selection.</strong> Per-provider context budgeting so very large repositories stop relying on summarization.</li>
-        <li><strong>Re-fit both models on real outcomes.</strong> Retrain the logistic regression on which files actually produced verified, low-fragility selectors, and re-fit <code>FEATURE_WEIGHTS</code> from observed selector breakage. The plumbing for both already exists.</li>
-        <li><strong>Diff-aware regeneration.</strong> Re-upload a new version and see only which tests need updating.</li>
-        <li><strong>Conversational refinement.</strong> "Add a test for the forgot-password flow."</li>
+        <li><strong>Sandboxed execution.</strong> Run the generated suite in Docker against a live target and report real pass/fail. This is the single highest-value item in the document: it converts the generation success rate (§11) from an aggregate of static checks into a measured outcome, and lets the product finally say "these tests pass" — a sentence it currently, deliberately, refuses to say. Everything needed is already in place: the scaffold emits a runnable project with a working <code>webServer</code> block, and the CI workflow it writes is the same command a sandbox would run.</li>
+        <li><strong>AST-based selector extraction.</strong> Replace the regex anchor scan with a real parse, capturing roles, accessible names, visible text and dynamic class expressions (<code>className={styles.x}</code>, CSS-in-JS). This is the largest current source of both false "not verified" flags and missed real ones, and it is the limitation most likely to make a good suite look worse than it is.</li>
+        <li><strong>Secret scanning with entropy analysis.</strong> The current content detector (§12) matches only issuer-prefixed tokens, which is deliberately conservative. Adding a calibrated Shannon-entropy check with a per-file-type threshold would catch bespoke credentials — internal signing keys, self-issued tokens — without the false-positive rate that made a generic <code>api_key =</code> rule unusable.</li>
+        <li><strong>Verify pushes against a re-read of file content, not only the tree.</strong> Content hashes prove the blobs match what was uploaded; they do not prove the branch is what the user will clone if a concurrent write raced ours. Comparing against <code>GET /contents</code> after the ref update would close that window.</li>
+      </ol>
+
+      <h3>Medium term — scale and adaptation</h3>
+      <ol class="body" start="5">
+        <li><strong>Retrieval-based context selection.</strong> Per-provider context budgeting with embedding retrieval over the repository, so very large codebases stop relying on the summarization path that currently degrades selector accuracy.</li>
+        <li><strong>Re-fit both models on real outcomes.</strong> Retrain the logistic regression on which files actually produced verified, low-fragility selectors, and re-fit <code>FEATURE_WEIGHTS</code> from observed selector breakage in real repositories over time. The plumbing for both already exists and is unused only because the outcome data does not exist yet — which sandboxed execution would produce.</li>
+        <li><strong>Weight the success rate empirically.</strong> The four component weights in §11 are reasoned, not fitted. Once real pass/fail data exists, they can be regressed against it, so the score predicts something measured instead of encoding a judgement about which failure hurts most.</li>
+        <li><strong>Incremental publishing.</strong> Push into an existing repository on a branch with a pull request, instead of only creating a new one. This is the most-requested capability the current design cannot express, and it makes the collision handling in §12 load-bearing rather than defensive.</li>
+      </ol>
+
+      <h3>Longer term — product surface</h3>
+      <ol class="body" start="9">
+        <li><strong>Diff-aware regeneration.</strong> Re-submit a changed version and regenerate only the specs whose grounded selectors moved — turning Testra from a one-shot generator into something that stays attached to a codebase.</li>
+        <li><strong>Conversational refinement.</strong> "Add a test for the forgot-password flow", applied against the existing suite and its grounding index rather than a fresh generation.</li>
+        <li><strong>Self-healing suites.</strong> Re-crawl on a schedule, detect selectors that no longer resolve, and open a pull request repairing them — the self-heal loop of §11 pointed at drift over time instead of at generation-time misses.</li>
+        <li><strong>Visual selector picking.</strong> Screenshot the crawled page, let the user click an element, and ground a test on it directly — the shortest possible path from "test this button" to a grounded assertion.</li>
       </ol>
     </section>
 
-    <!-- 23 -->
-    <section id="s23">
-      <h2><span class="num">23</span>Conclusion</h2>
+    <!-- 24 -->
+    <section id="s24">
+      <h2><span class="num">24</span>Conclusion</h2>
       <p>Testra takes a task that is universally agreed to be valuable and universally avoided — writing end-to-end tests — and reduces it to pasting a URL. The engineering interest is not that it calls a language model; almost anything can call a language model. It is the apparatus built <em>around</em> the model: a deterministic pre-filter that spends no tokens, a learned classifier that adapts file selection to the codebase in front of it, a grounding layer that traces every generated selector back to the line of source it came from, a repair loop that fixes misses with evidence rather than with another guess, a durability model that grades what will still work next quarter, and a benchmark that refuses to flatter itself with a convenient denominator.</p>
       <p>The two ML components embody the project's technical thesis: prefer the small, explainable thing. A 226-line logistic regression with named weights, readable JSON and a safe fallback path is a better engineering answer than a dependency-heavy black box when the model is small, the data is thin, and somebody will eventually need to ask <em>why did it score that file a 9?</em></p>
       <p class="plain"><span class="lbl">In plain words</span>A robot that checks your website, written by a robot that read your website — and a receipt showing exactly what was checked, and what wasn't.</p>
     </section>
 
-    <!-- 24 -->
-    <section id="s24">
-      <h2><span class="num">24</span>Glossary</h2>
+    <!-- 25 -->
+    <section id="s25">
+      <h2><span class="num">25</span>Glossary</h2>
       <div class="scroller"><table>
         <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
         <tbody>

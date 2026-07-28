@@ -13,6 +13,18 @@ Flow:
   6. POST /git/trees                   → new tree layered on the base tree
   7. POST /git/commits                 → new commit
   8. PATCH /git/refs/heads/{branch}    → fast-forward the branch to it
+  9. GET  /git/trees/{sha}?recursive=1 → read the pushed tree back and prove
+                                         every file is there, byte for byte
+
+Step 9 is not ceremony. Steps 5–8 can each return 2xx and still leave a repo
+short of files: a blob that uploaded under a truncated body, a tree assembled
+from a stale base, a path the API normalised differently than we spelled it. The
+user is told "18 files pushed" and finds 16, usually much later. Reading the
+tree back is the only statement about the repo that comes from the repo, and git
+makes it cheap — a tree entry's sha IS the hash of its content, so comparing the
+shas we uploaded against the shas now in the branch verifies contents, not just
+names. Anything still missing is re-pushed once; anything missing after that is
+an error, never a success with a footnote.
 """
 
 import time
@@ -40,6 +52,16 @@ class PublishResult:
     commit_sha: str
     files_pushed: int
     warnings: list[str] = field(default_factory=list)
+    # True when the pushed tree was read back and every expected path was found
+    # with the exact blob sha we uploaded. False only when GitHub could not give
+    # us a complete tree to check against (see `verification_note`) — a genuinely
+    # missing file raises instead of landing here.
+    verified: bool = False
+    verification_note: str = ""
+    # Files that had to be pushed a second time before they appeared. Empty on a
+    # normal run; non-empty means the first commit was incomplete and we fixed
+    # it, which is worth telling the user.
+    repaired_files: list[str] = field(default_factory=list)
 
 
 class GitPublisher:
@@ -69,28 +91,71 @@ class GitPublisher:
         if not files:
             raise GitPublishError("No files to push.")
 
+        warnings: list[str] = []
+        repaired: list[str] = []
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             owner = await self._get_owner(client)
             repo, branch = await self._create_repo(client, repo_name, private, description)
             base_commit_sha, base_tree_sha = await self._get_base(client, owner, repo, branch)
 
-            # Upload every file as a blob (concurrently), then assemble a tree.
-            sem = asyncio.Semaphore(blob_concurrency)
-
-            async def make_blob(path: str, content: str) -> dict:
-                async with sem:
-                    sha = await self._create_blob(client, owner, repo, content)
-                return {"path": path, "mode": "100644", "type": "blob", "sha": sha}
-
-            tree_items = await asyncio.gather(
-                *(make_blob(p, c) for p, c in files.items())
+            tree_items = await self._upload_blobs(
+                client, owner, repo, files, blob_concurrency
+            )
+            commit_sha = await self._commit_tree(
+                client, owner, repo, branch, commit_message,
+                base_tree_sha, base_commit_sha, tree_items,
             )
 
-            tree_sha = await self._create_tree(client, owner, repo, base_tree_sha, tree_items)
-            commit_sha = await self._create_commit(
-                client, owner, repo, commit_message, tree_sha, base_commit_sha
-            )
-            await self._update_ref(client, owner, repo, branch, commit_sha)
+            # Read the branch back and prove the files are in it.
+            missing, note = await self._verify_tree(client, owner, repo, commit_sha, tree_items)
+
+            if missing:
+                # One repair attempt, then it is an error. Re-uploading the blobs
+                # rather than reusing the shas is deliberate: if the first upload
+                # is why they are missing, reusing its output repeats the bug.
+                logger.warning(
+                    f"{len(missing)} file(s) missing from {owner}/{repo} after push — "
+                    f"re-pushing: {', '.join(sorted(missing)[:5])}"
+                )
+                retry_items = await self._upload_blobs(
+                    client, owner, repo,
+                    {p: files[p] for p in missing}, blob_concurrency,
+                )
+                commit_sha = await self._commit_tree(
+                    client, owner, repo, branch,
+                    f"{commit_message} (completing {len(missing)} missing file(s))",
+                    # Layer onto the tree that is now live, not the original base,
+                    # or the repair commit would delete everything that did land.
+                    await self._tree_sha_of(client, owner, repo, commit_sha),
+                    commit_sha, retry_items,
+                )
+                # Verify against the shas the repair actually uploaded, not the
+                # ones from the first attempt. Real GitHub blob shas are content
+                # hashes and so come back identical, but relying on that would
+                # make this check silently wrong the day a file is re-uploaded
+                # with any normalisation applied.
+                latest = {i["path"]: i for i in tree_items}
+                latest.update({i["path"]: i for i in retry_items})
+                still_missing, note = await self._verify_tree(
+                    client, owner, repo, commit_sha, list(latest.values())
+                )
+                if still_missing:
+                    raise GitPublishError(
+                        f"Pushed to {owner}/{repo}, but "
+                        f"{len(still_missing)} file(s) are not in the repository "
+                        f"after a retry: {', '.join(sorted(still_missing)[:5])}"
+                        f"{'...' if len(still_missing) > 5 else ''}. "
+                        "The repo was created — delete it and publish again."
+                    )
+                repaired = sorted(missing)
+                warnings.append(
+                    f"{len(repaired)} file(s) did not land on the first commit and "
+                    "were pushed again — the repo is complete, in two commits."
+                )
+
+        if note:
+            warnings.append(note)
 
         return PublishResult(
             repo_url=f"https://github.com/{owner}/{repo}",
@@ -98,7 +163,100 @@ class GitPublisher:
             branch=branch,
             commit_sha=commit_sha,
             files_pushed=len(files),
+            warnings=warnings,
+            verified=not note,
+            verification_note=note,
+            repaired_files=repaired,
         )
+
+    async def _upload_blobs(
+        self, client: httpx.AsyncClient, owner: str, repo: str,
+        files: dict[str, str], concurrency: int,
+    ) -> list[dict]:
+        """Upload each file as a blob (concurrently) and return tree entries."""
+        sem = asyncio.Semaphore(concurrency)
+
+        async def make_blob(path: str, content: str) -> dict:
+            async with sem:
+                sha = await self._create_blob(client, owner, repo, content)
+            return {"path": path, "mode": "100644", "type": "blob", "sha": sha}
+
+        return list(await asyncio.gather(*(make_blob(p, c) for p, c in files.items())))
+
+    async def _commit_tree(
+        self, client: httpx.AsyncClient, owner: str, repo: str, branch: str,
+        message: str, base_tree_sha: str, parent_sha: str, tree_items: list[dict],
+    ) -> str:
+        """tree → commit → ref, the three writes that make a push. Returns the sha."""
+        tree_sha = await self._create_tree(client, owner, repo, base_tree_sha, tree_items)
+        commit_sha = await self._create_commit(
+            client, owner, repo, message, tree_sha, parent_sha
+        )
+        await self._update_ref(client, owner, repo, branch, commit_sha)
+        return commit_sha
+
+    async def _tree_sha_of(
+        self, client: httpx.AsyncClient, owner: str, repo: str, commit_sha: str
+    ) -> str:
+        r = await client.get(
+            f"{BASE_API}/repos/{owner}/{repo}/git/commits/{commit_sha}", headers=self._headers
+        )
+        if r.status_code != 200:
+            raise GitPublishError(self._msg(r, "Could not read the commit we just made"))
+        return r.json()["tree"]["sha"]
+
+    async def _verify_tree(
+        self, client: httpx.AsyncClient, owner: str, repo: str,
+        commit_sha: str, expected: list[dict],
+    ) -> tuple[set[str], str]:
+        """Read the pushed tree back. Returns (missing_paths, note).
+
+        A path counts as present only when its blob sha matches the one we
+        uploaded. Git shas are content hashes, so an equal sha is proof the
+        bytes match — a path present with different content is reported as
+        missing, which is the honest reading: what we sent is not what is there.
+
+        `note` is set only when the check itself could not be completed (GitHub
+        truncates trees over ~100k entries, or the read failed). In that case
+        nothing is claimed as verified, and nothing is claimed as missing
+        either — an unread tree is not evidence of absence.
+        """
+        want = {item["path"]: item["sha"] for item in expected}
+        r = await client.get(
+            f"{BASE_API}/repos/{owner}/{repo}/git/trees/{commit_sha}",
+            headers=self._headers,
+            params={"recursive": "1"},
+        )
+        if r.status_code != 200:
+            logger.warning(
+                f"Could not verify the push to {owner}/{repo}: "
+                f"git/trees returned {r.status_code}"
+            )
+            return set(), (
+                "The push succeeded, but GitHub wouldn't let us read the repo back "
+                f"to confirm every file arrived (HTTP {r.status_code}). "
+                "Check the repo's file list."
+            )
+
+        data = r.json()
+        if data.get("truncated"):
+            return set(), (
+                "This repo is too large for GitHub to return its full file list in "
+                "one response, so we could not confirm every file individually."
+            )
+
+        actual = {
+            e["path"]: e.get("sha")
+            for e in data.get("tree", [])
+            if e.get("type") == "blob"
+        }
+        missing = {p for p, sha in want.items() if actual.get(p) != sha}
+        if missing:
+            logger.warning(
+                f"Verification found {len(missing)} missing/mismatched file(s) in "
+                f"{owner}/{repo}"
+            )
+        return missing, ""
 
     # ── individual API steps ─────────────────────────────
 

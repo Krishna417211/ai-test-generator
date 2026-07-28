@@ -33,9 +33,10 @@ from config import settings
 from logging_config import configure_logging, request_id_var
 from ratelimit import rate_limit, analyze_limiter, generate_limiter, email_limiter, otp_limiter
 from agents.filter_agent import FilterAgent, FilterResult, NoTestableUIError
-from agents.writer_agent import WriterAgent, CRAWL_MAX_PAGES
+from agents.writer_agent import WriterAgent, CRAWL_MAX_PAGES, GenerationFailedError
 from services import live_crawler as crawler_svc
 from services import grounding as grounding_svc
+from services import safe_paths, success_rate
 from models.schemas import (
     GenerateRequest, GenerateResponse, GeneratedFile,
     ProjectAnalysis, FilePreview, StatusResponse, ProviderStatus,
@@ -223,15 +224,21 @@ def _analysis_body(result, user_id: str, request: dict, tier: Tier = Tier.FREE) 
 
     import uuid
     job_id = str(uuid.uuid4())
+    excluded_secrets = getattr(result, "excluded_secrets", []) or []
     store.create(job_id, {
         "user_id": user_id,
         "files": result.files,
         "filter_result": result,
         "request": request,
+        "excluded_secrets": excluded_secrets,
     })
 
     return {
         "job_id": job_id,
+        # Surfaced on the preview screen, before a credit is spent: the user is
+        # about to confirm "yes, analyse this", and finding out afterwards that
+        # their .env was in the upload is too late to be useful.
+        "excluded_secrets": excluded_secrets,
         "analysis": ProjectAnalysis(
             project_summary=result.project_summary,
             framework=result.framework,
@@ -296,7 +303,10 @@ async def analyze_repo(payload: GenerateRequest, ctx: dict = Depends(require_use
                 tier=tier,
             )
         except NoTestableUIError as e:
-            raise HTTPException(422, str(e))
+            # Structured, not a bare string: the client renders an "unsupported
+            # project" screen from `code`/`suggestion` rather than dropping our
+            # sentence into a red toast.
+            raise HTTPException(422, e.as_dict())
 
         return _analysis_body(result, ctx["user_id"], payload.model_dump(), tier)
 
@@ -620,7 +630,10 @@ async def upload_zip(
                 tier=tier,
             )
         except NoTestableUIError as e:
-            raise HTTPException(422, str(e))
+            # Structured, not a bare string: the client renders an "unsupported
+            # project" screen from `code`/`suggestion` rather than dropping our
+            # sentence into a red toast.
+            raise HTTPException(422, e.as_dict())
 
         return _analysis_body(result, ctx["user_id"], {
             "framework": framework,
@@ -1865,16 +1878,23 @@ async def _publish_work(
     await progress.start("read")
     await progress.done("read", f"{len(raw_files)} files in the archive")
 
-    # Keep only what belongs in a repo (drop node_modules, binaries, huge files).
+    # Keep only what belongs in a repo (drop credentials, node_modules,
+    # binaries, huge files, unwritable paths).
     await progress.start("filter")
-    push_files, warnings = filter_for_push(raw_files)
+    push_files, warnings, excluded_secrets = filter_for_push(raw_files)
     if not push_files:
-        raise HTTPException(400, "Nothing to push after filtering build/dependency files")
+        raise HTTPException(
+            400,
+            "Nothing to push. Every file in the archive was a build artefact, a "
+            "dependency, a binary, or a credential file — none of which belong in "
+            "a fresh repo. Upload the project's source.",
+        )
     dropped = len(raw_files) - len(push_files)
     await progress.done(
         "filter",
         f"{len(push_files)} to push"
-        + (f" · {dropped} dropped" if dropped > 0 else ""),
+        + (f" · {dropped} dropped" if dropped > 0 else "")
+        + (f" · {len(excluded_secrets)} sensitive withheld" if excluded_secrets else ""),
     )
 
     cicd_added = False
@@ -1885,6 +1905,7 @@ async def _publish_work(
     # or one where the AI was down, there is nothing measured and the response
     # must say nothing rather than report a grounding of zero.
     grounding: dict | None = None
+    suite_score: dict | None = None
 
     # None means "don't attempt a suite" — either the user didn't ask for CI, or
     # there's no UI to drive. Pushing the project itself never depends on this.
@@ -1947,6 +1968,7 @@ async def _publish_work(
             validation = result.validation
             all_valid = all(v.get("ok", False) for v in validation)
             grounding = result.grounding.as_dict()
+            suite_score = success_rate.from_writer_result(result).as_dict()
             if result.failed_files:
                 # Partial suite: some files never generated (quota ran out mid-run).
                 # The writer already withheld the CI workflow, so don't claim CI
@@ -1966,15 +1988,29 @@ async def _publish_work(
                     "attempts — pushed anyway; review before relying on CI."
                 )
 
-            for gf in result.files:
-                # No collision guard needed: the suite lives in its own directory
-                # (agents/scaffold.SUITE_DIR), so its README and package.json are
-                # e2e/README.md and e2e/package.json and cannot land on the
-                # project's own. The CI workflow is the one file written to the
-                # repo root, and only a previous Testra push would own that path.
-                push_files[gf.filename] = gf.content
-            # Only true when the suite is whole and the CI workflow actually shipped.
-            cicd_added = not result.failed_files
+            # Merge the suite in without ever overwriting one of the user's own
+            # files. The suite lives in its own directory (scaffold.SUITE_DIR),
+            # so a clash is unlikely — but "unlikely" is the wrong bar when the
+            # file we'd destroy is the one thing here we didn't write. It does
+            # happen: a repo that already contains an e2e/ directory, or a
+            # re-publish of a project Testra generated into earlier.
+            _, clashes = safe_paths.merge_new_only(
+                push_files, {gf.filename: gf.content for gf in result.files}
+            )
+            if clashes:
+                logger.warning(
+                    f"{len(clashes)} generated file(s) already existed in the "
+                    f"project and were not written: {', '.join(clashes[:5])}"
+                )
+                warnings.append(
+                    f"{len(clashes)} generated file(s) already exist in your project "
+                    f"and were left untouched ({', '.join(clashes[:3])}"
+                    f"{'...' if len(clashes) > 3 else ''}). Your versions were kept — "
+                    "the suite may be incomplete as a result."
+                )
+            # Only true when the suite is whole, nothing was skipped for a
+            # collision, and the CI workflow actually shipped.
+            cicd_added = not result.failed_files and not clashes
             g = result.grounding
             await progress.done(
                 "suite",
@@ -2002,9 +2038,16 @@ async def _publish_work(
         )
     except GitPublishError as e:
         raise HTTPException(400, str(e))
-    await progress.done("push", f"{pub.files_pushed} files → {pub.full_name}")
+    await progress.done(
+        "push",
+        f"{pub.files_pushed} files → {pub.full_name}"
+        + (" · all verified in the repo" if pub.verified else ""),
+    )
 
-    logger.info(f"Published {pub.files_pushed} files to {pub.full_name} (cicd={cicd_added})")
+    logger.info(
+        f"Published {pub.files_pushed} files to {pub.full_name} "
+        f"(cicd={cicd_added}, verified={pub.verified})"
+    )
 
     # Remember what we created — /api/repo deletion is limited to these, and the
     # dashboard reads the same row back as publish activity.
@@ -2030,6 +2073,11 @@ async def _publish_work(
         all_valid=all_valid,
         validation=validation,
         grounding=grounding,
+        success_rate=suite_score,
+        excluded_secrets=excluded_secrets,
+        files_verified=pub.verified,
+        verification_note=pub.verification_note,
+        repaired_files=pub.repaired_files,
         provenance=provenance_report(tier),
         warnings=warnings + pub.warnings,
     ).model_dump()
@@ -2375,6 +2423,18 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
             duration_ms=elapsed_ms(), error=PROVIDER_OUTAGE_MESSAGE,
         )
         raise HTTPException(503, PROVIDER_OUTAGE_MESSAGE)
+    except GenerationFailedError as e:
+        # The model answered, but with nothing shippable. Refunded like any other
+        # failure — the user has no suite — and reported with the agent's own
+        # sentence, which says what to try, instead of the generic 500 below.
+        lease.refund()
+        logger.error(f"Test generation produced no usable suite: {e}")
+        _record_generation(
+            session, ctx["user_id"], framework=payload.framework.value,
+            language=payload.language.value, status="failed",
+            duration_ms=elapsed_ms(), error=str(e),
+        )
+        raise HTTPException(502, str(e))
     except Exception as e:
         lease.refund()
         logger.error(f"Test generation failed: {e}")
@@ -2416,6 +2476,8 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
         # run, so the client has to be able to see it and say so.
         failed_files=result.failed_files,
         grounding=result.grounding.as_dict(),
+        success_rate=success_rate.from_writer_result(result).as_dict(),
+        excluded_secrets=session.get("excluded_secrets", []),
         selector_grounding=result.selector_grounding,
         fragility=result.fragility,
         # This request's own calls, or — when it reused the SSE stream's output

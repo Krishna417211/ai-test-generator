@@ -80,6 +80,44 @@ class TestNoTestableUI:
         assert result.file_count > 0
 
 
+class TestUnsupportedProjectDiagnosis:
+    """One message for every kind of unsupported project is useless.
+
+    An empty upload, a docs repo, an API backend and a monorepo whose frontend
+    got filtered out need four different actions, and the user cannot tell from
+    "no testable UI found" which one they are in. Each case here is a mistake
+    someone actually makes.
+    """
+
+    def _raise(self, files):
+        with pytest.raises(NoTestableUIError) as exc:
+            asyncio.run(FilterAgent().run(files))
+        return exc.value
+
+    def test_empty_upload(self):
+        e = self._raise({})
+        assert e.code == "empty_project"
+        assert "password-protected" in e.suggestion
+
+    def test_docs_only_repo(self):
+        e = self._raise({"README.md": "# hi", "CHANGELOG.md": "- x", "notes.txt": "y"})
+        assert e.code == "docs_only"
+
+    def test_api_backend(self):
+        e = self._raise(BACKEND_ONLY_FILES)
+        assert e.code == "backend_only"
+        # Points somewhere, rather than restating the failure.
+        assert "frontend" in e.suggestion
+
+    def test_payload_is_structured_for_the_client(self):
+        """The API returns this as the 422 body so the UI can render a real
+        "we can't test this" screen instead of a red toast full of prose."""
+        d = self._raise(BACKEND_ONLY_FILES).as_dict()
+        assert d["code"] == "backend_only"
+        assert d["framework"] and d["suggestion"] and d["supported"]
+        assert d["files_scanned"] == len(BACKEND_ONLY_FILES)
+
+
 class TestPromptIsNotCopyable:
     """The schema must be described, not demonstrated. Any realistic-looking
     sample value is a string the model can echo for an unrelated codebase.

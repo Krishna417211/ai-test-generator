@@ -139,6 +139,31 @@ export class QuotaExceededError extends Error {
   }
 }
 
+/** Thrown on 422 when the project itself is the problem — an empty upload, a
+ *  docs repo, an API-only backend, a monorepo whose frontend got filtered out.
+ *
+ *  Carried as a typed error rather than a string because the four cases need
+ *  four different actions from the user, and "no testable UI found" doesn't
+ *  tell them which one they're in. `suggestion` is the sentence that does. */
+export class UnsupportedProjectError extends Error {
+  code: string;
+  reason: string;
+  supported: string;
+  suggestion: string;
+  framework: string;
+  filesScanned: number;
+  constructor(detail: any) {
+    super(detail?.message || "We can't generate tests for this project.");
+    this.name = "UnsupportedProjectError";
+    this.code = detail?.code || "no_testable_ui";
+    this.reason = detail?.reason || "";
+    this.supported = detail?.supported || "";
+    this.suggestion = detail?.suggestion || "";
+    this.framework = detail?.framework || "";
+    this.filesScanned = detail?.files_scanned ?? 0;
+  }
+}
+
 /** Turn a status + FastAPI `detail` into the right exception.
  *
  *  Split out of parseError because a streamed endpoint reports failures in its
@@ -150,6 +175,13 @@ function raiseApiError(status: number, detail: any, fallback: string): never {
   // 402 carries a structured quota payload, not a message string.
   if (status === 402 && detail && typeof detail === "object") {
     throw new QuotaExceededError(detail);
+  }
+  // 422 with a `code` is our unsupported-project payload — distinct from
+  // Pydantic's validation 422, which is an array (handled below). Without this
+  // branch it falls through to JSON.stringify and the user reads our diagnosis
+  // as a wall of braces.
+  if (status === 422 && detail && typeof detail === "object" && !Array.isArray(detail) && detail.code) {
+    throw new UnsupportedProjectError(detail);
   }
   // FastAPI/Pydantic returns `detail` as an array of {loc, msg, ...} for
   // validation (422) errors — flatten it to a readable string instead of

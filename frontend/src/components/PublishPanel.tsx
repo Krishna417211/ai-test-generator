@@ -6,6 +6,8 @@ import { Link } from "react-router-dom";
 import { publishZip, getAuthConfig, validateZip, deleteRepo, githubLoginUrl } from "../utils/api";
 import FlowPipeline, { applyStep, type StepStates } from "./FlowPipeline";
 import TrustPanel from "./TrustPanel";
+import SuccessRate from "./SuccessRate";
+import ExcludedSecrets from "./ExcludedSecrets";
 import { pluralize } from "../utils/format";
 import type { PublishResult } from "../types";
 import { useAuth } from "../context/AuthContext";
@@ -272,7 +274,24 @@ export default function PublishPanel() {
             {pubResult.full_name} <ExternalLink size={13} />
           </a>
           <div className="text-xs text-grey-300 space-y-1">
-            <div>{pluralize(pubResult.files_pushed, "file")} pushed to <span className="font-mono">{pubResult.branch}</span></div>
+            <div>
+              {pluralize(pubResult.files_pushed, "file")} pushed to <span className="font-mono">{pubResult.branch}</span>
+              {/* "N files pushed" is a claim about the repo, so say whether we
+                  went and checked. Every write in a push can return 2xx and
+                  still leave the branch short a file; the server reads the
+                  pushed tree back and compares content hashes. When it couldn't
+                  (a tree too large for one response), that's stated rather than
+                  quietly implied — see verification_note in the warnings. */}
+              {pubResult.files_verified && (
+                <span className="text-emerald-300/80"> · every file confirmed in the repo ✓</span>
+              )}
+            </div>
+            {!!pubResult.repaired_files?.length && (
+              <div className="text-amber-300/80">
+                {pluralize(pubResult.repaired_files.length, "file")} needed a second commit before
+                landing — the repo is complete.
+              </div>
+            )}
             {pubResult.cicd_added && (
               <div>CI/CD added · {pluralize(pubResult.test_count, "test")} · {pubResult.all_valid ? "all files validated ✓" : "some files need review"}</div>
             )}
@@ -285,9 +304,12 @@ export default function PublishPanel() {
             </div>
           )}
 
-          {/* Renders itself away when no suite was generated (CI not requested,
-              or the AI was down and we pushed the code anyway) — there is
-              nothing measured then, and an empty panel would imply otherwise. */}
+          {/* All three render themselves away when there's nothing to say: no
+              suite was generated (CI not requested, or the AI was down and we
+              pushed the code anyway), or no credentials were found. An empty
+              panel would imply we measured something. */}
+          <SuccessRate data={pubResult.success_rate} />
+          <ExcludedSecrets files={pubResult.excluded_secrets} where="pushed to the repo" />
           <TrustPanel grounding={pubResult.grounding} provenance={pubResult.provenance} />
 
           <div className="pt-2 border-t border-grey-700">
