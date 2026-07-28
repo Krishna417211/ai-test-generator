@@ -176,6 +176,29 @@ class UserSettings(BaseModel):
     framework: Optional[TestFramework] = None
     language: Optional[Language] = None
     base_url: Optional[str] = None
+    # Bring-your-own-key. None leaves the stored key alone (so saving other
+    # settings never clears it by omission); "" clears it deliberately.
+    gemini_api_key: Optional[str] = None
+
+    @field_validator("gemini_api_key")
+    @classmethod
+    def validate_gemini_key(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return ""          # explicit clear
+        # Shape check only — whether it WORKS is settled by a probe call in the
+        # endpoint, because a well-formed key can still be revoked. Catching the
+        # obvious paste error here gives a better message than Google's 400.
+        if not v.startswith("AIza"):
+            raise ValueError(
+                "That doesn't look like a Google AI Studio key — they begin with "
+                "'AIza'. Check you haven't pasted a key for a different provider."
+            )
+        if len(v) < 30:
+            raise ValueError("That key looks too short to be a Gemini API key.")
+        return v
 
     @field_validator("base_url")
     @classmethod
@@ -189,10 +212,19 @@ class UserSettings(BaseModel):
 
 
 class UserSettingsResponse(BaseModel):
-    """Always fully populated — the store resolves unset fields to defaults."""
+    """Always fully populated — the store resolves unset fields to defaults.
+
+    Note what is absent: the user's Gemini key. This model is what /api/settings
+    returns, and a write-only credential must not have a field on the shape that
+    comes back — otherwise one day something assigns to it. Only the mask and the
+    boolean travel outward.
+    """
     framework: str
     language: str
     base_url: str
+    # "AIza…9f2k" — enough to recognise which key is saved, never enough to use.
+    gemini_key_hint: str = ""
+    has_gemini_key: bool = False
 
 
 class UserPublic(BaseModel):

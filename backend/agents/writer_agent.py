@@ -289,6 +289,14 @@ class WriterAgent:
     # that doesn't opt in. Instance state, set per request (agent is per-request).
     _crawl_index = None
 
+    # The user's own Gemini API key, when they have supplied one. Instance state
+    # for the same reason as _crawl_index: the agent is constructed per request,
+    # and threading a credential through eight private method signatures would
+    # touch far more code than it would clarify. Every router.complete() call in
+    # this class passes it, so a new call site that forgets simply runs on the
+    # shared pool rather than failing.
+    _user_key = ""
+
     async def run(
         self,
         filter_result: FilterResult,
@@ -310,6 +318,7 @@ class WriterAgent:
         tier: Tier = Tier.FREE,         # model quality this caller's plan entitles them to
         live_url: Optional[str] = None,  # a deployed URL the user owns → DOM grounding
         crawl_index=None,               # pre-computed live-crawl GroundIndex → crawl-only mode
+        user_key: str = "",             # the user's own Gemini key, if they set one
     ) -> WriterResult:
 
         framework_key = self._normalize_framework(framework, language)
@@ -318,6 +327,7 @@ class WriterAgent:
         # built from its anchors and the same index is reused for grounding below
         # (no second crawl/render).
         self._crawl_index = crawl_index
+        self._user_key = user_key
 
         # If the SSE stream already generated the suite, reuse it instead of
         # making a second (costly) LLM call — but only if it parsed cleanly.
@@ -339,6 +349,7 @@ class WriterAgent:
                 base_url=base_url,
                 language=language,
                 tier=tier,
+                user_key=self._user_key,
             )
 
         # Stop here if there is no suite. Everything below — scaffolding,
@@ -772,6 +783,7 @@ they are valid, runnable code. Keep the valid files unchanged."""
                 context_hint="writer_agent_heal",
                 json_mode=True,
                 tier=tier,
+                user_key=self._user_key,
             )
             healed = self._parse_response(raw, framework_key)
             return healed or files
@@ -833,6 +845,7 @@ role locators. Leave everything else unchanged."""
                 context_hint="writer_agent_selector_heal",
                 json_mode=True,
                 tier=tier,
+                user_key=self._user_key,
             )
             healed = self._parse_response(raw, framework_key)
             return healed or files
@@ -1196,6 +1209,7 @@ Return ONLY JSON (no markdown, no prose):
                 context_hint="writer_plan",
                 json_mode=True,
                 tier=tier,
+                user_key=self._user_key,
             )
             data = json.loads(self._strip_fence(raw))
             plan = [f for f in data.get("files", []) if isinstance(f, dict) and f.get("filename")]
@@ -1298,6 +1312,7 @@ test cases covering positive and negative paths."""
                 context_hint="writer_file",
                 json_mode=False,
                 tier=tier,
+                user_key=self._user_key,
             )
             return self._strip_fence(raw)
         except Exception as e:
@@ -1321,6 +1336,7 @@ test cases covering positive and negative paths."""
                 context_hint="writer_agent",
                 json_mode=True,
                 tier=tier,
+                user_key=self._user_key,
             )
         except Exception as e:
             logger.error(f"Writer agent error: {e}")

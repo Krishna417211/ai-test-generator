@@ -308,6 +308,30 @@ class ProviderCall:
     total_tokens: Optional[int] = None
 
 
+# Set when a request that supplied its own API key had to fall back to the
+# shared pool. The caller needs to know for two reasons that are both about
+# fairness rather than mechanics: the fallback consumed the operator's capacity,
+# so it must cost the user a quota credit, and the user asked to run on their own
+# key, so they are owed an explanation of why they didn't.
+#
+# A ContextVar rather than a return value because `complete()` returns the
+# model's text and is called from a dozen places; threading a tuple through all
+# of them to report a condition almost nobody hits would be worse.
+_byok_fallback: contextvars.ContextVar = contextvars.ContextVar(
+    "testgen_byok_fallback", default=False
+)
+
+
+def start_byok_tracking() -> None:
+    """Reset the fallback flag. Call once at the start of a request."""
+    _byok_fallback.set(False)
+
+
+def byok_fell_back() -> bool:
+    """True if a user-key request ended up spending the operator's capacity."""
+    return bool(_byok_fallback.get())
+
+
 def start_provenance() -> None:
     """Begin recording provider calls for the current request.
 
@@ -443,13 +467,37 @@ class LLMRouter:
         context_hint: str = "",     # used for logging ("agent1" | "agent2")
         json_mode: bool = False,    # force the provider to emit valid JSON
         tier: Tier = Tier.FREE,     # which model quality the caller is entitled to
+        user_key: str = "",         # the caller's OWN Gemini key ("bring your own key")
     ) -> str:
         """
         Try each provider in priority order until one succeeds.
         Returns the complete LLM response as a string.
+
+        `user_key`, when supplied, is tried FIRST and on its own. It is the whole
+        point of the bring-your-own-key option: a user who supplied a key expects
+        their work to run on their quota, not the operator's. Only if that key
+        fails does the shared pool get used, and that fallback is recorded (see
+        `byok_fell_back`) so it can be charged and explained rather than passing
+        silently — silence here would rebuild the exact cost the option exists to
+        remove, and hide it.
         """
         last_error = None
         cooling: list[str] = []     # providers skipped because every key is in cooldown
+
+        if user_key:
+            try:
+                return await self._call_with_user_key(
+                    user_key, prompt, system_prompt, temperature, json_mode, tier,
+                    context_hint,
+                )
+            except Exception as e:
+                # Their key is unusable right now — rate-limited, revoked, out of
+                # credit, or simply mistyped. Fall through to the shared pool and
+                # flag it. Deliberately catching broadly: whatever went wrong with
+                # a third party's key, the run should still complete.
+                logger.warning(f"User-supplied Gemini key failed ({e!r}) — falling back to the shared pool")
+                _byok_fallback.set(True)
+                last_error = e
 
         for provider in PROVIDER_PRIORITY[tier]:
             if provider not in self._providers:
@@ -816,6 +864,44 @@ class LLMRouter:
 
     # ── Gemini ──────────────────────────────
 
+    async def _call_with_user_key(
+        self, user_key: str, prompt: str, system: str,
+        temperature: float, json_mode: bool, tier: Tier, context_hint: str = "",
+    ) -> str:
+        """Run one Gemini call against a key the *user* supplied.
+
+        Two properties matter here, and both are about not letting one user's key
+        affect anyone else.
+
+        The `APIKey` is constructed fresh and thrown away. It is never inserted
+        into `self._providers`, so a user whose key is rate-limited or revoked
+        cannot mark the operator's Gemini pool as cooling — which would have been
+        a trivial way for one bad key to degrade generation for every other user
+        on the instance.
+
+        And failures propagate rather than rotating. `complete()` above decides
+        what falling back means; this method's only job is "run it on their key,
+        or say it didn't work".
+        """
+        spec = model_for(Provider.GEMINI, tier)
+        # index=0 is cosmetic — it only appears in log lines, and this key is not
+        # in any pool to have a position in.
+        key = APIKey(key=user_key, provider=Provider.GEMINI, index=0)
+        await self._broadcast_status(f"Using {spec.id} (your key)...")
+
+        text = await self._call_gemini(key, prompt, system, temperature, json_mode, spec)
+        # Recorded so the provenance report names the model that actually
+        # answered, exactly as it does for a shared-pool call. The report says
+        # which model ran; it does not say whose key paid, and it should not —
+        # that is between the user and their provider.
+        record_provenance(ProviderCall(
+            provider=Provider.GEMINI.value,
+            model=spec.id,
+            context=context_hint,
+            total_tokens=(_last_usage.get() or {}).get("total"),
+        ))
+        return text
+
     async def _call_gemini(self, key: APIKey, prompt, system, temperature, json_mode: bool, spec: ModelSpec) -> str:
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
@@ -1098,6 +1184,41 @@ class LLMRouter:
 # ─────────────────────────────────────────────
 # Custom exceptions
 # ─────────────────────────────────────────────
+
+async def probe_user_key(api_key: str) -> tuple[bool, str]:
+    """Is this Gemini key usable right now? Returns (ok, reason_if_not).
+
+    Called when a user saves a key, so the answer arrives in the form they are
+    looking at rather than in the middle of a generation minutes later. A
+    well-formed key can still be revoked, billing-disabled, or scoped to a
+    project without the Generative Language API enabled, and none of that is
+    visible from the string.
+
+    The probe is the cheapest real call available — a handful of tokens — because
+    the only question is whether the credential is accepted at all. It never
+    touches the shared pool.
+    """
+    key = APIKey(key=api_key, provider=Provider.GEMINI, index=0)
+    spec = model_for(Provider.GEMINI, Tier.FREE)
+    try:
+        await router._call_gemini(
+            key, prompt="Reply with the single word: ok",
+            system="", temperature=0.0, json_mode=False, spec=spec,
+        )
+        return True, ""
+    except RateLimitError:
+        # The key is real — it is being throttled, which is a fact about right
+        # now rather than about the key. Rejecting it here would be wrong.
+        return True, ""
+    except ProviderError as e:
+        detail = str(e)
+        low = detail.lower()
+        if "api key not valid" in low or "api_key_invalid" in low or "401" in low or "403" in low:
+            return False, "Google rejected it. Check the key, and that the Generative Language API is enabled for its project."
+        return False, detail[:200]
+    except Exception as e:                      # transport, DNS, TLS
+        return False, f"Couldn't reach Google to check it ({type(e).__name__}). Try again shortly."
+
 
 class RateLimitError(Exception):
     """Provider returned 429 or signalled quota exhaustion."""

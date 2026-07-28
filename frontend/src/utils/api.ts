@@ -833,6 +833,24 @@ export async function decideCliLogin(
   return (await res.json()).message || "";
 }
 
+/** Save or clear the user's own Gemini API key.
+ *
+ *  Separate from `saveSettings` on purpose. The key is write-only — it has no
+ *  field on `UserSettings`, because that type describes what the server sends
+ *  *back*, and a credential must not have a slot on the shape that comes back.
+ *  Pass "" to remove a stored key. */
+export async function saveGeminiKey(
+  key: string,
+): Promise<import("../types").UserSettings> {
+  const res = await fetch(`${API_BASE}/api/settings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ gemini_api_key: key }),
+  });
+  if (!res.ok) await parseError(res, "Could not save your API key");
+  return res.json();
+}
+
 /** Revoke every session, including this one — so drop the local token too. */
 export async function logoutEverywhere(): Promise<string> {
   const res = await fetch(`${API_BASE}/api/auth/logout-all`, {
