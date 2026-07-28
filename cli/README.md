@@ -152,7 +152,7 @@ GitHub token; the server holds it, encrypted at rest.
 ## Development
 
 ```bash
-node --test "test/**/*.test.js"
+npm test
 ```
 
 The ZIP writer is hand-rolled on top of `node:zlib` so the package can have no

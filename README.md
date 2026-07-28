@@ -160,7 +160,7 @@ testra/
 │   │   ├── store.py            # Durable SQLite job store
 │   │   └── auth / quota / billing / admin / mailer / progress
 │   ├── models/schemas.py       # Pydantic request/response models
-│   ├── tests/                  # 958 tests across 32 suites
+│   ├── tests/                  # 1026 tests across 35 suites
 │   └── main.py                 # FastAPI app + all routes
 │
 ├── cli/                        # `npx testra` — zero runtime dependencies
@@ -253,7 +253,7 @@ Full interactive docs: http://localhost:8000/docs
 
 ```bash
 cd backend
-pytest tests/ -q          # 958 tests across 32 suites
+pytest tests/ -q          # 1026 tests across 35 suites
 ruff check .
 ```
 
@@ -268,7 +268,7 @@ CLI:
 
 ```bash
 cd cli
-node --test "test/**/*.test.js"
+npm test
 ```
 
 ---

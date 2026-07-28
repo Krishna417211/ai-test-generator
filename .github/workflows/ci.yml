@@ -71,15 +71,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      # Shell-expanded, not quoted. `node --test` only learned to expand glob
+      # patterns itself in Node 22 — on 20 and 18 a quoted "test/**/*.test.js"
+      # is passed through as a literal path and matches nothing, which is
+      # exactly how this job failed while passing on a developer's Node 22.
+      # Every test file lives directly in test/, so one level is enough; a file
+      # in a subdirectory would silently not run.
       - name: Run tests
-        run: node --test "test/**/*.test.js"
+        run: node --test test/*.test.js
       # The lowest version in `engines`. Node 18 lacks zlib.crc32 and a few other
       # conveniences the source deliberately avoids; this is what proves it.
       - uses: actions/setup-node@v4
         with:
           node-version: "18"
       - name: Run tests on the minimum supported Node
-        run: node --test "test/**/*.test.js"
+        run: node --test test/*.test.js
 
   # ── Deploy ────────────────────────────────────────────────────────────────
   # Only from master, only after both jobs above are green, and only on a push
