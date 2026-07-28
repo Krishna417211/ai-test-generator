@@ -219,7 +219,7 @@ export default function PublishPanel() {
           </div>
           <div className="relative">
             <Lock size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-grey-500" />
-            <input type="password" value={ghToken} onChange={(e) => setGhToken(e.target.value)} placeholder="ghp_xxxxxxxxxxxx"
+            <input aria-label="GitHub personal access token" type="password" value={ghToken} onChange={(e) => setGhToken(e.target.value)} placeholder="ghp_xxxxxxxxxxxx"
               className="w-full pl-10 pr-4 py-3 rounded-xl bg-black/30 border border-grey-700 text-white placeholder:text-grey-400 focus:outline-none focus:border-brand-500/70 transition-colors text-sm font-mono" />
           </div>
         </div>
@@ -249,7 +249,7 @@ export default function PublishPanel() {
         <input ref={fileRef} type="file" accept=".zip" className="hidden" onChange={(e) => selectFile(e.target.files?.[0])} />
       </div>
 
-      <input type="text" value={repoName} onChange={(e) => setRepoName(e.target.value)} placeholder="new-repo-name"
+      <input aria-label="New repository name" type="text" value={repoName} onChange={(e) => setRepoName(e.target.value)} placeholder="new-repo-name"
         className="w-full px-4 py-3 rounded-xl bg-black/30 border border-grey-700 text-white placeholder:text-grey-400 focus:outline-none focus:border-brand-500/70 transition-colors text-sm font-mono" />
 
       <div className="flex flex-col gap-2.5">

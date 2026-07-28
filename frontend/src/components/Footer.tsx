@@ -16,7 +16,12 @@ export default function Footer() {
           <Link to="/publish" className="hover:text-white/80 transition-colors">Publish</Link>
           <Link to="/scan" className="hover:text-white/80 transition-colors">Scan</Link>
           <Link to="/how-it-works" className="hover:text-white/80 transition-colors">How it works</Link>
-          <a href="https://github.com" className="hover:text-white/80 transition-colors">GitHub</a>
+          {/* The repository, not github.com's front page. `rel` is not optional
+              on a target=_blank link: without noopener the opened tab gets a
+              handle on this one via window.opener and can navigate it. */}
+          <a href="https://github.com/Krishna417211/ai-test-generator"
+             target="_blank" rel="noopener noreferrer"
+             className="hover:text-white/80 transition-colors">GitHub</a>
         </div>
       </div>
     </footer>

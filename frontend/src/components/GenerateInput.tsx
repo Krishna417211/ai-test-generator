@@ -84,11 +84,11 @@ export default function GenerateInput({ onContinue, loading, error }: Props) {
 
         {/* Repo URL */}
         <div>
-          <label className="block text-sm font-semibold text-white mb-2">GitHub repository</label>
+          <label htmlFor="gi-repo-url" className="block text-sm font-semibold text-white mb-2">GitHub repository</label>
           <div className="relative">
             <Github size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-grey-500" />
             <input
-              type="url"
+              id="gi-repo-url" type="url"
               value={repoUrl}
               onChange={(e) => { setRepoUrl(e.target.value); setDismissed(true); }}
               placeholder="https://github.com/owner/repo"
@@ -99,11 +99,11 @@ export default function GenerateInput({ onContinue, loading, error }: Props) {
 
         {/* Hosted URL */}
         <div>
-          <label className="block text-sm font-semibold text-white mb-2">Hosted website URL</label>
+          <label htmlFor="gi-hosted-url" className="block text-sm font-semibold text-white mb-2">Hosted website URL</label>
           <div className="relative">
             <Globe size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-grey-500" />
             <input
-              type="url"
+              id="gi-hosted-url" type="url"
               value={hostedUrl}
               onChange={(e) => { setHostedUrl(e.target.value); setDismissed(true); }}
               onKeyDown={(e) => e.key === "Enter" && submit()}
@@ -141,20 +141,20 @@ export default function GenerateInput({ onContinue, loading, error }: Props) {
           {needsLogin && (
             <div className="space-y-2.5 pl-6">
               <input
-                type="text" value={loginUrl}
+                aria-label="Sign-in page URL" type="text" value={loginUrl}
                 onChange={(e) => { setLoginUrl(e.target.value); setDismissed(true); }}
                 placeholder="Sign-in page (e.g. /login) — optional"
                 className="w-full px-3.5 py-2.5 rounded-lg bg-black/30 border border-grey-700 text-white placeholder:text-grey-500 focus:outline-none focus:border-brand-500/70 text-sm font-mono"
               />
               <div className="grid grid-cols-2 gap-2.5">
                 <input
-                  type="text" value={loginUser} autoComplete="off"
+                  aria-label="Site username" type="text" value={loginUser} autoComplete="off"
                   onChange={(e) => { setLoginUser(e.target.value); setDismissed(true); }}
                   placeholder="Username or email"
                   className="w-full px-3.5 py-2.5 rounded-lg bg-black/30 border border-grey-700 text-white placeholder:text-grey-500 focus:outline-none focus:border-brand-500/70 text-sm"
                 />
                 <input
-                  type="password" value={loginPass} autoComplete="new-password"
+                  aria-label="Site password" type="password" value={loginPass} autoComplete="new-password"
                   onChange={(e) => { setLoginPass(e.target.value); setDismissed(true); }}
                   placeholder="Password"
                   className="w-full px-3.5 py-2.5 rounded-lg bg-black/30 border border-grey-700 text-white placeholder:text-grey-500 focus:outline-none focus:border-brand-500/70 text-sm"
