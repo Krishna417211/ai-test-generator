@@ -564,13 +564,75 @@ class FileExtractor:
 # ZIP file processing
 # ─────────────────────────────────────────────
 
+class ZipBombError(Exception):
+    """The archive expands to far more than it claims to weigh."""
+
+
+# Ceilings on what an upload may expand to, regardless of how small it arrives.
+#
+# The endpoint caps the *archive* at settings.max_repo_size_mb, which says
+# nothing about what comes out of it: DEFLATE reaches roughly 1000:1 on
+# repetitive input, so a compliant 10 MB upload can decompress to 10 GB. Since
+# everything here is held in memory as `str`, that is an out-of-memory kill of
+# the whole process — one request taking the server down for everybody, with no
+# authentication needed beyond an account.
+#
+# Two independent limits, because either alone has a hole. A total cap misses
+# nothing but permits one enormous member right up to the ceiling; a ratio cap
+# catches the classic single-huge-member bomb but is fooled by ten thousand
+# members that are each individually reasonable.
+MAX_TOTAL_UNCOMPRESSED = 400 * 1024 * 1024      # 400 MB across the whole archive
+MAX_SINGLE_UNCOMPRESSED = 50 * 1024 * 1024      # 50 MB for any one member
+MAX_COMPRESSION_RATIO = 200                     # per member, above a size floor
+_RATIO_FLOOR = 64 * 1024                        # below this, ratios are meaningless
+
+
+def _reject_zip_bombs(zf: zipfile.ZipFile) -> None:
+    """Check the central directory before reading a single byte of content.
+
+    The header sizes are attacker-controlled and so cannot be *trusted* — but
+    they are enough to refuse the obvious cases for free, and the running total
+    during extraction (below) catches an archive that lied about them.
+    """
+    total = 0
+    for info in zf.infolist():
+        if info.is_dir():
+            continue
+        total += info.file_size
+        if info.file_size > MAX_SINGLE_UNCOMPRESSED:
+            raise ZipBombError(
+                f"'{info.filename}' expands to "
+                f"{info.file_size / 1024 / 1024:.0f} MB, over the "
+                f"{MAX_SINGLE_UNCOMPRESSED // 1024 // 1024} MB per-file limit."
+            )
+        # Ratio only above a floor: a 12-byte file compressing to 1 byte is a
+        # 12:1 ratio and completely ordinary.
+        if info.compress_size > 0 and info.file_size > _RATIO_FLOOR:
+            ratio = info.file_size / info.compress_size
+            if ratio > MAX_COMPRESSION_RATIO:
+                raise ZipBombError(
+                    f"'{info.filename}' expands {ratio:.0f}× its stored size, "
+                    "which is characteristic of a decompression bomb."
+                )
+    if total > MAX_TOTAL_UNCOMPRESSED:
+        raise ZipBombError(
+            f"The archive expands to {total / 1024 / 1024:.0f} MB, over the "
+            f"{MAX_TOTAL_UNCOMPRESSED // 1024 // 1024} MB limit. Exclude "
+            "dependency and build directories."
+        )
+
+
 def extract_zip(zip_bytes: bytes) -> dict[str, str]:
     """
     Extract a ZIP file in memory and return {path: content} dict.
     Handles nested zip structures (repo downloaded from GitHub as .zip).
+
+    Raises ZipBombError if the archive expands beyond the ceilings above.
     """
     result = {}
+    extracted_bytes = 0
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        _reject_zip_bombs(zf)
         names = zf.namelist()
 
         # GitHub ZIPs wrap everything in a top-level folder like "repo-main/".
@@ -605,8 +667,20 @@ def extract_zip(zip_bytes: bytes) -> dict[str, str]:
                 logger.warning(f"Skipping unsafe path in ZIP (path traversal): {name}")
                 continue
             try:
-                content = zf.read(name).decode("utf-8", errors="replace")
-                result[relative_path] = content
+                raw = zf.read(name)
+                # The header sizes checked above are attacker-controlled, so the
+                # real defence is this running total against what actually came
+                # out. An archive that understated its members hits this instead.
+                extracted_bytes += len(raw)
+                if extracted_bytes > MAX_TOTAL_UNCOMPRESSED:
+                    raise ZipBombError(
+                        "The archive expanded past the "
+                        f"{MAX_TOTAL_UNCOMPRESSED // 1024 // 1024} MB limit while "
+                        "being read — its declared sizes understated it."
+                    )
+                result[relative_path] = raw.decode("utf-8", errors="replace")
+            except ZipBombError:
+                raise
             except Exception as e:
                 logger.warning(f"Failed to read {name} from ZIP: {e}")
 

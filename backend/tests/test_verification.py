@@ -196,6 +196,11 @@ class TestLoginOtp:
 
 
 class TestSessionLifetime:
+    # These read the sessions table directly to observe expiry, which means they
+    # have to spell the storage key the way the store does: sessions are keyed by
+    # sha256 of the token, never the token (services/store.py _skey). Querying
+    # session_id='tok' matches nothing.
+
     """The 'stay logged in until the window closes' half: an *idle* timeout."""
 
     def _store(self, tmp_path):
@@ -206,13 +211,13 @@ class TestSessionLifetime:
         s.create_session("tok", {"user_id": "u1"}, ttl_seconds=100)
         with s._conn() as c:
             before = c.execute(
-                "SELECT expires_at FROM sessions WHERE session_id='tok'"
+                "SELECT expires_at FROM sessions WHERE session_id=?", (s._skey("tok"),)
             ).fetchone()[0]
 
         s.touch_session("tok", ttl_seconds=1000, min_extension_seconds=0)
         with s._conn() as c:
             after = c.execute(
-                "SELECT expires_at FROM sessions WHERE session_id='tok'"
+                "SELECT expires_at FROM sessions WHERE session_id=?", (s._skey("tok"),)
             ).fetchone()[0]
         assert after > before
 
@@ -222,13 +227,13 @@ class TestSessionLifetime:
         s.create_session("tok", {"user_id": "u1"}, ttl_seconds=1000)
         with s._conn() as c:
             before = c.execute(
-                "SELECT expires_at FROM sessions WHERE session_id='tok'"
+                "SELECT expires_at FROM sessions WHERE session_id=?", (s._skey("tok"),)
             ).fetchone()[0]
 
         s.touch_session("tok", ttl_seconds=1000, min_extension_seconds=60)
         with s._conn() as c:
             after = c.execute(
-                "SELECT expires_at FROM sessions WHERE session_id='tok'"
+                "SELECT expires_at FROM sessions WHERE session_id=?", (s._skey("tok"),)
             ).fetchone()[0]
         assert after == before
 
@@ -245,14 +250,14 @@ class TestSessionLifetime:
         s.create_session("tok", {"user_id": "u1"}, ttl_seconds=6)
         with s._conn() as c:
             before = c.execute(
-                "SELECT expires_at FROM sessions WHERE session_id='tok'"
+                "SELECT expires_at FROM sessions WHERE session_id=?", (s._skey("tok"),)
             ).fetchone()[0]
 
         time.sleep(1.1)
         s.touch_session("tok", ttl_seconds=6)      # default throttle
         with s._conn() as c:
             after = c.execute(
-                "SELECT expires_at FROM sessions WHERE session_id='tok'"
+                "SELECT expires_at FROM sessions WHERE session_id=?", (s._skey("tok"),)
             ).fetchone()[0]
         assert after > before, "a short-TTL session must still slide"
 
@@ -267,14 +272,14 @@ class TestSessionLifetime:
         s.create_session("tok", {"user_id": "u1", "attempts": 0}, ttl_seconds=100)
         with s._conn() as c:
             before = c.execute(
-                "SELECT expires_at FROM sessions WHERE session_id='tok'"
+                "SELECT expires_at FROM sessions WHERE session_id=?", (s._skey("tok"),)
             ).fetchone()[0]
 
         assert s.update_session("tok", {"user_id": "u1", "attempts": 1}) is True
         assert s.get_session("tok")["attempts"] == 1
         with s._conn() as c:
             after = c.execute(
-                "SELECT expires_at FROM sessions WHERE session_id='tok'"
+                "SELECT expires_at FROM sessions WHERE session_id=?", (s._skey("tok"),)
             ).fetchone()[0]
         assert after == before
 
