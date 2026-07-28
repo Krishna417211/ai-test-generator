@@ -27,6 +27,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+      # tests/test_cli_zip.py drives the CLI's ZIP writer and extracts the result
+      # with the server's own extract_zip(). Without node it skips itself, which
+      # would silently stop verifying the writer against its real consumer.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - name: Install dependencies
         run: pip install -r requirements.txt ruff pytest-cov
       - name: Lint (ruff)
@@ -52,12 +58,35 @@ jobs:
       - name: Type-check & build
         run: npm run build
 
+  cli:
+    name: CLI (node --test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v4
+      # No cache-dependency-path and no `npm install`: the package has zero
+      # dependencies and there is no lockfile to restore. That is the point.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run tests
+        run: node --test "test/**/*.test.js"
+      # The lowest version in `engines`. Node 18 lacks zlib.crc32 and a few other
+      # conveniences the source deliberately avoids; this is what proves it.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+      - name: Run tests on the minimum supported Node
+        run: node --test "test/**/*.test.js"
+
   # ── Deploy ────────────────────────────────────────────────────────────────
   # Only from master, only after both jobs above are green, and only on a push
   # (never on a pull_request — a fork's PR must not be able to reach AWS).
   deploy:
     name: Deploy to AWS
-    needs: [backend, frontend]
+    needs: [backend, frontend, cli]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
 
