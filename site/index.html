@@ -443,7 +443,8 @@ footer .links { display: flex; gap: 1.25rem; flex-wrap: wrap; }
     <p class="lede">
       Testra reads your web application and writes a runnable Playwright, Cypress
       or Selenium suite. Then it does the part most tools skip: it proves where
-      each selector came from, and states plainly what it did not check.
+      every selector came from, will run the suite against your real app when you
+      let it, and states plainly what it did not check.
     </p>
     <div class="cta-row">
       <a class="cta cta-solid" href="https://github.com/Krishna417211/ai-test-generator">Read the source</a>
@@ -494,7 +495,7 @@ footer .links { display: flex; gap: 1.25rem; flex-wrap: wrap; }
   <section class="block" id="how">
     <div class="rail">Two ways in</div>
     <div class="body-col">
-      <h2>Point it at a running site, or hand it the source.</h2>
+      <h2>Two ways in. No guesswork either way.</h2>
       <div class="modes">
         <div class="mode">
           <div class="tag">Crawl-first</div>
@@ -523,7 +524,7 @@ footer .links { display: flex; gap: 1.25rem; flex-wrap: wrap; }
   <section class="block">
     <div class="rail"><span class="seq">01–05</span>Method</div>
     <div class="body-col">
-      <h2>The pipeline, in order.</h2>
+      <h2>Five steps. Each one earns the next.</h2>
       <p class="prose fine">
         The numbering is real: each step consumes the one before it, and a failure
         at any point stops the rest rather than being papered over.
@@ -543,7 +544,7 @@ footer .links { display: flex; gap: 1.25rem; flex-wrap: wrap; }
         <div class="step">
           <span class="n">02</span>
           <div>
-            <h3>Read the project</h3>
+            <h3>Learn the app, not guess at it</h3>
             <p>
               One agent builds a structured account of the application — its
               routes, its key screens, the obstacles a test will hit — grounded
@@ -554,7 +555,7 @@ footer .links { display: flex; gap: 1.25rem; flex-wrap: wrap; }
         <div class="step">
           <span class="n">03</span>
           <div>
-            <h3>Write the suite</h3>
+            <h3>Write from real markup</h3>
             <p>
               A second agent writes Page Object classes and specs, using selectors
               extracted from your real markup rather than invented ones. Configs,
@@ -566,7 +567,7 @@ footer .links { display: flex; gap: 1.25rem; flex-wrap: wrap; }
         <div class="step">
           <span class="n">04</span>
           <div>
-            <h3>Ground, then repair</h3>
+            <h3>Prove every selector, fix the rest</h3>
             <p>
               Every id, test-id and class is checked back against your source or
               your rendered page, carrying the file and line it was declared on.
@@ -630,7 +631,7 @@ footer .links { display: flex; gap: 1.25rem; flex-wrap: wrap; }
   <section class="block" id="refusals">
     <div class="rail">Refusals</div>
     <div class="body-col">
-      <h2>The things it will not do with your code.</h2>
+      <h2>Four flat noes, enforced in code.</h2>
       <p class="prose fine">
         Handing a tool your repository is an act of trust. These are the places
         where the answer is a flat no, enforced in code rather than promised in a
@@ -681,7 +682,7 @@ footer .links { display: flex; gap: 1.25rem; flex-wrap: wrap; }
   <section class="block" id="cli">
     <div class="rail">Terminal</div>
     <div class="body-col">
-      <h2>Or run it where the code already is.</h2>
+      <h2>Your .gitignore decides what leaves your machine.</h2>
       <p class="prose fine">
         The web page can only be handed an archive somebody assembled by hand. The
         CLI runs inside the project, so your own
@@ -716,13 +717,15 @@ footer .links { display: flex; gap: 1.25rem; flex-wrap: wrap; }
   <section class="block">
     <div class="rail">Honestly</div>
     <div class="body-col">
-      <h2>What it can't do yet.</h2>
+      <h2>Where it still falls short.</h2>
       <div class="prose">
         <p>
-          <strong>It doesn't run the tests.</strong> Executing a suite needs a
-          container and a live target, so every number here describes the
-          generation, not the outcome. This is the next thing being built, and
-          until it exists the scoring stays deliberately modest.
+          <strong>It only runs the tests when you let it.</strong> Agent mode can
+          execute the suite against your deployed app and fix what genuinely
+          fails — but executing generated code needs a host willing to run it, so
+          it is off unless switched on. Everywhere it is off, every number here
+          describes the generation and not the outcome, and the scoring stays
+          deliberately modest.
         </p>
         <p>
           <strong>A crawl can't reach everything.</strong> It follows links and
