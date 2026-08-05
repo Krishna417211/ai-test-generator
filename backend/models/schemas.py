@@ -61,6 +61,13 @@ class GenerateRequest(BaseModel):
     # Optional sign-in for the crawl. Without it, an auth-guarded app exposes
     # only its login screen to the crawler.
     site_login: Optional[SiteLogin] = None
+    # Let the model drive generation itself with tools — searching the repo,
+    # querying the grounding index and validating files as it goes — instead of
+    # the scripted plan/generate/heal pipeline (services/agent_loop.py).
+    # Honoured only on Pro: it runs exclusively on Anthropic capacity and spends
+    # many times a scripted run's tokens, so the endpoint drops it for Free
+    # rather than failing the request.
+    agent_mode: bool = False
 
     @field_validator("repo_url")
     @classmethod
@@ -508,6 +515,11 @@ class GenerateResponse(BaseModel):
     selector_grounding: Optional[dict] = None
     # Break-risk report: which selectors are likely to be flaky. services/fragility.py.
     fragility: Optional[dict] = None
+    # How the suite was produced. Present with the turn count, stop reason and
+    # the agent's tool calls only when the agentic path ran (services/agent_loop.py);
+    # absent means the scripted pipeline wrote it. Never synthesised — a request
+    # that asked for agent mode and fell back must not look like one that didn't.
+    agent: Optional[dict] = None
     provenance: Optional[Provenance] = None
     error: Optional[str] = None
 

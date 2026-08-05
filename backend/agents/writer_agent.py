@@ -268,6 +268,12 @@ class WriterResult:
     # these travel straight to the API response and the TrustPanel.
     selector_grounding: dict = field(default_factory=dict)
     fragility: dict = field(default_factory=dict)
+    # Present only when the suite came from the agentic path: turn count, stop
+    # reason and the tool calls the model made. Empty dict means the scripted
+    # pipeline produced this suite, which is what the UI keys off — the trace is
+    # a claim about *how* the work was done, so it must never be synthesised for
+    # a run that didn't do it.
+    agent: dict = field(default_factory=dict)
 
 
 # ─────────────────────────────────────────────
@@ -297,6 +303,9 @@ class WriterAgent:
     # shared pool rather than failing.
     _user_key = ""
 
+    # Populated only by a successful agent-mode run; see WriterResult.agent.
+    _agent_trace: dict = {}
+
     async def run(
         self,
         filter_result: FilterResult,
@@ -319,10 +328,14 @@ class WriterAgent:
         live_url: Optional[str] = None,  # a deployed URL the user owns → DOM grounding
         crawl_index=None,               # pre-computed live-crawl GroundIndex → crawl-only mode
         user_key: str = "",             # the user's own Gemini key, if they set one
+        agent_mode: bool = False,       # let the model drive with tools (Pro, Claude-only)
     ) -> WriterResult:
 
         framework_key = self._normalize_framework(framework, language)
         self._failed_files: list[str] = []
+        # Always a fresh dict per run — the class attribute is only a default for
+        # callers that reach the other methods without going through run().
+        self._agent_trace = {}
         # Crawl-only: the entrypoint already ran the live crawl, so the prompt is
         # built from its anchors and the same index is reused for grounding below
         # (no second crawl/render).
@@ -340,6 +353,23 @@ class WriterAgent:
             if self._looks_truncated(generated_files):
                 logger.info("Streamed output was truncated/invalid — regenerating file-by-file")
                 generated_files = []
+
+        if not generated_files and agent_mode:
+            # Agentic path: the model investigates the repo and the grounding
+            # index with tools and writes the suite itself. Falls back to the
+            # scripted pipeline rather than failing the run — agent mode is an
+            # upgrade to *how* the suite is produced, not a new way to get
+            # nothing. Everything downstream (grounding, validation, scaffold,
+            # success rate) is unchanged and still judges the output the same
+            # way, which is the point: the agent gets no easier grading.
+            generated_files = await self._run_agent_mode(
+                filter_result=filter_result,
+                framework_key=framework_key,
+                test_flows=test_flows,
+                base_url=base_url,
+                language=language,
+                tier=tier,
+            )
 
         if not generated_files:
             generated_files = await self._generate_tests(
@@ -580,6 +610,7 @@ class WriterAgent:
             grounding=grounding,
             selector_grounding=ground_report.as_dict(),
             fragility=fragility_report.as_dict(),
+            agent=self._agent_trace,
             summary=(
                 f"Generated {test_count} tests across {len(generated_files)} files "
                 f"for {filter_result.framework} app using {framework_key}. "
@@ -1088,6 +1119,69 @@ CRITICAL RULES:
 
 Generate comprehensive tests now:
 """.strip()
+
+    async def _run_agent_mode(
+        self,
+        filter_result: FilterResult,
+        framework_key: str,
+        test_flows: str,
+        base_url: str,
+        language: str,
+        tier: Tier,
+    ) -> list[GeneratedFile]:
+        """Produce the suite with the tool-use loop, or [] to fall back.
+
+        Returning an empty list rather than raising is deliberate: every reason
+        agent mode can't run — no Anthropic key, the model wrote nothing, the
+        conversation ran out of capacity before the first file — is a reason to
+        use the scripted pipeline, not a reason the user gets no tests.
+        """
+        # Imported here, not at module scope: agent_loop is only reachable on a
+        # paid tier and pulls in the toolbox with it, so a free-tier request
+        # shouldn't pay the import.
+        from services import agent_loop
+
+        src_index = None
+        if filter_result.files:
+            src_index = grounding_svc.build_source_index(filter_result.files)
+        dom_index = self._crawl_index
+
+        try:
+            result = await agent_loop.run_agent(
+                source_files=filter_result.files,
+                framework_key=framework_key,
+                language=language,
+                system_prompt=self._system_prompt(framework_key),
+                project_summary=filter_result.project_summary,
+                test_flows=test_flows,
+                base_url=base_url,
+                anchor_hint=self._available_anchor_hint(src_index, dom_index),
+                src_index=src_index,
+                dom_index=dom_index,
+                tier=tier,
+            )
+        except agent_loop.AgentUnavailable as e:
+            logger.info(f"Agent mode unavailable ({e}) — using the scripted pipeline")
+            return []
+        except AllProvidersExhausted:
+            # Anthropic is dry. The scripted path can still run on Gemini or
+            # Groq, so let it — a free-tier-quality suite beats none, exactly as
+            # the router's own Pro fallback already decides.
+            logger.info("Agent mode has no Anthropic capacity — using the scripted pipeline")
+            return []
+
+        self._agent_trace = result.as_dict()
+        logger.info(
+            f"Agent mode wrote {len(result.files)} files in {result.turns} turns"
+        )
+        return [
+            GeneratedFile(
+                filename=f["filename"],
+                content=f["content"],
+                description=f["description"],
+            )
+            for f in result.files
+        ]
 
     async def _generate_tests(
         self,
