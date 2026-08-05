@@ -25,6 +25,8 @@ from typing import AsyncGenerator, Optional
 import httpx
 from dotenv import load_dotenv
 
+from services import agent_protocol
+
 # Load backend/.env so API keys are available when running manually
 # (`uvicorn main:app`). In Docker the vars are already injected via env_file;
 # load_dotenv does not override existing environment variables, so both work.
@@ -90,6 +92,11 @@ _ENV_PREFIXES: dict[Provider, str] = {
     Provider.GROQ:   "GROQ_API_KEY_",
     Provider.CLAUDE: "ANTHROPIC_API_KEY_",
 }
+
+# Named once rather than repeated at the three call sites (complete, stream,
+# tools), which also makes it possible to point an integration test at a local
+# stand-in and exercise the real request/response handling.
+ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 
 
 # A provider telling us when to come back is the strongest possible evidence the
@@ -269,6 +276,14 @@ PROVIDER_PRIORITY: dict[Tier, list[Provider]] = {
     Tier.FREE: [Provider.GEMINI, Provider.GROQ, Provider.CLAUDE],
     Tier.PRO:  [Provider.CLAUDE, Provider.GEMINI, Provider.GROQ],
 }
+
+# Which providers can serve an agent turn. Groq is excluded on purpose — it
+# speaks OpenAI-style tool calls and wiring it up would not be hard, but
+# llama-3.3-70b holding a 40-turn tool loop together is a claim nothing here has
+# tested, and a suite quietly written by a model that lost the thread is worse
+# than having one provider fewer. The order still comes from PROVIDER_PRIORITY,
+# so a Pro run prefers Claude and falls back to Gemini exactly as elsewhere.
+AGENT_PROVIDERS: set[Provider] = {Provider.CLAUDE, Provider.GEMINI}
 
 # How long to wait before retrying an exhausted key (seconds)
 COOLDOWN = {
@@ -1041,7 +1056,15 @@ class LLMRouter:
 
     # ── Claude ──────────────────────────────
 
-    def _claude_body(self, prompt: str, system: str, temperature: float, spec: ModelSpec) -> dict:
+    def _claude_request(
+        self,
+        messages: list[dict],
+        system: str,
+        temperature: float,
+        spec: ModelSpec,
+        tools: Optional[list[dict]] = None,
+        thinking: bool = True,
+    ) -> dict:
         """Build an Anthropic request for whichever model this tier resolved to.
 
         The two tiers do not share a request shape. Haiku takes `temperature`;
@@ -1049,21 +1072,265 @@ class LLMRouter:
         sent, so `temperature` is gated on the spec rather than always included.
         Thinking is likewise opt-in per model: it is off unless asked for on
         Opus 4.8, and `budget_tokens` is gone — depth comes from `effort`.
+
+        Takes a message *list* rather than a single prompt because the agent loop
+        (services/agent_loop.py) has to send the whole conversation back on every
+        turn — a tool_result is only meaningful next to the tool_use that asked
+        for it. The single-prompt callers go through `_claude_body` below, so the
+        per-model flags above are decided in exactly one place for both shapes.
         """
         body: dict = {
             "model": spec.id,
             "max_tokens": spec.max_output_tokens,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
         }
         if spec.accepts_temperature:
             body["temperature"] = temperature
-        if spec.adaptive_thinking:
+        # `thinking=False` is how the agent loop opts out. A thinking block must
+        # be replayed verbatim with its signature, and cannot be rebuilt from the
+        # normalized conversation — keeping it would pin an agent run to one
+        # provider for its whole life, which is the exact constraint
+        # agent_protocol exists to remove. Every other caller keeps it.
+        if spec.adaptive_thinking and thinking:
             body["thinking"] = {"type": "adaptive"}
         if spec.effort:
             body["output_config"] = {"effort": spec.effort}
         if system:
             body["system"] = system
+        if tools:
+            body["tools"] = tools
         return body
+
+    def _claude_body(self, prompt: str, system: str, temperature: float, spec: ModelSpec) -> dict:
+        """Single-prompt request — the shape every non-agentic caller uses."""
+        return self._claude_request(
+            [{"role": "user", "content": prompt}], system, temperature, spec
+        )
+
+    async def agent_turn(
+        self,
+        messages: list[dict],
+        system: str,
+        tools: list[dict],
+        tier: Tier = Tier.PRO,
+        temperature: float = 0.2,
+        context_hint: str = "agent_loop",
+        pinned: Optional[str] = None,
+    ) -> tuple[list[dict], str, str]:
+        """One assistant turn of a tool-use conversation, on whichever provider answers.
+
+        Takes and returns the *normalized* conversation shape from
+        services/agent_protocol.py, never a provider's own, and returns
+        `(blocks, stop_reason, provider)`.
+
+        `pinned` is what makes a conversation coherent. The first turn picks a
+        provider from PROVIDER_PRIORITY (minus Groq — see AGENT_PROVIDERS) and
+        the caller passes that name back on every subsequent turn, because both
+        providers sign their tool calls with opaque data that must be replayed
+        and cannot be translated. Gemini enforces this outright: replaying a
+        functionCall without its `thoughtSignature` is a 400. So a mid-run
+        provider switch would corrupt the history rather than rescue it.
+
+        Keys still rotate freely *within* the pinned provider — a rate limit is
+        usually per-key, and switching keys costs nothing and loses nothing.
+        """
+        candidates = [
+            p for p in PROVIDER_PRIORITY[tier]
+            if p in AGENT_PROVIDERS and p in self._providers and self._providers[p].keys
+        ]
+        if pinned:
+            candidates = [p for p in candidates if p.value == pinned]
+            if not candidates:
+                raise AllProvidersExhausted(
+                    f"Agent mode started on {pinned}, which is no longer "
+                    f"available — the conversation cannot be moved to another "
+                    f"provider mid-run.",
+                    reason="failed",
+                )
+        if not candidates:
+            raise AllProvidersExhausted(
+                "Agent mode needs a Gemini or Anthropic key — set GEMINI_API_KEY_1 "
+                "or ANTHROPIC_API_KEY_1 in backend/.env.",
+                reason="not_configured",
+            )
+
+        last_error: Optional[Exception] = None
+        cooling: list[str] = []
+
+        for provider in candidates:
+            state = self._providers[provider]
+            spec = model_for(provider, tier)
+
+            # One attempt per key before moving on: a conversation is far more
+            # expensive to abandon than a single call, since every earlier turn
+            # is spent and unrecoverable.
+            for _ in range(len(state.keys)):
+                async with self._lock:
+                    api_key = state.next_available_key()
+                if api_key is None:
+                    cooling.append(provider.value)
+                    break
+
+                _last_usage.set(None)
+                t0 = time.perf_counter()
+                try:
+                    blocks, stop = await self._retry_transport_agent(
+                        provider, api_key, messages, system, temperature, spec, tools
+                    )
+                    latency_ms = round((time.perf_counter() - t0) * 1000)
+                    api_key.record_success()
+                    usage = _last_usage.get()
+                    self._log_call(provider, api_key, context_hint, success=True,
+                                   latency_ms=latency_ms, usage=usage, model=spec.id)
+                    record_provenance(ProviderCall(
+                        provider=provider.value,
+                        model=spec.id,
+                        context=context_hint,
+                        total_tokens=(usage or {}).get("total"),
+                    ))
+                    return blocks, stop, provider.value
+
+                except RateLimitError as e:
+                    logger.warning(f"[{provider}] Agent turn rate limited: {e}")
+                    api_key.hard_blocked = is_hard_quota(str(e))
+                    api_key.mark_exhausted(COOLDOWN[provider])
+                    last_error = e
+                except ProviderError as e:
+                    logger.error(f"[{provider}] Agent turn error: {e}")
+                    api_key.hard_blocked = is_hard_quota(str(e))
+                    api_key.mark_exhausted(COOLDOWN[provider] // 2)
+                    last_error = e
+                except (httpx.HTTPError, ssl.SSLError) as e:
+                    logger.warning(f"[{provider}] Agent turn transport error: {e!r}")
+                    api_key.mark_exhausted(TRANSPORT_COOLDOWN)
+                    last_error = e
+
+        all_keys = [
+            k for p in candidates for k in self._providers[p].keys
+        ]
+        if all_keys and all(k.hard_blocked for k in all_keys):
+            raise AllProvidersExhausted(
+                "Every provider that can run agent mode is out of credit or quota.",
+                reason="quota_exhausted",
+            )
+        if last_error is not None:
+            raise AllProvidersExhausted(
+                f"Agent turn failed on every available provider. Last error: {last_error}",
+                reason="failed",
+            )
+        raise AllProvidersExhausted(
+            f"Every agent-capable provider is rate-limited right now "
+            f"({', '.join(sorted(set(cooling)))}) — try again in a minute.",
+            reason="rate_limited",
+        )
+
+    async def _retry_transport_agent(
+        self, provider: Provider, api_key: APIKey, messages, system, temperature,
+        spec, tools,
+    ) -> tuple[list[dict], str]:
+        """Same socket-level retry `_retry_transport` does, for a tools call."""
+        for attempt in range(TRANSPORT_RETRIES + 1):
+            try:
+                if provider == Provider.CLAUDE:
+                    raw = await self._call_claude_tools(
+                        api_key, agent_protocol.to_anthropic(messages), system,
+                        temperature, spec, agent_protocol.anthropic_tools(tools))
+                    return agent_protocol.parse_anthropic(raw)
+                if provider == Provider.GEMINI:
+                    raw = await self._call_gemini_tools(
+                        api_key, agent_protocol.to_gemini(messages), system,
+                        temperature, spec, agent_protocol.gemini_tools(tools))
+                    return agent_protocol.parse_gemini(raw)
+                raise ValueError(f"{provider} cannot serve an agent turn")
+            except (httpx.HTTPError, ssl.SSLError) as e:
+                if attempt >= TRANSPORT_RETRIES:
+                    raise
+                logger.info(
+                    f"[{provider}] transport error on key #{api_key.index} ({e!r}) — "
+                    f"reconnecting (attempt {attempt + 1}/{TRANSPORT_RETRIES})"
+                )
+                await asyncio.sleep(TRANSPORT_RETRY_DELAY * (attempt + 1))
+        raise AssertionError("unreachable")     # pragma: no cover
+
+    async def _call_gemini_tools(
+        self, key: APIKey, contents, system, temperature, spec, tools
+    ) -> dict:
+        """POST one tool-enabled turn to Gemini and return the raw JSON."""
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{spec.id}:generateContent?key={key.key}"
+        )
+        body = {
+            "contents": contents,
+            "tools": tools,
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": spec.max_output_tokens,
+            },
+        }
+        if system:
+            body["systemInstruction"] = {"parts": [{"text": system}]}
+
+        async with httpx.AsyncClient(timeout=180) as client:
+            r = await client.post(url, json=body)
+
+        if r.status_code == 429:
+            raise RateLimitError(f"Gemini rate limit: {r.text}")
+        if r.status_code != 200:
+            raise ProviderError(f"Gemini HTTP {r.status_code}: {r.text[:200]}")
+
+        data = r.json()
+        um = data.get("usageMetadata") or {}
+        _last_usage.set({
+            "prompt": um.get("promptTokenCount"),
+            "completion": um.get("candidatesTokenCount"),
+            "total": um.get("totalTokenCount"),
+        })
+        return data
+
+    async def _call_claude_tools(
+        self, key: APIKey, messages, system, temperature, spec, tools
+    ) -> dict:
+        """POST one tool-enabled turn and return the assistant message unchanged.
+
+        Unlike `_call_claude` this does not flatten the response to text: a turn
+        whose stop_reason is "tool_use" has no useful text at all, and the caller
+        needs the blocks themselves to know which tool was asked for and with
+        what input.
+        """
+        body = self._claude_request(
+            messages, system, temperature, spec, tools, thinking=False)
+
+        # Longer than the 90s the single-shot calls use: an agent turn reasons
+        # over a whole repo index before it answers, and timing it out
+        # mid-conversation throws away every turn spent so far, not one call.
+        async with httpx.AsyncClient(timeout=180) as client:
+            r = await client.post(
+                ANTHROPIC_MESSAGES_URL,
+                json=body,
+                headers={
+                    "x-api-key": key.key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+            )
+
+        if r.status_code == 429:
+            raise RateLimitError(f"Claude rate limit: {r.text}")
+        if r.status_code != 200:
+            raise ProviderError(f"Claude HTTP {r.status_code}: {r.text[:200]}")
+
+        data = r.json()
+        cu = data.get("usage") or {}
+        _last_usage.set({
+            "prompt": cu.get("input_tokens"),
+            "completion": cu.get("output_tokens"),
+            "total": (cu.get("input_tokens") or 0) + (cu.get("output_tokens") or 0) or None,
+        })
+        return {
+            "content": data.get("content", []),
+            "stop_reason": data.get("stop_reason"),
+        }
 
     async def _call_claude(self, key: APIKey, prompt, system, temperature, json_mode: bool, spec: ModelSpec) -> str:
         # Anthropic has no response_format flag; it follows JSON instructions in
@@ -1073,7 +1340,7 @@ class LLMRouter:
 
         async with httpx.AsyncClient(timeout=90) as client:
             r = await client.post(
-                "https://api.anthropic.com/v1/messages",
+                ANTHROPIC_MESSAGES_URL,
                 json=body,
                 headers={
                     "x-api-key": key.key,
@@ -1115,7 +1382,7 @@ class LLMRouter:
         async with httpx.AsyncClient(timeout=90) as client:
             async with client.stream(
                 "POST",
-                "https://api.anthropic.com/v1/messages",
+                ANTHROPIC_MESSAGES_URL,
                 json=body,
                 headers={
                     "x-api-key": key.key,

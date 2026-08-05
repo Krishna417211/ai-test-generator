@@ -192,7 +192,41 @@ export interface GenerateResponse {
   selector_grounding?: SelectorGrounding | null;
   fragility?: Fragility | null;
   provenance?: Provenance | null;
+  /** Present only when agent mode produced this suite; absent for the scripted
+   *  pipeline, including a run that asked for agent mode and fell back. */
+  agent?: AgentTrace | null;
   error?: string;
+}
+
+export interface AgentToolCall {
+  name: string;
+  summary: string;
+  ok: boolean;
+}
+
+/** A real execution of the suite against the deployed app. Only ever present
+ *  when the server had test execution enabled AND the agent chose to run it —
+ *  its absence means "never run", which is not the same as "nothing failed". */
+export interface AgentTestRun {
+  total: number;
+  passed: number;
+  failed: number;
+  skipped: number;
+  timed_out: boolean;
+  duration_ms: number;
+  failures: { test: string; file: string; message: string }[];
+}
+
+export interface AgentTrace {
+  turns: number;
+  /** Which provider(s) served the turns. A run is pinned to whichever provider
+   *  answered first, so this is normally a single name. */
+  providers?: string[];
+  /** completed · max_turns · exhausted */
+  stop_reason: string;
+  tool_calls: AgentToolCall[];
+  files_written: number;
+  last_run?: AgentTestRun | null;
 }
 
 export interface PublishResult {
