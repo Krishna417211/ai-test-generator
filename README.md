@@ -14,8 +14,6 @@ Free tier included (a monthly generation allowance, no card required); Pro remov
 - **Two generation modes.** *Generate* is crawl-first: it renders and crawls your deployed site and writes tests from the real DOM — your repo's file contents never reach the model. *Publish* is source-first: upload a ZIP, get a new GitHub repo with the project plus a validated suite and working CI.
 - **Grounded selectors, with provenance.** Every id, test-id and class the model writes is checked back against your real source or live DOM, and the UI cites the file and line it came from rather than asking for trust.
 - **Self-heal loop.** Files that don't parse, and selectors that don't resolve, are sent back to the model *with the real anchors that do exist* — a grounded substitution, not a second guess.
-- **Agent mode (Pro).** Instead of a scripted plan → generate → heal pipeline, the model investigates the app itself: it searches the source, reads the files it chooses, queries the grounding index for selectors that provably exist, and validates each file before committing it. Runs on **Claude or Gemini** — whichever the tier prefers and has capacity — and every failure mode falls back to the scripted pipeline, so it can only ever improve a run, never cost you one. Opt in with `agent_mode` on `POST /api/generate/{job_id}` or the publish form; the response's `agent` field reports the provider, turns and tool calls it actually made.
-- **Optionally, it runs the tests.** With `ENABLE_TEST_EXECUTION=true` the agent executes the suite it just wrote against your deployed URL, reads the real Playwright failures, and fixes them — the one check here that can say a suite *passes* rather than merely parses. Off by default, because it runs model-written code on the host; see [`.env.example`](backend/.env.example) for what that means before enabling it.
 - **Generation success rate.** One 0–100 score with a full breakdown of the checks behind it. Explicitly not a pass rate — see [Limitations](docs/LIMITATIONS.md).
 - **Credentials never leave your machine.** `.env`, SSH keys, `.pem`, cloud service-account JSONs and hard-coded API tokens are detected and withheld from both the model prompt and the push — and every withheld file is named, never silently dropped.
 - **Verified pushes.** After publishing, the commit tree is read back from GitHub and every file confirmed present with the exact content hash uploaded. Missing files are re-pushed; anything still missing fails loudly.
@@ -134,7 +132,6 @@ testra/
 │       │   ├── ResultsStep.tsx      # The generated suite + downloads
 │       │   ├── SuccessRate.tsx      # Headline score + its breakdown
 │       │   ├── TrustPanel.tsx       # What we checked, and what we didn't
-│       │   ├── AgentTrace.tsx       # What the agent did, and what it ran
 │       │   ├── ExcludedSecrets.tsx  # Credential files we withheld
 │       │   ├── PublishPanel.tsx     # ZIP → new GitHub repo
 │       │   ├── ScanPanel.tsx        # Security scan of a deployed URL
@@ -149,10 +146,6 @@ testra/
 │   │   └── scaffold.py         # Templated configs, CI pipelines, README
 │   ├── services/
 │   │   ├── llm_router.py       # ⭐ Multi-provider rotation + provenance
-│   │   ├── agent_loop.py       # Agent mode: the model drives, with tools
-│   │   ├── agent_tools.py      # The tools it's allowed to use
-│   │   ├── agent_protocol.py   # One conversation → each provider's shape
-│   │   ├── test_runner.py      # Actually runs the suite (opt-in)
 │   │   ├── file_extractor.py   # File filtering, scoring, push preparation
 │   │   ├── importance_model.py # From-scratch logistic regression (file value)
 │   │   ├── live_crawler.py     # Renders + crawls the deployed site
@@ -167,7 +160,7 @@ testra/
 │   │   ├── store.py            # Durable SQLite job store
 │   │   └── auth / quota / billing / admin / mailer / progress
 │   ├── models/schemas.py       # Pydantic request/response models
-│   ├── tests/                  # 1169 tests across 39 suites
+│   ├── tests/                  # 1050 tests across 36 suites
 │   └── main.py                 # FastAPI app + all routes
 │
 ├── cli/                        # `npx @testra/cli` — zero runtime dependencies
@@ -261,7 +254,7 @@ Full interactive docs: http://localhost:8000/docs
 
 ```bash
 cd backend
-pytest tests/ -q          # 1169 tests across 39 suites
+pytest tests/ -q          # 1050 tests across 36 suites
 ruff check .
 ```
 

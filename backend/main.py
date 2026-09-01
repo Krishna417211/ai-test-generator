@@ -2142,11 +2142,6 @@ async def publish_zip(
     test_flows: str = Form(""),
     base_url: str = Form("http://localhost:3000"),
     repo_description: str = Form(""),
-    # Same opt-in as the generate flow, and honoured on the same terms (Pro,
-    # Anthropic-only, falls back to the scripted pipeline). Worth having here
-    # too: this suite is pushed to a real repository and runs in the user's CI,
-    # so it is the output where a grounded, verified suite matters most.
-    agent_mode: bool = Form(False),
     ctx: dict = Depends(require_user),
 ):
     """
@@ -2194,7 +2189,6 @@ async def publish_zip(
             add_cicd=add_cicd, private=private, framework=framework,
             language=language, test_flows=test_flows, base_url=base_url,
             repo_description=repo_description, user_id=ctx["user_id"],
-            agent_mode=agent_mode,
         )
 
     return ndjson(work)
@@ -2204,7 +2198,6 @@ async def _publish_work(
     progress: Progress, *, raw_files: dict, token: str, repo_name: str,
     add_cicd: bool, private: bool, framework: str, language: str,
     test_flows: str, base_url: str, repo_description: str, user_id: str,
-    agent_mode: bool = False,
 ) -> dict:
     """The publish pipeline. Split out of the endpoint so the streaming wrapper
     stays a thin shell over the same logic that used to be inline."""
@@ -2285,7 +2278,6 @@ async def _publish_work(
                 self_heal=True,
                 max_heal_attempts=4,
                 tier=tier,
-                agent_mode=agent_mode and tier == Tier.PRO,
             )
         except Exception as e:
             # Writing tests needs an LLM; pushing the project doesn't. A provider
@@ -2751,12 +2743,6 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
             live_url=payload.live_url,
             crawl_index=crawl_index,
             user_key=user_key,
-            # Silently ignored on Free rather than rejected: agent mode is a
-            # quality upgrade, and a Free user who asks for it should get the
-            # scripted suite they'd have got anyway, not a 403. The response
-            # says which path actually ran (`agent`), so nobody is misled about
-            # what they received.
-            agent_mode=payload.agent_mode and tier == Tier.PRO,
         )
     except AllProvidersExhausted as e:
         # Our shared API keys are dry — this is an outage on our side and hits
@@ -2841,10 +2827,6 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
         excluded_secrets=session.get("excluded_secrets", []),
         selector_grounding=result.selector_grounding,
         fragility=result.fragility,
-        # Empty dict → the scripted pipeline ran (including when agent mode was
-        # asked for and fell back). Send None so the client's check is simply
-        # "is there a trace", not "is the trace empty".
-        agent=result.agent or None,
         # This request's own calls, or — when it reused the SSE stream's output
         # and made none — the provenance recorded when that output was written.
         # Either way it names a model that genuinely produced these files, never

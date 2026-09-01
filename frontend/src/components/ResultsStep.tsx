@@ -7,7 +7,6 @@ import CodeViewer from "./CodeViewer";
 import TrustPanel from "./TrustPanel";
 import SuccessRate from "./SuccessRate";
 import ExcludedSecrets from "./ExcludedSecrets";
-import AgentTrace from "./AgentTrace";
 
 interface Props {
   result: GenerateResponse;
@@ -185,11 +184,6 @@ export default function ResultsStep({ result, onReset }: Props) {
         fragility={result.fragility}
         provenance={result.provenance}
       />
-
-      {/* Renders only when the agentic path genuinely ran. Sits under the trust
-          panel because it qualifies it: TrustPanel says "we did not run these
-          tests", and this is the one case where we may have. */}
-      <AgentTrace agent={result.agent} />
 
       {/* Incomplete run. Ranked above selector warnings because it invalidates
           the download outright: a suite missing its specs collects zero tests,

@@ -115,23 +115,6 @@ class Settings(BaseSettings):
     # authorization; this flag is only the master switch for allowing that at all.
     zap_allow_active: bool = False
 
-    # ── Running the generated suite (agent mode) ──
-    # Agent mode can execute the tests it writes against the user's deployed URL
-    # and read the real failures (services/test_runner.py). It is the only thing
-    # here that can prove a suite *passes* rather than merely parses — and the
-    # only thing that runs model-written code on this host.
-    #
-    # OFF by default, and deliberately not "on in development": the risk isn't
-    # about which environment it is, it's that a repo's contents influence what
-    # the model writes, and this executes what the model writes. Enable it where
-    # the process is disposable and has nothing worth reaching — a container
-    # built for it — not on the box holding your keys.
-    enable_test_execution: bool = False
-    test_execution_timeout_seconds: int = 120
-    # Where the runner installs @playwright/test (once) and unpacks each run.
-    # Empty → a directory under the system temp dir.
-    test_runner_workspace: str = ""
-
     # Limits
     max_repo_size_mb: int = 100
     max_files_per_repo: int = 2000
