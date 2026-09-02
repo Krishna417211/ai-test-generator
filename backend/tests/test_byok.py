@@ -131,7 +131,16 @@ class TestSavingAndClearing:
                        json={"gemini_api_key": "sk-ant-abcdefghijklmnopqrstuvwxyz"},
                        headers=headers)
         assert r.status_code == 422
-        assert "AIza" in r.text
+        assert "Google Gemini API key" in r.text or "AIza" in r.text
+
+    def test_aq_prefixed_key_is_accepted(self, client, monkeypatch):
+        _accept_probe(monkeypatch)
+        headers = _signed_in(client)
+        aq_key = "AQ.Ab8RN6" + "a" * 30 + "9f2k"
+        r = client.put("/api/settings", json={"gemini_api_key": aq_key}, headers=headers)
+        assert r.status_code == 200, r.text
+        assert r.json()["has_gemini_key"] is True
+        assert r.json()["gemini_key_hint"] == "AQ.A…9f2k"
 
     def test_an_empty_string_clears_it(self, client, monkeypatch):
         _accept_probe(monkeypatch)

@@ -239,10 +239,10 @@ class UserSettings(BaseModel):
         # Shape check only — whether it WORKS is settled by a probe call in the
         # endpoint, because a well-formed key can still be revoked. Catching the
         # obvious paste error here gives a better message than Google's 400.
-        if not v.startswith("AIza"):
+        if not (v.startswith("AIza") or v.startswith("AQ.")):
             raise ValueError(
-                "That doesn't look like a Google AI Studio key — they begin with "
-                "'AIza'. Check you haven't pasted a key for a different provider."
+                "That doesn't look like a Google Gemini API key — they begin with "
+                "'AIza' or 'AQ.'. Check you haven't pasted a key for a different provider."
             )
         if len(v) < 30:
             raise ValueError("That key looks too short to be a Gemini API key.")
