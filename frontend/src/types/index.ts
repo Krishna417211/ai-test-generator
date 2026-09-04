@@ -330,7 +330,7 @@ export interface UserSettings {
   framework: string;
   language: string;
   base_url: string;
-  /** "AIza…9f2k" — a mask of the stored Gemini key. The key itself is never
+  /** "AQ.A…9f2k" — a mask of the stored Gemini key. The key itself is never
    *  returned by the API; there is deliberately no field here to hold it. */
   gemini_key_hint?: string;
   has_gemini_key?: boolean;

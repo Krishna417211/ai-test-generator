@@ -20,6 +20,41 @@ class Language(str, Enum):
     JAVA = "java"
 
 
+# Which languages each framework can actually be generated in.
+#
+# `TestFramework` and `Language` validate independently, which is not the same as
+# validating the PAIR: "cypress" and "java" are each a legal value and together
+# are a suite the writer cannot produce. Saved as defaults, that pair silently
+# produced something other than what was asked for —
+# `WriterAgent._normalize_framework` maps any non-Java Selenium request to
+# `selenium_python`, so "selenium + typescript" quietly generated Python.
+#
+# The real set is the five template keys scaffold and validator implement:
+# playwright_js, playwright_python, cypress_js, selenium_java, selenium_python.
+# Mirrored in frontend/src/utils/frameworks.ts — change both together.
+FRAMEWORK_LANGUAGES: dict[str, set[str]] = {
+    TestFramework.PLAYWRIGHT.value: {"typescript", "javascript", "python"},
+    TestFramework.CYPRESS.value: {"typescript", "javascript"},
+    TestFramework.SELENIUM.value: {"python", "java"},
+}
+
+
+def combo_error(framework: str, language: str) -> Optional[str]:
+    """A message naming what IS available, or None when the pair is fine.
+
+    Deliberately tolerant of an unknown framework: this guards a user-supplied
+    pair, and rejecting something the enum already accepted would be a second
+    opinion on a question that has been settled.
+    """
+    allowed = FRAMEWORK_LANGUAGES.get(framework)
+    if allowed is None or language in allowed:
+        return None
+    return (
+        f"{framework.title()} tests can't be generated in {language.title()}. "
+        f"Available for {framework.title()}: {', '.join(sorted(allowed))}."
+    )
+
+
 # ── Requests ─────────────────────────────────
 
 class SiteLogin(BaseModel):

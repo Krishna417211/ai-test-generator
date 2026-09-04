@@ -3,6 +3,7 @@ import {
   Play, AlertTriangle, Globe, Loader2, CheckCircle2, XCircle, Ban,
 } from "lucide-react";
 import type { Framework, Language } from "../types";
+import { FRAMEWORKS, LANGUAGES_FOR, coerceLanguage } from "../utils/frameworks";
 import { previewCrawl, type CrawlPreview, type SiteLogin } from "../utils/api";
 
 interface Config {
@@ -27,28 +28,8 @@ interface Props {
   error?: string | null;
 }
 
-const FRAMEWORKS: { id: Framework; label: string; desc: string }[] = [
-  { id: "playwright", label: "Playwright", desc: "Fast, reliable, supports all browsers" },
-  { id: "cypress", label: "Cypress", desc: "Great DX, real-time browser preview" },
-  { id: "selenium", label: "Selenium", desc: "Industry standard, broad language support" },
-];
-
-const LANGUAGES: Record<Framework, { id: Language; label: string }[]> = {
-  playwright: [
-    { id: "typescript", label: "TypeScript" },
-    { id: "javascript", label: "JavaScript" },
-    { id: "python", label: "Python" },
-  ],
-  cypress: [
-    { id: "typescript", label: "TypeScript" },
-    { id: "javascript", label: "JavaScript" },
-  ],
-  selenium: [
-    { id: "python", label: "Python" },
-    { id: "java", label: "Java" },
-    { id: "javascript", label: "JavaScript" },
-  ],
-};
+// FRAMEWORKS / LANGUAGES_FOR now live in utils/frameworks.ts — see the note
+// there on why a second copy of this table was a bug.
 
 export default function ConfigureStep({ hostedUrl, siteLogin, onGenerate, loading, error }: Props) {
   const [framework, setFramework] = useState<Framework>("playwright");
@@ -79,10 +60,7 @@ export default function ConfigureStep({ hostedUrl, siteLogin, onGenerate, loadin
 
   const handleFrameworkChange = (fw: Framework) => {
     setFramework(fw);
-    const langs = LANGUAGES[fw];
-    if (!langs.find((l) => l.id === language)) {
-      setLanguage(langs[0].id);
-    }
+    setLanguage(coerceLanguage(fw, language));
   };
 
   return (
@@ -120,7 +98,7 @@ export default function ConfigureStep({ hostedUrl, siteLogin, onGenerate, loadin
       <div>
         <label className="block text-sm font-semibold text-white mb-3">Language</label>
         <div className="flex gap-2">
-          {LANGUAGES[framework].map((lang) => (
+          {LANGUAGES_FOR[framework].map((lang) => (
             <button
               key={lang.id}
               onClick={() => setLanguage(lang.id)}

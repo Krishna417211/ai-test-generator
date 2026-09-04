@@ -18,17 +18,12 @@ import {
 import { pluralize } from "../utils/format";
 import type { UserSettings, Profile, PlanCatalogueEntry } from "../types";
 
-const FRAMEWORKS = [
-  { value: "playwright", label: "Playwright" },
-  { value: "cypress", label: "Cypress" },
-  { value: "selenium", label: "Selenium" },
-];
-const LANGUAGES = [
-  { value: "typescript", label: "TypeScript" },
-  { value: "javascript", label: "JavaScript" },
-  { value: "python", label: "Python" },
-  { value: "java", label: "Java" },
-];
+import { FRAMEWORKS, LANGUAGES_FOR, coerceLanguage } from "../utils/frameworks";
+import type { Framework, Language } from "../types";
+// The framework/language pairs a user may save as defaults come from
+// utils/frameworks.ts. They used to be two independent lists here, which let
+// "Cypress + Java" and "Selenium + TypeScript" be saved as defaults — neither is
+// a combination the writer can generate.
 
 function Section({ icon: Icon, title, description, children, danger = false, id, highlight = false }: {
   icon: any; title: string; description: string;
@@ -93,8 +88,19 @@ function DefaultsSection() {
   const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
   useEffect(() => {
-    getSettings().then(setValues).catch((e) =>
-      setMsg({ kind: "error", text: e.message || "Could not load your settings." }));
+    // Coerce on the way in. A pair saved before the framework/language coupling
+    // existed can be one the writer cannot build (cypress + java), and the
+    // Language <select> would then have no matching <option> and render blank —
+    // leaving the user staring at an empty control with no way to tell what was
+    // wrong. Moving it to a valid language shows them something true, and the
+    // server would refuse to store the old pair anyway.
+    getSettings()
+      .then((v) => setValues({
+        ...v,
+        language: coerceLanguage(v.framework as Framework, v.language as Language),
+      }))
+      .catch((e) =>
+        setMsg({ kind: "error", text: e.message || "Could not load your settings." }));
   }, []);
 
   const save = async () => {
@@ -123,14 +129,25 @@ function DefaultsSection() {
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="Framework">
               <select className={inputCls} value={values.framework}
-                      onChange={(e) => setValues({ ...values, framework: e.target.value })}>
-                {FRAMEWORKS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                      onChange={(e) => {
+                        // Changing framework can strand the saved language —
+                        // Selenium has no TypeScript — so move it to a valid one
+                        // in the same update rather than saving a pair that
+                        // cannot be generated.
+                        const framework = e.target.value as Framework;
+                        setValues({
+                          ...values, framework,
+                          language: coerceLanguage(framework, values.language as Language),
+                        });
+                      }}>
+                {FRAMEWORKS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
               </select>
             </Field>
             <Field label="Language">
               <select className={inputCls} value={values.language}
                       onChange={(e) => setValues({ ...values, language: e.target.value })}>
-                {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+                {(LANGUAGES_FOR[values.framework as Framework] ?? []).map(
+                  (l) => <option key={l.id} value={l.id}>{l.label}</option>)}
               </select>
             </Field>
           </div>
@@ -405,7 +422,7 @@ function ConnectionsSection({ highlight }: { highlight: boolean }) {
 /** Lets a user run generations on their own Gemini quota instead of ours.
  *
  *  The field is write-only by construction: the server returns a mask
- *  (`AIza…9f2k`) and never the key, so there is nothing to prefill and the input
+ *  (`AQ.A…9f2k`) and never the key, so there is nothing to prefill and the input
  *  starts empty even when a key is saved. That is deliberate — a form that
  *  round-trips a credential is one XSS away from leaking it.
  */
@@ -456,11 +473,11 @@ function ApiKeySection() {
 
       <Field
         label={saved.present ? "Replace with a different key" : "Gemini API key"}
-        hint="From aistudio.google.com/app/apikey. Stored encrypted, never shown again, and never sent anywhere but Google."
+        hint="From aistudio.google.com/app/apikey — starts with AQ. (older keys start with AIza). Stored encrypted, never shown again, and never sent anywhere but Google."
       >
         <input
           className={inputCls} value={key} type="password" autoComplete="off"
-          spellCheck={false} placeholder="AIza..."
+          spellCheck={false} placeholder="AQ.… or AIza…"
           onChange={(e) => setKey(e.target.value)}
         />
       </Field>
