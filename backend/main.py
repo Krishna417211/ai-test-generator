@@ -2276,7 +2276,13 @@ async def _publish_work(
                 # download flow quotes the same YAML instead of writing it.
                 ci_as_files=True,
                 self_heal=True,
-                max_heal_attempts=4,
+                # Two, not four. Each round is now one call per broken file
+                # rather than one whole-suite round trip, and the loop stops as
+                # soon as a round stops improving things — so a high cap no
+                # longer quietly guarantees the maximum spend. Two leaves room
+                # for a repair and a follow-up; past that the model is not
+                # converging and more attempts have not been observed to help.
+                max_heal_attempts=2,
                 tier=tier,
             )
         except Exception as e:
@@ -2738,6 +2744,7 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
             base_url=payload.base_url,
             include_ci=payload.include_ci,
             pregenerated_raw=session.get("streamed_raw"),
+            pregenerated_failed=session.get("streamed_failed"),
             self_heal=payload.self_heal,
             tier=tier,
             live_url=payload.live_url,
@@ -2788,7 +2795,12 @@ async def generate_tests(job_id: str, payload: GenerateRequest,
     # is what stops a user starting fifty concurrent runs, and whether the
     # fallback happened is only knowable *after* the run.
     byok_used = bool(user_key)
-    fell_back = byok_fell_back()
+    # Includes the stream's verdict, not just this request's. The generation now
+    # runs in /api/stream, so by the time we get here the calls that could have
+    # fallen back to the operator's pool have already been made and this
+    # request's own flag would say nothing about them — refunding on it alone
+    # gave away a free credit for a run the operator paid for.
+    fell_back = byok_fell_back() or bool(session.get("streamed_byok_fell_back"))
     if byok_used and not fell_back:
         lease.refund()
     else:
@@ -2879,9 +2891,18 @@ async def stream_generation(
     # only at the charging step. Read-only: the credit is still consumed by
     # /api/generate, so this does not double-charge.
     has_quota, quota_state = has_quota_remaining(ctx["user_id"])
+    tier = tier_for_user(ctx["user_id"])
+
+    # Bring-your-own-key: the generation itself now happens in this endpoint, so
+    # this is where the user's own key has to be applied. It wasn't before — the
+    # stream ran on the operator's pool while /api/generate, which made no calls
+    # of its own, saw no fallback and refunded the credit. A user with a key
+    # saved therefore spent the operator's tokens and paid nothing for them.
+    user_key = auth_svc.decrypt_secret(store.get_gemini_key(ctx["user_id"]))
 
     async def event_generator():
         start_provenance()
+        start_byok_tracking()
         if not has_quota:
             # In-band error (EventSource can't read a 402 status). The client
             # recognises reason="quota_exceeded" and shows the upgrade modal,
@@ -2900,37 +2921,66 @@ async def stream_generation(
         llm_router.subscribe_status(on_status)
 
         try:
-            buffer = ""
-            async for chunk in agent.stream_run(
+            generated: list = []
+            failed: list[str] = []
+            async for event in agent.stream_run(
                 filter_result=filter_result,
                 framework=framework,
                 language=language,
                 test_flows=test_flows or session["request"].get("test_flows", ""),
                 base_url=base_url,
-                tier=tier_for_user(ctx["user_id"]),
+                tier=tier,
                 crawl_index=crawl_index,
+                user_key=user_key,
             ):
-                buffer += chunk
-                # Send status updates if any are queued (non-blocking)
+                # Send provider status updates if any are queued (non-blocking)
                 while not status_queue.empty():
                     status_msg = status_queue.get_nowait()
                     yield f"data: {json.dumps({'type': 'provider_status', 'message': status_msg})}\n\n"
 
-                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+                if event["type"] == "result":
+                    generated = event["files"]
+                    failed = event["failed"]
+                elif event["type"] == "chunk":
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': event['content']})}\n\n"
+                else:
+                    # A step boundary — "Writing tests/login.spec.ts (3/8)", or
+                    # the rate-limit wait. Rendered in the same place as the
+                    # provider status, which is where the user is already looking
+                    # to find out whether anything is still happening.
+                    yield f"data: {json.dumps({'type': 'provider_status', 'message': event['message']})}\n\n"
 
-            # Cache the streamed output so /api/generate can reuse it instead of
-            # running the whole (expensive) generation a second time.
+            # Hand the finished suite to /api/generate so it can scaffold and
+            # validate WITHOUT generating anything again.
+            #
+            # Serialised into the same {"files":[...]} envelope the model used to
+            # be asked for, because that is what the writer's reuse path parses.
+            # The difference that matters: we build this envelope, so it is
+            # always complete. Asking the model for it meant a suite of any size
+            # came back cut off at the output-token cap, failed to parse, and was
+            # thrown away — and the whole generation ran a second time.
             #
             # The provenance rides along with it. Without this the model that
-            # actually wrote the suite is lost: /api/generate reuses this buffer,
+            # actually wrote the suite is lost: /api/generate reuses these files,
             # makes no call of its own, and so honestly reports "no model ran" —
             # leaving the results screen unable to say what wrote the tests in
-            # the one flow the UI actually uses. The cached text and the record
+            # the one flow the UI actually uses. The cached suite and the record
             # of who produced it are the same fact and are stored together.
+            #
+            # `streamed_failed` travels with them because it is what withholds
+            # the CI workflow: a suite that lost files mid-run cannot pass a
+            # pipeline, and finalising it as though it were whole shipped one
+            # that was guaranteed to go red.
             store.update(
                 job_id,
-                streamed_raw=buffer,
-                streamed_provenance=provenance_report(tier_for_user(ctx["user_id"])),
+                streamed_raw=json.dumps({"files": [
+                    {"filename": f.filename, "description": f.description,
+                     "content": f.content}
+                    for f in generated
+                ]}) if generated else "",
+                streamed_failed=failed,
+                streamed_byok_fell_back=byok_fell_back(),
+                streamed_provenance=provenance_report(tier),
             )
 
             yield f"data: {json.dumps({'type': 'done', 'message': 'Generation complete'})}\n\n"

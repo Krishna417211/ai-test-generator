@@ -162,7 +162,7 @@ export const FLOWS: Flow[] = [
         lane: "ai",
         title: "The suite is written and fixed until it's green",
         desc: "Same two agents as Generate, but with the self-heal loop turned up: any file that fails validation goes back to the model, up to four times. All of it before the repo exists — a red pipeline on your first commit is worse than no pipeline. If the AI is down, your code still ships without it.",
-        tags: ["FilterAgent → WriterAgent", "self_heal=True", "max_heal_attempts=4"],
+        tags: ["FilterAgent → WriterAgent", "self_heal=True", "max_heal_attempts=2"],
       },
       {
         id: "push",
