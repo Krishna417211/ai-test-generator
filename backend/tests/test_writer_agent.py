@@ -260,49 +260,105 @@ class TestSuitePlacementIsSafe:
 
 class TestHealNeverMakesThingsWorse:
     """Self-heal is an improvement pass, so its contract is "better, or
-    unchanged".
+    unchanged" — and the improvement is now *measured* rather than assumed: the
+    repaired suite is re-validated and kept only if fewer files are invalid than
+    before.
 
-    It used to be able to make a suite *worse*: `_parse_response` answers invalid
-    JSON with a single synthetic "raw output" file, that value is truthy, and
-    `return healed or files` therefore replaced a working suite with the model's
-    unparsed reply. The run then reported success while shipping one unparseable
-    file where the tests had been — which is exactly what happened generating a
-    suite for a real site.
+    Two ways it used to break that contract, both reachable on a real run:
+
+    - It could make a suite worse. `_parse_response` answers invalid JSON with a
+      single synthetic "raw output" file, that value is truthy, and
+      `return healed or files` therefore replaced a working suite with the
+      model's unparsed reply. The run then reported success while shipping one
+      unparseable file where the tests had been.
+    - It could lose files outright. Healing sent the whole suite and swapped in
+      whatever came back, so a model that returned only the file it had been
+      asked to fix silently deleted every other file.
     """
 
-    GOOD = [
-        GeneratedFile("tests/login.spec.ts", "test('a', () => {});", "Spec"),
-        GeneratedFile("tests/pages/LoginPage.ts", "export class LoginPage {}", "Page object"),
-    ]
+    BROKEN = (
+        "import { test, expect } from '@playwright/test';\n"
+        "test('logs in', async ({ page }) => {\n"
+        "  await page.goto('login.html');\n"
+        "  await expect(page.locator('#email')).toBeVisible();\n"
+    )
+    FIXED = BROKEN + "});\n"
+    PAGE_OBJECT = "export class LoginPage {}"
+
+    def _suite(self):
+        return [
+            GeneratedFile("tests/login.spec.ts", self.BROKEN, "Spec"),
+            GeneratedFile("tests/pages/LoginPage.ts", self.PAGE_OBJECT, "Page object"),
+        ]
 
     def _heal_returning(self, monkeypatch, raw: str):
+        """Heal a two-file suite whose spec is genuinely invalid.
+
+        Returns (healed_files, prompts_sent) — the prompts matter as much as the
+        files, since one call per broken file carrying only that file is the
+        whole point of the rewrite.
+        """
         import agents.writer_agent as wa
 
+        prompts: list[str] = []
+
         async def fake_complete(**kwargs):
+            prompts.append(kwargs["prompt"])
             return raw
         monkeypatch.setattr(wa.router, "complete", fake_complete)
 
         w = WriterAgent()
-        failing = [type("V", (), {"filename": "tests/login.spec.ts", "error": "boom"})()]
-        return asyncio.run(w._heal(list(self.GOOD), failing, "playwright_js"))
-
-    def test_unparseable_heal_leaves_the_suite_alone(self, monkeypatch):
-        out = self._heal_returning(monkeypatch, '{"files": [{"filename": "x.ts", "cont')
-        assert [f.filename for f in out] == [f.filename for f in self.GOOD]
-        assert not any("JSON parsing failed" in f.description for f in out)
+        failing = [type("V", (), {
+            "filename": "tests/login.spec.ts", "error": "unbalanced brackets",
+        })()]
+        out = asyncio.run(w._heal(self._suite(), failing, "playwright_js"))
+        return out, prompts
 
     def test_a_valid_heal_is_applied(self, monkeypatch):
-        raw = json.dumps({"files": [
-            {"filename": "tests/login.spec.ts", "description": "Spec",
-             "content": "test('fixed', () => {});"},
-        ]})
-        out = self._heal_returning(monkeypatch, raw)
-        assert len(out) == 1
-        assert "fixed" in out[0].content
+        # Compared stripped: `_strip_fence` trims surrounding whitespace off
+        # every model reply, healed files included.
+        out, _ = self._heal_returning(monkeypatch, self.FIXED)
+        assert out[0].content == self.FIXED.strip()
+
+    def test_healing_one_file_does_not_drop_the_others(self, monkeypatch):
+        """The file nobody asked about must still be there afterwards."""
+        out, _ = self._heal_returning(monkeypatch, self.FIXED)
+        assert [f.filename for f in out] == [
+            "tests/login.spec.ts", "tests/pages/LoginPage.ts",
+        ]
+        assert out[1].content == self.PAGE_OBJECT
+
+    def test_only_the_broken_file_is_sent_to_the_model(self, monkeypatch):
+        """One call, carrying one file — not the whole suite.
+
+        Sending the suite was what made healing the most expensive thing in the
+        module, and on any real suite it could not work at all: the reply is
+        capped at the provider's output limit, so it came back truncated and was
+        discarded.
+        """
+        _, prompts = self._heal_returning(monkeypatch, self.FIXED)
+        assert len(prompts) == 1
+        assert self.BROKEN in prompts[0]
+        assert self.PAGE_OBJECT not in prompts[0]
+
+    def test_unparseable_heal_leaves_the_suite_alone(self, monkeypatch):
+        out, _ = self._heal_returning(monkeypatch, '{"files": [{"filename": "x.ts", "cont')
+        assert [f.content for f in out] == [self.BROKEN, self.PAGE_OBJECT]
+        assert not any("JSON parsing failed" in f.description for f in out)
+
+    def test_a_heal_that_does_not_fix_anything_is_rejected(self, monkeypatch):
+        """Still-invalid output is not an improvement, so it is not kept.
+
+        This is also what stops the caller's loop spinning: `_heal` hands back
+        the very list it was given, and run() reads that identity as "no
+        progress" and stops instead of asking the same question again.
+        """
+        out, _ = self._heal_returning(monkeypatch, self.BROKEN + "  await page.click('#go');\n")
+        assert [f.content for f in out] == [self.BROKEN, self.PAGE_OBJECT]
 
     def test_an_empty_heal_leaves_the_suite_alone(self, monkeypatch):
-        out = self._heal_returning(monkeypatch, '{"files": []}')
-        assert [f.filename for f in out] == [f.filename for f in self.GOOD]
+        out, _ = self._heal_returning(monkeypatch, "")
+        assert [f.content for f in out] == [self.BROKEN, self.PAGE_OBJECT]
 
 
 class TestStripFence:
@@ -343,3 +399,187 @@ class TestCrawlOnlyPrompt:
         p = w._build_prompt(self._fr(), "playwright_ts", "login", "https://app.example", "typescript")
         assert "SOURCE CODE FILES" in p
         assert "src-only" in p
+
+
+class TestTheSuiteIsGeneratedOnce:
+    """The stream IS the generation, not a preview of one.
+
+    It used to ask the model for the whole suite as a single streamed JSON blob
+    so the browser had something to render, and `/api/generate` then generated
+    the same suite again file-by-file — because that blob had almost always been
+    cut off at the provider's output-token cap and could not be parsed. Every
+    run therefore paid for a large call whose output went straight in the bin.
+
+    Both paths now share `_generate_tests_events`, and the finalise step reuses
+    what the stream produced. These tests pin that: the model is asked for the
+    suite exactly once across the two requests.
+    """
+
+    SPEC = ("import { test, expect } from '@playwright/test';\n"
+            "test('logs in', async ({ page }) => {\n"
+            "  await page.goto('login.html');\n"
+            "});\n")
+
+    def _fr(self):
+        from agents.filter_agent import FilterResult
+        return FilterResult(
+            "A login page.", [], [], ["/login"], "static html", [],
+            {"login.html": "<form><input id='email'></form>"}, 0, 1,
+        )
+
+    def _patched(self, monkeypatch):
+        """Mock the router and record the context of every call it receives."""
+        import agents.writer_agent as wa
+        calls: list[str] = []
+
+        async def fake_complete(**kwargs):
+            calls.append(kwargs["context_hint"])
+            if kwargs["context_hint"] == "writer_plan":
+                return json.dumps({"files": [
+                    {"filename": "tests/login.spec.ts",
+                     "description": "Login flow", "kind": "spec"},
+                ]})
+            return self.SPEC
+        monkeypatch.setattr(wa.router, "complete", fake_complete)
+        return calls
+
+    def _stream(self, agent, events_out):
+        async def drive():
+            async for ev in agent.stream_run(
+                filter_result=self._fr(), framework="playwright",
+                language="typescript", test_flows="log in",
+                base_url="https://app.example",
+            ):
+                events_out.append(ev)
+        asyncio.run(drive())
+
+    def test_streaming_returns_the_files_it_generated(self, monkeypatch):
+        self._patched(monkeypatch)
+        events: list[dict] = []
+        self._stream(WriterAgent(), events)
+
+        result = events[-1]
+        assert result["type"] == "result"
+        assert [f.filename for f in result["files"]] == ["tests/login.spec.ts"]
+        assert result["failed"] == []
+
+    def test_streaming_reports_progress_per_file(self, monkeypatch):
+        """The status events are what stop a slow run looking like a hung one."""
+        self._patched(monkeypatch)
+        events: list[dict] = []
+        self._stream(WriterAgent(), events)
+
+        statuses = [e["message"] for e in events if e["type"] == "status"]
+        assert any("Planning" in s for s in statuses)
+        assert any("tests/login.spec.ts" in s for s in statuses)
+        assert any(e["type"] == "chunk" for e in events)
+
+    def test_finalising_reuses_the_streamed_suite_without_regenerating(self, monkeypatch):
+        calls = self._patched(monkeypatch)
+        events: list[dict] = []
+        self._stream(WriterAgent(), events)
+
+        generated = events[-1]["files"]
+        after_stream = list(calls)
+        assert "writer_plan" in after_stream and "writer_file" in after_stream
+
+        # Exactly the envelope main.py hands to /api/generate.
+        pregenerated = json.dumps({"files": [
+            {"filename": f.filename, "description": f.description, "content": f.content}
+            for f in generated
+        ]})
+
+        result = asyncio.run(WriterAgent().run(
+            filter_result=self._fr(), framework="playwright", language="typescript",
+            test_flows="log in", base_url="https://app.example",
+            pregenerated_raw=pregenerated, pregenerated_failed=[],
+        ))
+
+        assert calls == after_stream, (
+            "finalising re-asked the model for a suite the stream had already "
+            f"written (extra calls: {calls[len(after_stream):]})"
+        )
+        assert any(f.filename.endswith("login.spec.ts") for f in result.files)
+
+    def test_files_the_stream_could_not_write_still_withhold_ci(self, monkeypatch):
+        """A partial suite must not be finalised as a whole one.
+
+        `failed_files` is what withholds the CI workflow. It lives on the run
+        that discovered it, so if the finalise step doesn't carry it across, a
+        suite missing a spec ships a pipeline that can only go red.
+        """
+        self._patched(monkeypatch)
+        result = asyncio.run(WriterAgent().run(
+            filter_result=self._fr(), framework="playwright", language="typescript",
+            test_flows="log in", base_url="https://app.example", include_ci=True,
+            ci_as_files=True,
+            pregenerated_raw=json.dumps({"files": [
+                {"filename": "tests/login.spec.ts", "description": "Login",
+                 "content": self.SPEC},
+            ]}),
+            pregenerated_failed=["tests/checkout.spec.ts"],
+        ))
+
+        assert result.failed_files == ["tests/checkout.spec.ts"]
+        assert not any(".github/workflows" in f.filename for f in result.files)
+
+
+class TestOneFilePromptSharesAStablePrefix:
+    """Every per-file call in a run must start with the same bytes.
+
+    Providers cache on a stable prefix, and the suite context — project summary,
+    routes, navigation rules, selectors, source excerpt — is several thousand
+    tokens of it, identical for every file. It used to sit *behind* the filename,
+    so the first line differed on every call and none of it could be cached.
+    """
+
+    def _fr(self):
+        from agents.filter_agent import FilterResult
+        return FilterResult(
+            "A login page.", [], [], ["/login"], "static html", [],
+            {"login.html": "<form><input id='email' data-testid='email-field'></form>"},
+            0, 1,
+        )
+
+    def _prompts(self, monkeypatch):
+        import agents.writer_agent as wa
+        seen: list[str] = []
+
+        async def fake_complete(**kwargs):
+            seen.append(kwargs["prompt"])
+            return "x"
+        monkeypatch.setattr(wa.router, "complete", fake_complete)
+
+        w = WriterAgent()
+        manifest = ["tests/login.spec.ts", "tests/pages/LoginPage.ts"]
+        ctx = w._suite_context(self._fr(), "playwright_js", "log in",
+                               "https://app.example", manifest)
+
+        async def drive():
+            for name in manifest:
+                await w._generate_one_file(
+                    {"filename": name, "description": "does a thing"},
+                    ctx, "playwright_js",
+                )
+        asyncio.run(drive())
+        return seen
+
+    def test_the_shared_context_leads_every_prompt(self, monkeypatch):
+        a, b = self._prompts(monkeypatch)
+        shared = 0
+        for x, y in zip(a, b):
+            if x != y:
+                break
+            shared += 1
+        # The differing tail is only the filename and its instructions; the
+        # cacheable head is the overwhelming majority of the prompt.
+        assert shared > 300, f"only {shared} shared leading chars"
+        assert a[:shared] == b[:shared]
+        assert shared > len(a) - shared, "the varying tail is larger than the cacheable head"
+
+    def test_the_context_carries_the_grounding(self, monkeypatch):
+        a, _ = self._prompts(monkeypatch)
+        assert "AVAILABLE SELECTORS" in a
+        assert "email-field" in a                  # the real testid, from source
+        assert "ALL FILES IN THE SUITE" in a
+        assert a.rstrip().endswith("test cases covering positive and negative paths.")

@@ -313,6 +313,11 @@ class WriterAgent:
         # delivery differs, and the README says which one happened.
         ci_as_files: bool = False,
         pregenerated_raw: Optional[str] = None,  # reuse output already produced by stream_run
+        # Files stream_run planned but could not write. Carried alongside the
+        # reused output because it is the reason CI gets withheld: without it a
+        # suite that lost files while streaming was finalised as if it were
+        # whole, and shipped a workflow that could only ever go red.
+        pregenerated_failed: Optional[list[str]] = None,
         self_heal: bool = False,        # re-prompt the LLM to fix files that don't parse
         max_heal_attempts: int = 1,
         tier: Tier = Tier.FREE,         # model quality this caller's plan entitles them to
@@ -329,17 +334,32 @@ class WriterAgent:
         self._crawl_index = crawl_index
         self._user_key = user_key
 
-        # If the SSE stream already generated the suite, reuse it instead of
-        # making a second (costly) LLM call — but only if it parsed cleanly.
-        # A large repo can truncate the streamed JSON at the output-token cap,
-        # which yields the single "JSON parsing failed" fallback; in that case
-        # we regenerate robustly (file-by-file) so no files are silently lost.
+        # If the SSE stream already generated the suite, reuse it rather than
+        # generating the whole thing a second time.
+        #
+        # This is now the normal path, not a lucky one. The stream used to ask
+        # the model for the suite as a single JSON blob purely so the browser had
+        # something to render; that blob hit the output-token cap on any suite of
+        # size, arrived truncated, and was discarded here — so the expensive work
+        # was done twice on almost every run. The stream now runs the same
+        # file-by-file generation this method would, and hands over its files
+        # already parsed, serialised by the caller. It cannot arrive truncated
+        # because no model wrote the JSON envelope; we did.
+        #
+        # The truncation check stays regardless: `pregenerated_raw` is whatever
+        # the caller passed, and a caller passing raw model output is still a
+        # thing this must survive rather than ship as a suite.
         generated_files: list[GeneratedFile] = []
         if pregenerated_raw and pregenerated_raw.strip():
             generated_files = self._parse_response(pregenerated_raw, framework_key)
             if self._looks_truncated(generated_files):
                 logger.info("Streamed output was truncated/invalid — regenerating file-by-file")
                 generated_files = []
+            else:
+                # Whatever the stream couldn't write is still missing from this
+                # suite; the run that discovered it is over, so it has to be
+                # carried in rather than re-derived.
+                self._failed_files = list(pregenerated_failed or [])
 
         if not generated_files:
             generated_files = await self._generate_tests(
@@ -434,6 +454,13 @@ class WriterAgent:
 
         # Self-heal: if any generated file fails static validation, ask the LLM
         # to fix it. (Off by default — costs extra LLM calls.)
+        # Both loops below stop the moment an attempt fails to improve anything.
+        # Without that they were guaranteed to burn every remaining attempt: a
+        # heal that can't help returns the files it was given, the next pass
+        # re-measures the identical suite, finds the identical failures, and asks
+        # the identical question. `_heal`/`_heal_selectors` return the *same list
+        # object* when they reject a repair, so identity is an exact test for
+        # "nothing changed" — no re-validation needed to notice.
         heal_attempts = 0
         if self_heal:
             for _ in range(max_heal_attempts):
@@ -441,8 +468,12 @@ class WriterAgent:
                 if not failing:
                     break
                 logger.info(f"Self-heal: fixing {len(failing)} invalid file(s)")
-                generated_files = await self._heal(generated_files, failing, framework_key, tier)
+                healed = await self._heal(generated_files, failing, framework_key, tier)
                 heal_attempts += 1
+                if healed is generated_files:
+                    logger.info("Self-heal made no progress — stopping early")
+                    break
+                generated_files = healed
 
             # Grounding heal: a file can parse cleanly and still target a
             # selector that does not exist. Feed the model the selectors that
@@ -456,12 +487,15 @@ class WriterAgent:
                 if not unverified:
                     break
                 logger.info(f"Grounding heal: repairing {len(unverified)} unverified selector(s)")
-                generated_files = await self._heal_selectors(
+                healed = await self._heal_selectors(
                     generated_files, unverified, filter_result.files,
                     dom_index, framework_key, tier,
                 )
                 heal_attempts += 1
-
+                if healed is generated_files:
+                    logger.info("Selector heal made no progress — stopping early")
+                    break
+                generated_files = healed
         # Everything the model wrote moves under e2e/, and anything it wrote
         # that scaffold owns (a config, a manifest) is dropped in favour of the
         # generated one. Relative imports between specs and page objects survive
@@ -756,52 +790,84 @@ class WriterAgent:
         framework_key: str,
         tier: Tier = Tier.FREE,
     ) -> list[GeneratedFile]:
-        """Ask the LLM to fix files that failed static validation."""
-        errors = "\n".join(f"- {v.filename}: {v.error}" for v in failing)
-        current = json.dumps(
-            {"files": [
-                {"filename": f.filename, "description": f.description, "content": f.content}
-                for f in files
-            ]},
-            indent=2,
-        )
-        prompt = f"""Some generated {framework_key} test files have syntax/validity errors:
-{errors}
+        """Ask the LLM to fix files that failed static validation — one per call.
 
-Here is the current file set as JSON:
-{current}
+        One call per broken file, carrying only that file. It used to send the
+        entire suite and ask for the entire suite back, which was both the most
+        expensive thing in this module and, on any suite of real size, incapable
+        of working: the reply is capped at the provider's output limit, so a full
+        suite came back truncated, failed to parse, and was discarded — and
+        because nothing detected that no progress had been made, the caller's
+        loop spent every remaining attempt asking the identical question and
+        paying for the identical unusable answer. Four rounds of that on the
+        publish path, twice over (syntax and selectors), was the single largest
+        line in the token bill and it never fixed anything.
 
-Return the COMPLETE corrected file set in the SAME JSON structure
-({{"files":[{{"filename","description","content"}}]}}). Fix the broken files so
-they are valid, runnable code. Keep the valid files unchanged."""
-        try:
-            raw = await router.complete(
-                prompt=prompt,
-                system_prompt=self._system_prompt(framework_key),
-                temperature=0.1,
-                context_hint="writer_agent_heal",
-                json_mode=True,
-                tier=tier,
-                user_key=self._user_key,
-            )
-            healed = self._parse_response(raw, framework_key)
-            # A heal that cannot be parsed must not be applied. `_parse_response`
-            # answers invalid JSON with a single synthetic "raw output" file,
-            # which is truthy — so `healed or files` happily REPLACED a working
-            # suite with the model's unparsed reply, and the run then reported
-            # success with one unparseable file where the tests used to be.
-            #
-            # Healing is an improvement pass. Its contract is "better, or
-            # unchanged" — never worse.
-            if self._looks_truncated(healed):
-                logger.warning(
-                    "Self-heal returned unparseable output — keeping the original files"
+        It could also silently LOSE files: a reply listing fewer files than it
+        was given replaced the whole set, so a model that returned only the file
+        it had repaired deleted every other file in the suite. Repairs are now
+        merged per filename, so a file nobody asked about cannot go missing.
+
+        The contract is still "better, or unchanged" — but it is now measured
+        rather than assumed: the repaired set is re-validated, and kept only if
+        it has strictly fewer invalid files than what we started with.
+        """
+        by_name = {f.filename: f for f in files}
+        repaired: dict[str, str] = {}
+
+        for v in failing:
+            target = by_name.get(v.filename)
+            if target is None:
+                continue
+
+            prompt = f"""This {framework_key} test file fails a static validity check:
+
+{v.error}
+
+Current contents of {target.filename}:
+{target.content}
+
+Return the COMPLETE corrected contents of {target.filename} — raw file contents
+only, no JSON, no markdown fences, no commentary. Fix the error above and change
+nothing else; keep every import, test name and selector exactly as it is."""
+            try:
+                raw = await router.complete(
+                    prompt=prompt,
+                    system_prompt=self._system_prompt(framework_key),
+                    temperature=0.1,
+                    context_hint="writer_agent_heal",
+                    json_mode=False,
+                    tier=tier,
+                    user_key=self._user_key,
                 )
-                return files
-            return healed or files
-        except Exception as e:
-            logger.error(f"Self-heal failed: {e}")
+            except Exception as e:
+                # One file failing to heal is not a reason to abandon the others.
+                logger.error(f"Self-heal failed for {target.filename}: {e}")
+                continue
+
+            fixed = self._strip_fence(raw)
+            if fixed and fixed != target.content:
+                repaired[target.filename] = fixed
+
+        if not repaired:
             return files
+
+        candidate = [
+            GeneratedFile(f.filename, repaired.get(f.filename, f.content), f.description)
+            for f in files
+        ]
+        before = sum(1 for v in validate_files(files, framework_key) if not v.ok)
+        after = sum(1 for v in validate_files(candidate, framework_key) if not v.ok)
+        if after >= before:
+            # No improvement to show for the tokens. Keeping the candidate would
+            # also keep the caller's loop going round on the same failures.
+            logger.warning(
+                f"Self-heal did not reduce the invalid file count ({before} → {after})"
+                " — keeping the original files"
+            )
+            return files
+        logger.info(f"Self-heal repaired {before - after} file(s)")
+        return candidate
 
     async def _heal_selectors(
         self,
@@ -818,59 +884,90 @@ they are valid, runnable code. Keep the valid files unchanged."""
         missed and hands over the real anchors that DO exist (from source and,
         when we have it, the live DOM), so the fix is a substitution the model
         can make correctly rather than another guess.
+
+        One call per affected file, for the reasons in `_heal` — a whole-suite
+        round trip cannot fit in a provider's output cap, and every selector miss
+        belongs to exactly one file anyway, so there was never anything to gain
+        by sending the other files along with it.
         """
         src_index = grounding_svc.build_source_index(source_files)
         real = self._available_anchor_hint(src_index, dom_index)
-        misses = "\n".join(
-            f"- {g.file}: `{g.selector}` — not found"
-            + (f" (missing {', '.join(f'{a.kind}={a.value}' for a in g.missing)})" if g.missing else "")
-            for g in unverified[:40]
-        )
-        current = json.dumps(
-            {"files": [
-                {"filename": f.filename, "description": f.description, "content": f.content}
-                for f in files
-            ]},
-            indent=2,
-        )
-        prompt = f"""Some selectors in this {framework_key} suite target elements that DO NOT
+
+        by_file: dict[str, list] = {}
+        for g in unverified:
+            by_file.setdefault(g.file, []).append(g)
+
+        by_name = {f.filename: f for f in files}
+        repaired: dict[str, str] = {}
+
+        for filename, misses in by_file.items():
+            target = by_name.get(filename)
+            if target is None:
+                continue
+            listed = "\n".join(
+                f"- `{g.selector}` — not found"
+                + (f" (missing {', '.join(f'{a.kind}={a.value}' for a in g.missing)})"
+                   if g.missing else "")
+                for g in misses[:40]
+            )
+            prompt = f"""Some selectors in this {framework_key} test file target elements that DO NOT
 exist in the application. Each must be replaced with one that does.
 
-Selectors that were not found:
-{misses}
+Selectors in {filename} that were not found:
+{listed}
 
 These are the selectors that ACTUALLY EXIST in the app — use only these:
 {real}
 
-Here is the current file set as JSON:
-{current}
+Current contents of {filename}:
+{target.content}
 
-Return the COMPLETE file set in the SAME JSON structure
-({{"files":[{{"filename","description","content"}}]}}). Replace only the
-not-found selectors with real ones from the list above; prefer data-testid and
-role locators. Leave everything else unchanged."""
-        try:
-            raw = await router.complete(
-                prompt=prompt,
-                system_prompt=self._system_prompt(framework_key),
-                temperature=0.1,
-                context_hint="writer_agent_selector_heal",
-                json_mode=True,
-                tier=tier,
-                user_key=self._user_key,
-            )
-            healed = self._parse_response(raw, framework_key)
-            # Same contract as _heal above: a grounding repair that comes back
-            # unparseable leaves the suite exactly as it was.
-            if self._looks_truncated(healed):
-                logger.warning(
-                    "Selector self-heal returned unparseable output — keeping the original files"
+Return the COMPLETE contents of {filename} — raw file contents only, no JSON, no
+markdown fences, no commentary. Replace only the not-found selectors with real
+ones from the list above; prefer data-testid and role locators. Leave every other
+line, including the test names and assertions, exactly as it is."""
+            try:
+                raw = await router.complete(
+                    prompt=prompt,
+                    system_prompt=self._system_prompt(framework_key),
+                    temperature=0.1,
+                    context_hint="writer_agent_selector_heal",
+                    json_mode=False,
+                    tier=tier,
+                    user_key=self._user_key,
                 )
-                return files
-            return healed or files
-        except Exception as e:
-            logger.error(f"Selector self-heal failed: {e}")
+            except Exception as e:
+                logger.error(f"Selector self-heal failed for {filename}: {e}")
+                continue
+
+            fixed = self._strip_fence(raw)
+            if fixed and fixed != target.content:
+                repaired[filename] = fixed
+
+        if not repaired:
             return files
+
+        candidate = [
+            GeneratedFile(f.filename, repaired.get(f.filename, f.content), f.description)
+            for f in files
+        ]
+        # Measured, not assumed — same contract as `_heal`. A repair that leaves
+        # as many selectors unverified as it found has bought nothing, and
+        # accepting it would send the caller's loop round again on the same set.
+        # Validity is checked too: a suite whose selectors now resolve but whose
+        # code no longer parses is not an improvement.
+        before = len(grounding_svc.ground_suite(files, source_files, dom_index=dom_index).unverified())
+        after = len(grounding_svc.ground_suite(candidate, source_files, dom_index=dom_index).unverified())
+        broke = (sum(1 for v in validate_files(candidate, framework_key) if not v.ok)
+                 > sum(1 for v in validate_files(files, framework_key) if not v.ok))
+        if after >= before or broke:
+            logger.warning(
+                f"Selector self-heal did not improve the suite "
+                f"(unverified {before} → {after}, broke_syntax={broke}) — keeping the originals"
+            )
+            return files
+        logger.info(f"Selector self-heal grounded {before - after} more selector(s)")
+        return candidate
 
     def _available_anchor_hint(self, src_index, dom_index, cap: int = 60) -> str:
         """A compact, kind-grouped list of anchors the app really has."""
@@ -897,21 +994,34 @@ role locators. Leave everything else unchanged."""
         base_url: str = "http://localhost:3000",
         tier: Tier = Tier.FREE,
         crawl_index=None,               # pre-computed live-crawl GroundIndex → crawl-only mode
-    ) -> AsyncGenerator[str, None]:
-        """Streaming version — yields content chunks for real-time display."""
+        user_key: str = "",             # the user's own Gemini key, if they set one
+    ) -> AsyncGenerator[dict, None]:
+        """Run the real generation, reporting progress as it goes.
+
+        This IS the generation now, not a preview of one. It used to ask the
+        model for the whole suite as a single streamed JSON blob, purely so the
+        browser had something to display; `/api/generate` then re-generated the
+        same suite file-by-file because that blob had usually been truncated at
+        the output-token cap and was unusable. Every run therefore paid for a
+        large call whose output was thrown away.
+
+        Now both paths share `_generate_tests_events` and the caller keeps the
+        files this produced, so the suite is generated exactly once.
+
+        Yields the same event dicts `_generate_tests_events` does — the last one
+        is the "result" carrying the files, which the caller must hold on to.
+        """
         framework_key = self._normalize_framework(framework, language)
         self._crawl_index = crawl_index
-        prompt = self._build_prompt(filter_result, framework_key, test_flows, base_url, language)
+        self._user_key = user_key
+        # `_generate_tests_events` appends to this; `run()` normally initialises
+        # it. Reset here so the stream path starts from a clean slate too.
+        self._failed_files = []
 
-        async for chunk in router.stream_complete(
-            prompt=prompt,
-            system_prompt=self._system_prompt(framework_key),
-            temperature=0.15,
-            context_hint="writer_agent",
-            json_mode=True,
-            tier=tier,
+        async for event in self._generate_tests_events(
+            filter_result, framework_key, test_flows, base_url, language, tier
         ):
-            yield chunk
+            yield event
 
     # ─────────────────────────────────────────
     # Prompt construction
@@ -1098,12 +1208,47 @@ Generate comprehensive tests now:
         language: str,
         tier: Tier = Tier.FREE,
     ) -> list[GeneratedFile]:
+        """Non-streaming view of `_generate_tests_events` — see it for the design.
+
+        Both views run the SAME generation. That is deliberate: the streaming and
+        non-streaming paths used to be two different generations of the same
+        suite (a whole-suite JSON blob for the stream, file-by-file for the
+        finalise), so the expensive work was done twice and the stream's copy was
+        usually thrown away for having truncated.
+        """
+        files: list[GeneratedFile] = []
+        async for event in self._generate_tests_events(
+            filter_result, framework_key, test_flows, base_url, language, tier
+        ):
+            if event["type"] == "result":
+                files = event["files"]
+        return files
+
+    async def _generate_tests_events(
+        self,
+        filter_result: FilterResult,
+        framework_key: str,
+        test_flows: str,
+        base_url: str,
+        language: str,
+        tier: Tier = Tier.FREE,
+    ) -> AsyncGenerator[dict, None]:
         """
         Generate the suite file-by-file: first plan the file list (a small,
         non-truncatable response), then generate each file's content in its own
         call. This keeps every response well under the output-token cap, so a
         large suite can't be silently truncated the way the old single-JSON-blob
         approach was. Falls back to single-shot if planning yields nothing.
+
+        Written as an event stream so the SSE endpoint can show real progress
+        while the one real generation runs, instead of running a second one of
+        its own. Events are:
+
+          {"type": "status", "message": str}   — a step boundary
+          {"type": "chunk",  "content": str}   — text to display
+          {"type": "result", "files": [...], "failed": [...]}   — once, last
+
+        A caller that only wants the suite ignores everything but "result".
         """
         # The plan call is the single point of failure for the whole run: without
         # it there is no file list, and the only fallback is the single-shot path
@@ -1111,25 +1256,39 @@ Generate comprehensive tests now:
         # got eight — so a momentary rate limit at exactly this step threw away
         # the generation, having spent the crawl already. Same wait-and-retry the
         # files get.
+        yield {"type": "status", "message": "Planning the suite..."}
         plan = await self._retry_rate_limited(
             "file plan",
             lambda: self._plan_files(filter_result, framework_key, test_flows, base_url, tier),
         )
         if not plan:
             logger.info("File planning produced nothing — falling back to single-shot generation")
-            return await self._retry_rate_limited(
+            yield {"type": "status", "message": "Writing the suite in one pass..."}
+            single = await self._retry_rate_limited(
                 "single-shot generation",
                 lambda: self._generate_single_shot(
                     filter_result, framework_key, test_flows, base_url, language, tier),
             )
+            yield {"type": "result", "files": single, "failed": []}
+            return
 
         manifest = [p["filename"] for p in plan]
+        # Built ONCE for the whole run and reused byte-for-byte by every file
+        # call below, so a provider can serve the bulk of each prompt from its
+        # prompt cache instead of re-reading it. See `_suite_context`.
+        suite_context = self._suite_context(
+            filter_result, framework_key, test_flows, base_url, manifest
+        )
+        yield {"type": "status", "message": f"{len(plan)} files planned"}
+
         files: list[GeneratedFile] = []
         failed: list[str] = []
         last_error: Optional[Exception] = None
 
-        for spec in plan:
+        for n, spec in enumerate(plan, 1):
             content = None
+            yield {"type": "status",
+                   "message": f"Writing {spec['filename']} ({n}/{len(plan)})"}
             # Retry only the rate-limit case (every provider cooling at once):
             # wait out the cooldown and try again so a small per-minute budget
             # can still produce the whole suite. Any other error fails the file
@@ -1138,7 +1297,7 @@ Generate comprehensive tests now:
             for attempt in range(RATE_RETRY_MAX_ATTEMPTS + 1):
                 try:
                     content = await self._generate_one_file(
-                        spec, manifest, filter_result, framework_key, test_flows, base_url, language, tier
+                        spec, suite_context, framework_key, tier
                     )
                     break
                 except AllProvidersExhausted as e:
@@ -1149,6 +1308,14 @@ Generate comprehensive tests now:
                             f"then retrying {spec['filename']} "
                             f"(attempt {attempt + 1}/{RATE_RETRY_MAX_ATTEMPTS})"
                         )
+                        # Said out loud rather than only logged: this is the wait
+                        # that makes a generation look hung from the browser, and
+                        # a user who can see it is a rate limit will wait it out
+                        # instead of reloading into a second run.
+                        yield {"type": "status", "message": (
+                            f"Every provider is rate-limited — waiting "
+                            f"{RATE_RETRY_WAIT_SECONDS}s, then retrying "
+                            f"{spec['filename']}")}
                         await asyncio.sleep(RATE_RETRY_WAIT_SECONDS)
                         continue
                     logger.warning(
@@ -1173,21 +1340,27 @@ Generate comprehensive tests now:
                     content=content,
                     description=spec.get("description", ""),
                 ))
+                yield {"type": "chunk",
+                       "content": f"\n// ── {spec['filename']} ──\n{content}\n"}
             else:
                 logger.warning(f"Planned file produced no content: {spec['filename']}")
                 failed.append(spec["filename"])
+                yield {"type": "chunk",
+                       "content": f"\n// ── {spec['filename']} — could not be generated ──\n"}
 
         # Nothing usable — fall back to single-shot, which raises if it also fails
         # (the caller degrades to pushing the project without tests).
         if not files:
             if last_error is not None:
                 raise last_error
-            return await self._generate_single_shot(
+            single = await self._generate_single_shot(
                 filter_result, framework_key, test_flows, base_url, language, tier
             )
+            yield {"type": "result", "files": single, "failed": []}
+            return
 
         self._failed_files = failed
-        return files
+        yield {"type": "result", "files": files, "failed": failed}
 
     async def _plan_files(
         self, filter_result: FilterResult, framework_key: str, test_flows: str, base_url: str,
@@ -1258,19 +1431,40 @@ Return ONLY JSON (no markdown, no prose):
                 await asyncio.sleep(RATE_RETRY_WAIT_SECONDS)
         raise AssertionError("unreachable")     # pragma: no cover
 
-    async def _generate_one_file(
-        self, spec: dict, manifest: list[str], filter_result: FilterResult,
-        framework_key: str, test_flows: str, base_url: str, language: str,
-        tier: Tier = Tier.FREE,
+    def _suite_context(
+        self,
+        filter_result: FilterResult,
+        framework_key: str,
+        test_flows: str,
+        base_url: str,
+        manifest: list[str],
     ) -> str:
-        """Generate the raw contents of a single planned file (small output → no truncation)."""
+        """The part of the per-file prompt that is the SAME for every file in a run.
+
+        Built once and reused verbatim, which is the whole point: a suite is
+        generated one file per call, and every one of those calls needs the same
+        project summary, routes, navigation rules, selector list and source
+        excerpt. Sending that block afresh each time made the fixed context —
+        several thousand tokens of it — by far the largest line in the bill, and
+        it is the same bytes every time.
+
+        Providers cache on a stable *prefix*, so this is deliberately returned as
+        one block for the caller to put FIRST, ahead of the only thing that
+        varies (which file to write). With the filename leading, as it used to,
+        the very first token differed on every call and nothing behind it could
+        be cached however identical it was.
+        """
         if self._crawl_index is not None:
             # Crawl-only: real anchors from the rendered site, no source blob.
             selectors_heading = (
                 "## AVAILABLE SELECTORS (rendered from the LIVE site — real; "
                 "prefer data-testid and role/text locators)"
             )
-            available = self._available_anchor_hint(None, self._crawl_index)
+            # Capped like the source path below, and for the same reason: a rich
+            # crawl indexes hundreds of anchors, and shipping all of them on
+            # every file call spends far more tokens than the extra choice is
+            # worth. A representative sample per kind is enough to ground on.
+            available = self._available_anchor_hint(None, self._crawl_index, cap=15)
             source_block = ""
         else:
             sel = self._extract_available_selectors(filter_result.files)
@@ -1294,13 +1488,7 @@ Return ONLY JSON (no markdown, no prose):
             )
             source_block = f"\n## SOURCE CODE\n{self._source_context(filter_result.files)}\n"
 
-        prompt = f"""Generate ONE file of an E2E test suite ({framework_key}) for this {filter_result.framework} app.
-
-## FILE TO WRITE
-{spec['filename']} — {spec.get('description', '')}
-
-## ALL FILES IN THE SUITE (so imports/paths line up)
-{json.dumps(manifest, indent=2)}
+        return f"""You are writing an E2E test suite ({framework_key}) for this {filter_result.framework} app, ONE FILE AT A TIME.
 
 ## PROJECT
 {filter_result.project_summary}
@@ -1319,6 +1507,23 @@ Return ONLY JSON (no markdown, no prose):
 {selectors_heading}
 {available}
 {source_block}
+## ALL FILES IN THE SUITE (so imports/paths line up)
+{json.dumps(manifest, indent=2)}"""
+
+    async def _generate_one_file(
+        self, spec: dict, suite_context: str, framework_key: str,
+        tier: Tier = Tier.FREE,
+    ) -> str:
+        """Generate the raw contents of a single planned file (small output → no truncation).
+
+        `suite_context` leads and the file to write trails it, so every call in a
+        run shares a long identical prefix — see `_suite_context`.
+        """
+        prompt = f"""{suite_context}
+
+## THE FILE TO WRITE NOW
+{spec['filename']} — {spec.get('description', '')}
+
 Output ONLY the raw contents of {spec['filename']} — no JSON, no markdown fences, no
 commentary. Use only selectors that exist above; if you must guess, add a comment
 `// ⚠️ WARNING: Selector may need verification`. For spec files, include at least 3
