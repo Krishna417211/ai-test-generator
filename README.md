@@ -17,7 +17,7 @@ Free tier included (a monthly generation allowance, no card required); Pro remov
 - **Generation success rate.** One 0–100 score with a full breakdown of the checks behind it. Explicitly not a pass rate — see [Limitations](docs/LIMITATIONS.md).
 - **Credentials never leave your machine.** `.env`, SSH keys, `.pem`, cloud service-account JSONs and hard-coded API tokens are detected and withheld from both the model prompt and the push — and every withheld file is named, never silently dropped.
 - **Verified pushes.** After publishing, the commit tree is read back from GitHub and every file confirmed present with the exact content hash uploaded. Missing files are re-pushed; anything still missing fails loudly.
-- **Smart LLM rotation** — rotates across Gemini (`gemini-3.6-flash`) → Groq (`openai/gpt-oss-120b`) → Claude (`claude-haiku-4-5`), with per-key cooldowns on 429. The provenance report always names the model that actually answered.
+- **Smart LLM rotation** — free tier rotates across Groq (`openai/gpt-oss-120b`) → Gemini (`gemini-3.6-flash`) → Claude (`claude-haiku-4-5`); Pro leads with Claude. Per-key cooldowns on 429, and the provenance report always names the model that actually answered.
 - **Multi-framework** — Playwright (JS/TS/Python), Cypress (JS/TS), Selenium (Python/Java)
 - **Security scanning** — passive configuration audit of a deployed URL, plus optional active scanning via OWASP ZAP.
 - **Real-time streaming** — watch tests being written token by token.
@@ -180,22 +180,22 @@ testra/
 ### LLM Rotation Logic
 
 ```
-Request comes in
+Request comes in  (free tier; Pro leads with Claude)
      │
      ▼
-Try Gemini flash (key 1)
+Try Groq gpt-oss-120b (key 1)     ← fastest responder, ~2s
   ├── ✅ Success → return result
-  └── ❌ Rate limit → mark key exhausted (60s cooldown)
+  └── ❌ Rate limit → mark key exhausted (30s cooldown)
          │
          ▼
-     Try Gemini key 2 (if configured)
+     Try Groq key 2 (if configured)
        ├── ✅ Success → return result
-       └── ❌ All Gemini keys exhausted
+       └── ❌ All Groq keys exhausted
               │
               ▼
-          Try Groq gpt-oss-120b (key 1)
+          Try Gemini flash (key 1)  ← 1M context; takes what Groq can't hold
             ├── ✅ Success → return result
-            └── ❌ Rate limit → next key...
+            └── ❌ Rate limit → next key... (60s cooldown)
                    │
                    ▼
                Try Claude Haiku

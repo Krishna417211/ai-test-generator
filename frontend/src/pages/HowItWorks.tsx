@@ -202,7 +202,7 @@ export default function HowItWorks() {
                 outage and your credit is refunded, never charged.
               </p>
               <div className="mt-3 flex flex-wrap gap-1.5">
-                {["services/llm_router.py", "Gemini → Groq → Claude", "per-key cooldown on 429", "GET /api/status"].map((t) => (
+                {["services/llm_router.py", "Groq → Gemini → Claude", "per-key cooldown on 429", "GET /api/status"].map((t) => (
                   <code key={t} className="rounded-md border border-grey-700 bg-white/[0.03] px-2 py-1 font-mono text-[11px] text-grey-400">
                     {t}
                   </code>

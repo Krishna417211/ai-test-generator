@@ -2,13 +2,23 @@
 llm_router.py — Multi-provider LLM rotation engine for Testra
 
 Strategy:
-  1. Try providers in priority order (Gemini → Groq → Claude)
+  1. Try providers in the priority order for the caller's TIER — see
+     PROVIDER_PRIORITY. Free leads with Groq (fastest); Pro leads with Claude,
+     because that is what the upgrade is buying.
   2. Within each provider, rotate through all API keys round-robin
-  3. On rate limit (429) or error: exponential backoff then next key/provider
+  3. On rate limit (429) or error: cool the key down, then next key/provider
   4. Track exhausted keys per reset window, auto-restore after cooldown
   5. Stream real-time provider status back to the frontend via SSE
 
-All providers are FREE tier — no credit card required.
+Free-tier keys carry the free tier; Pro routes to a paid Anthropic model, so a
+deployment serving Pro needs credit on that account. A Pro user whose Claude
+keys are dry still gets a suite from the free-tier providers rather than an
+error, and the provenance report names whichever model actually answered.
+
+(This header previously described a fixed Gemini → Groq → Claude order and
+claimed every provider was free tier. Both predated the tier system and were
+recorded as docstring drift in the technical reference; they are corrected here
+rather than left to drift further.)
 """
 
 import os

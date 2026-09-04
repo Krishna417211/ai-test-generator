@@ -345,7 +345,7 @@
                     ▼                                        ▼
         <span class="cm">┌───────────────────────┐</span>                <span class="cm">┌────────────────────────┐</span>
         <span class="cm">│</span> <span class="kw">LLMRouter</span>             <span class="cm">│</span>                <span class="cm">│</span> <span class="kw">JobStore</span> (SQLite)     <span class="cm">│</span>
-        <span class="cm">│</span> Gemini → Groq → Claude<span class="cm">│</span>                <span class="cm">│</span> durable · TTL-pruned   <span class="cm">│</span>
+        <span class="cm">│</span> Groq → Gemini → Claude<span class="cm">│</span>                <span class="cm">│</span> durable · TTL-pruned   <span class="cm">│</span>
         <span class="cm">│</span> rotation · 429 cooldown<span class="cm">│</span>               <span class="cm">│</span> survives restarts      <span class="cm">│</span>
         <span class="cm">└───────────────────────┘</span>                <span class="cm">└────────────────────────┘</span></pre>
       <h3>The working flows</h3>
@@ -740,12 +740,12 @@ _ACTIVE: Optional[ImportanceModel] = ImportanceModel.load()
         <thead><tr><th>Provider</th><th>Free tier model</th><th>Pro tier model</th><th>Cooldown</th></tr></thead>
         <tbody>
           <tr><td>Gemini</td><td>gemini-2.0-flash</td><td>gemini-2.0-flash</td><td class="num">60 s</td></tr>
-          <tr><td>Groq</td><td>llama-3.3-70b-versatile</td><td>llama-3.3-70b-versatile</td><td class="num">30 s</td></tr>
+          <tr><td>Groq</td><td>openai/gpt-oss-120b</td><td>openai/gpt-oss-120b</td><td class="num">30 s</td></tr>
           <tr><td>Claude</td><td>claude-haiku-4-5</td><td class="neg">claude-opus-4-8</td><td class="num">120 s</td></tr>
         </tbody>
       </table></div>
       <div class="grid g2">
-        <div class="card"><span class="tag">Free tier order</span><h4>Capacity first</h4><p>Gemini → Groq → Claude. Gemini's very large context window swallows big repositories; Groq is the fastest responder.</p></div>
+        <div class="card"><span class="tag">Free tier order</span><h4>Latency first</h4><p>Groq → Gemini → Claude. Groq answers in roughly two seconds against Gemini's forty; Gemini sits directly behind it and takes any request Groq's 131k context cannot hold.</p></div>
         <div class="card"><span class="tag">Pro tier order</span><h4>Quality first</h4><p>Claude → Gemini → Groq. Charging for Opus and then serving the request from Flash because Flash happened to be listed first would make the upgrade a lie.</p></div>
       </div>
       <p><code>upgrade_would_change_model()</code> is <strong>derived from the model table rather than hardcoded</strong>. If the Pro tier ever stops buying a materially stronger model, the upsell in the interface turns itself off. A previous version advertised a premium model while quietly serving the same free-tier one; deriving the claim from the fact makes that class of bug structurally impossible. Provenance is reported alongside every generation, so a Pro user who fell back to a free-tier provider is told so rather than being quietly downgraded.</p>
