@@ -42,6 +42,7 @@ from services import live_crawler as crawler_svc
 from services import grounding as grounding_svc
 from services import safe_paths, success_rate
 from models.schemas import (
+    combo_error,
     GenerateRequest, GenerateResponse, GeneratedFile,
     ProjectAnalysis, FilePreview, StatusResponse, ProviderStatus,
     PublishResponse, ScanRequest, ScanResponse,
@@ -1627,6 +1628,20 @@ async def put_user_settings(payload: UserSettings, ctx: dict = Depends(require_u
                 raise HTTPException(400, f"That key didn't work: {why}")
             store.set_gemini_key(ctx["user_id"], auth_svc.encrypt_secret(key))
             logger.info(f"Stored a Gemini key for {ctx['user_id']}")
+
+    # Validate the PAIR, against what the save would actually leave behind — this
+    # is a patch, so a request carrying only `language` still has to be checked
+    # against the framework already stored. Rejecting here rather than at the
+    # schema is what makes that possible: the schema sees one request, this sees
+    # the resulting settings.
+    if "framework" in patch or "language" in patch:
+        current = store.get_settings(ctx["user_id"])
+        why = combo_error(
+            patch.get("framework", current.get("framework", "")),
+            patch.get("language", current.get("language", "")),
+        )
+        if why:
+            raise HTTPException(400, why)
 
     if patch:
         store.save_settings(ctx["user_id"], **patch)
