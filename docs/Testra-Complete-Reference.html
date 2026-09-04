@@ -687,7 +687,7 @@ request-id middleware · CORS · rate limiting · JSON logging
   <table>
     <tr><th>Provider</th><th>FREE tier model</th><th>PRO tier model</th><th class="nowrap">Max output</th><th class="nowrap">Cooldown</th></tr>
     <tr><td>Gemini</td><td><code>gemini-2.0-flash</code></td><td><code>gemini-2.0-flash</code></td><td>8192</td><td>60s</td></tr>
-    <tr><td>Groq</td><td><code>llama-3.3-70b-versatile</code></td><td><code>llama-3.3-70b-versatile</code></td><td>4096</td><td>30s</td></tr>
+    <tr><td>Groq</td><td><code>openai/gpt-oss-120b</code></td><td><code>openai/gpt-oss-120b</code></td><td>4096</td><td>30s</td></tr>
     <tr><td>Claude</td><td><code>claude-haiku-4-5</code></td><td><strong><code>claude-opus-4-8</code></strong></td><td>4096 / 16000</td><td>120s</td></tr>
   </table>
 
@@ -712,7 +712,7 @@ request-id middleware · CORS · rate limiting · JSON logging
   <h2>Priority order, per tier</h2>
   <table>
     <tr><th style="width:22mm">Tier</th><th style="width:56mm">Order</th><th>Rationale</th></tr>
-    <tr><td>FREE</td><td>Gemini → Groq → Claude</td><td>Capacity-first — Gemini's 1M context swallows big repos, Groq is fastest</td></tr>
+    <tr><td>FREE</td><td>Groq → Gemini → Claude</td><td>Latency-first — Groq answers in ~2s against Gemini's ~42s; Gemini sits behind it and takes what Groq's 131k context can't hold</td></tr>
     <tr><td>PRO</td><td>Claude → Gemini → Groq</td><td>Quality-first — <em>"paying for Opus and then serving the request from Flash because Flash was listed first would make the upgrade a lie"</em></td></tr>
   </table>
 
@@ -760,9 +760,10 @@ request-id middleware · CORS · rate limiting · JSON logging
   context hint, latency, model, and token usage per call.</p>
 
   <div class="warn">
-    <p><strong>Docstring drift.</strong> The module header still reads <em>"Try providers in
-    priority order (Gemini → Groq → Claude)"</em> and <em>"All providers are FREE tier — no credit
-    card required."</em> Both predate the tier system and are now wrong for Pro. Recorded in §23.</p>
+    <p><strong>Docstring drift — resolved.</strong> The module header used to read <em>"Try
+    providers in priority order (Gemini → Groq → Claude)"</em> and <em>"All providers are FREE tier
+    — no credit card required."</em> Both predated the tier system and were wrong for Pro. The
+    header now defers to <code>PROVIDER_PRIORITY</code> and states the Pro tier's paid dependency.</p>
   </div>
 </section>
 
@@ -1653,7 +1654,7 @@ request-id middleware · CORS · rate limiting · JSON logging
   <table>
     <tr><th style="width:56mm">Provider</th><th style="width:30mm">Context</th><th>Fits 600k?</th></tr>
     <tr><td>Gemini 2.0 Flash</td><td>~1M</td><td>Yes</td></tr>
-    <tr><td>Groq llama-3.3-70b</td><td>128k</td><td><strong>No</strong></td></tr>
+    <tr><td>Groq gpt-oss-120b</td><td>131k</td><td><strong>No</strong></td></tr>
     <tr><td>Claude Haiku 4.5 / Opus 4.8</td><td>200k</td><td><strong>No</strong></td></tr>
   </table>
   <p>Each <code>ModelSpec</code> caps output via <code>max_output_tokens</code>. <strong>There is no
@@ -1717,10 +1718,11 @@ request-id middleware · CORS · rate limiting · JSON logging
       all file contents", but <code>any(hp in path for hp in ["pages/", "router"])</code>
       (<code>filter_agent.py:263</code>) matches <em>every</em> file under <code>pages/</code>, each
       contributing an 800-char preview. Bounded per file, unbounded in file count.</li>
-    <li><strong>Docstring/behaviour drift — router.</strong> The <code>llm_router.py</code> module
-      header still describes a fixed Gemini → Groq → Claude order and claims <em>"All providers are
-      FREE tier — no credit card required."</em> Both predate the tier system (§8) and are wrong for
-      Pro, which leads with Opus.</li>
+    <li><strong>Docstring/behaviour drift — router. RESOLVED.</strong> The
+      <code>llm_router.py</code> header described a fixed Gemini → Groq → Claude order and claimed
+      <em>"All providers are FREE tier — no credit card required."</em> Both predated the tier
+      system (§8) and were wrong for Pro. The header now defers to <code>PROVIDER_PRIORITY</code>
+      and records that Pro depends on a funded Anthropic account.</li>
     <li><strong>Bundle size.</strong> The <code>Hero3D</code> chunk is 828.27 kB (223.70 kB gzipped)
       and the main chunk has grown to 666.87 kB (198.30 kB); both trip Vite's 500 kB warning.</li>
   </ul>

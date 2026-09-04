@@ -883,7 +883,7 @@ _ACTIVE = ImportanceModel.load()
           <p class="plain">Like having three friends who can help with homework. Ask the first. If they're busy, ask the second. If everyone's busy, wait a minute and try the first again — and always <b>say honestly which friend answered</b>.</p>
           <p>948 lines handling provider priority, round-robin key rotation, per-key cooldown on a 429, forced JSON output per provider, and <code>ContextVar</code>-scoped status so concurrent streams never cross-talk.</p>
           <div class="cols c2">
-            <div class="card"><span class="tag">Free tier</span><h3>Capacity first</h3><p>Gemini → Groq → Claude. Gemini's huge context swallows big repos; Groq is fastest.</p></div>
+            <div class="card"><span class="tag">Free tier</span><h3>Latency first</h3><p>Groq → Gemini → Claude. Groq answers in ~2s vs Gemini's ~42s; Gemini takes what Groq's context can't hold.</p></div>
             <div class="card"><span class="tag">Pro tier</span><h3>Quality first</h3><p>Claude → Gemini → Groq. Paying for Opus and then serving from Flash because Flash was listed first would make the upgrade a lie.</p></div>
           </div>
         </div>
@@ -893,7 +893,7 @@ _ACTIVE = ImportanceModel.load()
             <thead><tr><th>Provider</th><th>Free</th><th>Pro</th><th>Cooldown</th></tr></thead>
             <tbody>
               <tr><td>Gemini</td><td>2.0-flash</td><td>2.0-flash</td><td class="num">60s</td></tr>
-              <tr><td>Groq</td><td>llama-3.3-70b</td><td>llama-3.3-70b</td><td class="num">30s</td></tr>
+              <tr><td>Groq</td><td>gpt-oss-120b</td><td>gpt-oss-120b</td><td class="num">30s</td></tr>
               <tr><td>Claude</td><td>haiku-4-5</td><td class="neg">opus-4-8</td><td class="num">120s</td></tr>
             </tbody>
           </table></div>
