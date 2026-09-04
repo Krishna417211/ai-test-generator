@@ -17,7 +17,7 @@ Free tier included (a monthly generation allowance, no card required); Pro remov
 - **Generation success rate.** One 0–100 score with a full breakdown of the checks behind it. Explicitly not a pass rate — see [Limitations](docs/LIMITATIONS.md).
 - **Credentials never leave your machine.** `.env`, SSH keys, `.pem`, cloud service-account JSONs and hard-coded API tokens are detected and withheld from both the model prompt and the push — and every withheld file is named, never silently dropped.
 - **Verified pushes.** After publishing, the commit tree is read back from GitHub and every file confirmed present with the exact content hash uploaded. Missing files are re-pushed; anything still missing fails loudly.
-- **Smart LLM rotation** — rotates across Gemini (`gemini-3.6-flash`) → Groq (`llama-3.3-70b-versatile`) → Claude (`claude-haiku-4-5`), with per-key cooldowns on 429. The provenance report always names the model that actually answered.
+- **Smart LLM rotation** — rotates across Gemini (`gemini-3.6-flash`) → Groq (`openai/gpt-oss-120b`) → Claude (`claude-haiku-4-5`), with per-key cooldowns on 429. The provenance report always names the model that actually answered.
 - **Multi-framework** — Playwright (JS/TS/Python), Cypress (JS/TS), Selenium (Python/Java)
 - **Security scanning** — passive configuration audit of a deployed URL, plus optional active scanning via OWASP ZAP.
 - **Real-time streaming** — watch tests being written token by token.
@@ -48,7 +48,7 @@ Get your free API keys:
 | Provider | Free Tier | Get Key |
 |----------|-----------|---------|
 | Google Gemini (`gemini-3.6-flash`) | Large context, generous free tier | [aistudio.google.com](https://aistudio.google.com/app/apikey) |
-| Groq (`llama-3.3-70b-versatile`) | Ultra-fast, generous limits | [console.groq.com](https://console.groq.com) |
+| Groq (`openai/gpt-oss-120b`) | Ultra-fast, generous limits | [console.groq.com](https://console.groq.com) |
 | Anthropic (`claude-haiku-4-5`) | Reliable fallback | [console.anthropic.com](https://console.anthropic.com) |
 
 You only need **one** key to get started. Add more for better rate limit handling.
@@ -193,7 +193,7 @@ Try Gemini flash (key 1)
        └── ❌ All Gemini keys exhausted
               │
               ▼
-          Try Groq llama-3.3-70b (key 1)
+          Try Groq gpt-oss-120b (key 1)
             ├── ✅ Success → return result
             └── ❌ Rate limit → next key...
                    │

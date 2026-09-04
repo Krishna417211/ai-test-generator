@@ -6,10 +6,17 @@ interface Props {
   currentProvider?: string;
 }
 
+// Display names for the provider badge. These MUST be kept in step with the
+// MODELS table in backend/services/llm_router.py by hand — nothing links them,
+// and all three had drifted to models the app hadn't run in months (Gemini 1.5
+// Flash, LLaMA 3.1, and a Claude Haiku that was two majors old), so the badge
+// confidently named a model that never touched the request. The results screen
+// takes the model it reports from the provenance record instead, which is the
+// one that actually answered; this is only the "who is up" indicator.
 const PROVIDER_LABELS: Record<string, string> = {
-  gemini: "Gemini 1.5 Flash",
-  groq: "Groq LLaMA 3.1",
-  claude: "Claude Haiku",
+  gemini: "Gemini 3.6 Flash",
+  groq: "Groq GPT-OSS 120B",
+  claude: "Claude Haiku 4.5",
 };
 
 export default function ProviderStatus({ currentProvider }: Props) {

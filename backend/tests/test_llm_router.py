@@ -68,21 +68,23 @@ class TestKeyRotation:
 
 class TestFailover:
     def test_falls_over_to_next_provider(self):
+        # Groq leads the free tier, so it is the one made to fail here — the
+        # point is that the SECOND provider answers, not which two they are.
         r = _router_with(Provider.GEMINI, Provider.GROQ)
         seen = []
 
         async def fake_call(provider, api_key, prompt, system, temp, json_mode, spec):
             seen.append(provider)
-            if provider == Provider.GEMINI:
+            if provider == Provider.GROQ:
                 raise RateLimitError("429")
-            return "ok-from-groq"
+            return "ok-from-gemini"
 
         r._call_provider = fake_call
         result = asyncio.run(r.complete("hi"))
-        assert result == "ok-from-groq"
+        assert result == "ok-from-gemini"
         assert Provider.GEMINI in seen and Provider.GROQ in seen
-        # The rate-limited gemini key should now be on cooldown.
-        assert not r._providers[Provider.GEMINI].keys[0].is_available
+        # The rate-limited groq key should now be on cooldown.
+        assert not r._providers[Provider.GROQ].keys[0].is_available
 
     def test_provider_error_also_fails_over(self):
         r = _router_with(Provider.GEMINI, Provider.GROQ)
@@ -287,13 +289,17 @@ class TestTiering:
         r._call_provider = fake_call
         return seen
 
-    def test_pro_prefers_claude_free_prefers_gemini(self):
+    def test_pro_prefers_claude_free_prefers_groq(self):
         """The tier decides who answers first, and that's the whole product claim.
 
         If Pro resolved to Flash because Flash is listed first, the upgrade would
         be charging for a model the user never gets.
+
+        Free leads with Groq, which is a latency choice rather than a quality one
+        — see PROVIDER_PRIORITY. Gemini sits directly behind it and still takes
+        anything Groq's smaller context cannot hold.
         """
-        for tier, expected in ((Tier.FREE, Provider.GEMINI), (Tier.PRO, Provider.CLAUDE)):
+        for tier, expected in ((Tier.FREE, Provider.GROQ), (Tier.PRO, Provider.CLAUDE)):
             r = _router_with(Provider.GEMINI, Provider.GROQ, Provider.CLAUDE)
             seen = self._capture_spec(r)
             asyncio.run(r.complete("hi", tier=tier))
@@ -459,7 +465,7 @@ class TestUpgradeSignal:
 
             return await asyncio.gather(
                 one("claude", "claude-opus-4-8", 1),
-                one("groq", "llama-3.3-70b-versatile", 2),
+                one("groq", "openai/gpt-oss-120b", 2),
             )
 
         assert asyncio.run(run()) == [1, 2]

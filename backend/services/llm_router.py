@@ -239,8 +239,21 @@ class ModelSpec:
 MODELS: dict[tuple[Provider, Tier], ModelSpec] = {
     (Provider.GEMINI, Tier.FREE): ModelSpec("gemini-3.6-flash", 8192),
     (Provider.GEMINI, Tier.PRO):  ModelSpec("gemini-3.6-flash", 8192),
-    (Provider.GROQ,   Tier.FREE): ModelSpec("llama-3.3-70b-versatile", 4096),
-    (Provider.GROQ,   Tier.PRO):  ModelSpec("llama-3.3-70b-versatile", 4096),
+    # Groq retires models outright rather than deprecating them slowly, and it
+    # took the whole Llama 3.x chat line with it: `llama-3.3-70b-versatile` was
+    # this row for months and is simply gone from /v1/models now. A retired
+    # model is NOT a 404 you can shrug off — the key authenticates, the request
+    # is well-formed, and only the model name is rejected, so the provider looks
+    # alive right up to the point every call fails. Groq was second in the free
+    # tier's priority list, which means every Gemini rate-limit fell through to
+    # a provider that could not answer at all.
+    #
+    # Check `GET https://api.groq.com/openai/v1/models` before changing this;
+    # the id must appear there, and it must be a *chat* model — the only llama
+    # ids Groq still lists are `llama-prompt-guard-2-*`, which are 512-token
+    # safety classifiers and cannot write a test suite.
+    (Provider.GROQ,   Tier.FREE): ModelSpec("openai/gpt-oss-120b", 4096),
+    (Provider.GROQ,   Tier.PRO):  ModelSpec("openai/gpt-oss-120b", 4096),
     (Provider.CLAUDE, Tier.FREE): ModelSpec("claude-haiku-4-5", 4096),
     # Sonnet rather than Opus: a test suite is bounded, well-specified work, and
     # Sonnet 5 clears it at $3/$15 per MTok against Opus 4.8's $5/$25 — ~40%
@@ -259,14 +272,33 @@ MODELS: dict[tuple[Provider, Tier], ModelSpec] = {
     ),
 }
 
-# Which provider to try first, per tier. Free order is capacity-first (Gemini's
-# 1M context swallows big repos, Groq is fastest). Pro order is quality-first:
-# paying for Opus and then serving the request from Flash because Flash was
-# listed first would make the upgrade a lie. Claude still falls back to the
-# others rather than failing — a Pro user who would otherwise get nothing gets
-# a free-tier-quality suite, and the provenance report says so.
+# Which provider to try first, per tier. Free order is latency-first; Pro order
+# is quality-first: paying for Sonnet and then serving the request from Flash
+# because Flash was listed first would make the upgrade a lie. Claude still falls
+# back to the others rather than failing — a Pro user who would otherwise get
+# nothing gets a free-tier-quality suite, and the provenance report says so.
+#
+# Free was Gemini-first, on the reasoning that Gemini's 1M context swallows big
+# repos. That is true and it is still the reason Gemini sits directly behind
+# Groq — but it was buying capacity the free tier's own flow does not spend:
+# Generate is crawl-first, so the prompt carries a short list of DOM anchors and
+# never a source blob. What it cost instead was measured, not guessed:
+#
+#     gemini-3.6-flash     15-70s per call (avg ~42s), plus 503s under load
+#     openai/gpt-oss-120b  ~2.2s per call
+#
+# gemini-3.6-flash is a thinking model and roughly 70% of its output budget goes
+# to internal reasoning (~700 thought tokens against ~350 of answer). The writer
+# makes one call per file plus a planning call, so an eight-file suite paid that
+# nine times over — six minutes of a progress bar that users read as hung.
+#
+# Groq's 131k context is the smaller one, and that is the whole trade: a Publish
+# run whose source blob does not fit gets a context-length ProviderError, which
+# the loop below treats like any other provider failure and falls straight
+# through to Gemini. The big-context path is preserved; it is just no longer the
+# thing every small crawl-first request waits on.
 PROVIDER_PRIORITY: dict[Tier, list[Provider]] = {
-    Tier.FREE: [Provider.GEMINI, Provider.GROQ, Provider.CLAUDE],
+    Tier.FREE: [Provider.GROQ, Provider.GEMINI, Provider.CLAUDE],
     Tier.PRO:  [Provider.CLAUDE, Provider.GEMINI, Provider.GROQ],
 }
 
