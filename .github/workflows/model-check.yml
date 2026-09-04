@@ -1,0 +1,60 @@
+# Catches a provider retiring a model out from under us.
+#
+# This exists because of a failure the test suite is structurally unable to see:
+# Groq retired the whole Llama 3.x chat line, `llama-3.3-70b-versatile` stopped
+# existing, and every Groq call in production began failing — while every test
+# stayed green, because they all mock the providers. The first signal was users
+# reporting that generation was broken.
+#
+# Deliberately NOT part of ci.yml. A model can disappear on a day nobody pushes,
+# so this has to run on a clock rather than on a commit; and it makes real
+# network calls to third parties, which has no place in the gate a pull request
+# has to pass.
+name: Model availability
+
+on:
+  schedule:
+    - cron: "17 6 * * *"      # daily, 06:17 UTC; offset to dodge the top-of-hour rush
+  workflow_dispatch:           # so it can be run by hand after changing MODELS
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # httpx alone — the script imports the router for MODELS, and the router's
+      # own imports are all it needs. Installing the full requirements file would
+      # pull Playwright and its Chromium download for a job that makes two GETs.
+      - name: Install httpx
+        run: pip install --quiet httpx python-dotenv
+
+      - name: Check every model in MODELS is still served
+        env:
+          # Read-only listing calls. Add these under Settings → Secrets and
+          # variables → Actions. Any that are absent are simply skipped, so the
+          # job is useful with one provider configured and better with all three.
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
+          GROQ_API_KEY_2: ${{ secrets.GROQ_API_KEY_2 }}
+          ANTHROPIC_API_KEY_1: ${{ secrets.ANTHROPIC_API_KEY_1 }}
+        run: |
+          set +e
+          python backend/scripts/check_models.py
+          code=$?
+          set -e
+          if [ "$code" = "2" ]; then
+            echo "::warning::No provider keys are configured as repository secrets,"
+            echo "::warning::so nothing was checked. Add GEMINI_API_KEY_1 and"
+            echo "::warning::GROQ_API_KEY_1 to make this job meaningful."
+            exit 0
+          fi
+          exit $code

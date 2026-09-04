@@ -203,6 +203,37 @@ Try Groq gpt-oss-120b (key 1)     ← fastest responder, ~2s
                                          └── ❌ AllProvidersExhausted exception
 ```
 
+### Keeping the model IDs honest
+
+A provider can retire a model without warning, and when it does **the test suite
+cannot tell you** — every test mocks the providers, so nothing in CI has ever
+made a real call. The key still authenticates and the request is still
+well-formed; only the model name is rejected. The provider looks alive right up
+to the point every call fails.
+
+That happened: Groq retired the whole Llama 3.x chat line, and
+`llama-3.3-70b-versatile` began failing every call while CI stayed green.
+
+```bash
+python backend/scripts/check_models.py
+```
+
+Checks that every id in `MODELS` still appears in its provider's own model
+listing, using the keys you already have. Exit `0` all present, `1` something is
+gone, `2` no keys configured to check with. Gemini is asked **per key**, because
+availability there is per-Google-project — a model can be served to one project
+and 404 for another.
+
+On the deployed box, where the production keys live:
+
+```bash
+cd /opt/testra && sudo docker compose -f deploy/docker-compose.prod.yml     exec -T backend python scripts/check_models.py
+```
+
+`.github/workflows/model-check.yml` runs it daily. It needs `GEMINI_API_KEY_1`
+and `GROQ_API_KEY_1` as repository secrets; without them the job warns rather
+than failing, so it is worth adding them.
+
 ### Token Budget Management
 
 Files are scored 1–10 by importance:
